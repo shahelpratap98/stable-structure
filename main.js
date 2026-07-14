@@ -44,14 +44,23 @@
     });
   }
 
-  // Reveal on scroll
+  // Reveal on scroll — but never leave content stuck hidden.
+  // Anything already in or above the viewport on load is shown immediately;
+  // only genuinely below-the-fold elements animate in as they are reached.
+  var revealEls = document.querySelectorAll('.reveal');
   if ('IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+    }, { threshold: 0, rootMargin: '0px 0px -8% 0px' });
+    revealEls.forEach(function (el) {
+      if (el.getBoundingClientRect().top < window.innerHeight * 0.92) {
+        el.classList.add('in'); // already visible on load — no pop-in
+      } else {
+        io.observe(el);
+      }
+    });
   } else {
-    document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
+    revealEls.forEach(function (el) { el.classList.add('in'); });
   }
 
   // Enquiry form
