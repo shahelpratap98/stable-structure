@@ -54,17 +54,25 @@
     document.querySelectorAll('.reveal').forEach(function (el) { el.classList.add('in'); });
   }
 
-  // Enquiry form (front-end demo until a real endpoint is wired into the action)
+  // Enquiry form
   var form = document.getElementById('enquiryForm');
   if (form) {
     var status = document.getElementById('formStatus');
     form.addEventListener('submit', function (ev) {
-      if (form.getAttribute('action') === '#') {
-        ev.preventDefault();
-        if (!form.checkValidity()) { form.reportValidity(); return; }
+      var action = form.getAttribute('action') || '';
+      // Validate first regardless of how the form is wired up
+      if (!form.checkValidity()) { ev.preventDefault(); form.reportValidity(); return; }
+      if (action.indexOf('mailto:') === 0) {
+        // Let the browser open the visitor's email app; just confirm on screen
         if (status) {
           status.className = 'form-status ok';
-          status.textContent = 'Thanks — your enquiry is ready. Connect a form endpoint to receive it, or call/WhatsApp 021 148 8984 to reach us right away.';
+          status.textContent = 'Opening your email app to send this enquiry to gajan@stablestructure.co.nz — if nothing opens, email us directly or call 021 148 8984.';
+        }
+      } else if (action === '#') {
+        ev.preventDefault();
+        if (status) {
+          status.className = 'form-status ok';
+          status.textContent = 'Thanks — your enquiry is ready. Connect a form endpoint to receive it, or call/WhatsApp/email us to reach us right away.';
         }
         var btn = form.querySelector('button[type=submit]');
         if (btn) btn.textContent = 'Enquiry received ✓';
