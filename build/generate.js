@@ -203,10 +203,6 @@ function header(base, active) {
     <nav class="nav-links" aria-label="Primary">
       ${links}
     </nav>
-    <div class="nav-icons">
-      <a class="icon-btn wa" href="${waHref()}" target="_blank" rel="noopener" aria-label="Message us on WhatsApp">${wa()}</a>
-      <a class="icon-btn" href="tel:${PHONE_TEL}" aria-label="Call ${PHONE_DISPLAY}">${si('phone', 2)}</a>
-    </div>
     <div class="nav-cta">
       <a class="btn btn-primary" href="${base}contact.html">Get a Free Quote</a>
     </div>
@@ -299,7 +295,6 @@ function ctaBand(base, opts) {
       <div class="cta-actions">
         <a class="btn btn-primary btn-lg" href="${base}contact.html">Request a Free Quote ${si('arrow', 2.2)}</a>
         <a class="btn btn-wa btn-lg" href="${waHref(waMsg)}" target="_blank" rel="noopener">${wa()} WhatsApp us</a>
-        <a class="btn btn-ghost on-dark btn-lg" href="tel:${PHONE_TEL}">${si('phone', 2)} Call ${PHONE_DISPLAY}</a>
       </div>
     </div>
   </div></section>`;
@@ -456,7 +451,6 @@ function homeHero(base) {
       <div class="hero-cta">
         <a class="btn btn-primary btn-lg" href="${base}contact.html">Request a Free Quote ${si('arrow', 2.2)}</a>
         <a class="btn btn-wa btn-lg" href="${waHref()}" target="_blank" rel="noopener">${wa()} WhatsApp us</a>
-        <a class="btn btn-ghost on-dark btn-lg" href="tel:${PHONE_TEL}">${si('phone', 2)} Call ${PHONE_DISPLAY}</a>
       </div>
       <div class="hero-trust">
         <div class="ht">${si('shield', 2)}NZ Building Code compliant</div>
