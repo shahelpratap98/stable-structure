@@ -351,22 +351,52 @@ function sectorsBlock(base) {
     </div>`;
 }
 
-/* Testimonials */
-const TESTIMONIALS = [
-  { i: 'R', q: 'Outstanding quality and attention to detail. The design was innovative yet practical, and our consent went through without a hitch. Highly recommend.', n: 'Residential Client', m: 'New build · East Auckland' },
-  { i: 'D', q: 'Professional, responsive and genuinely helpful. They guided us through the regulatory side clearly and kept the whole project on schedule.', n: 'Property Developer', m: 'Commercial project · Auckland' },
-  { i: 'A', q: 'Great communication from start to finish. Their practical engineering saved us money on the build while keeping everything fully compliant.', n: 'Architect Partner', m: 'Residential design · NZ' },
-  { i: 'M', q: 'The retaining wall and deck design was spot on. Clear drawings, quick turnaround and easy to deal with the whole way through.', n: 'Homeowner', m: 'Retaining & deck · Auckland' },
-  { i: 'S', q: 'Solved a tricky structural problem on our renovation that two others had struggled with. Knowledgeable, calm and reassuring.', n: 'Renovation Client', m: 'Alterations · Auckland' },
-  { i: 'T', q: 'Reliable engineering partner for our builds. Documentation is always thorough and their site inspections give our clients real confidence.', n: 'Construction Company', m: 'Ongoing partner · NZ' },
-];
-function testimonialCards(list) {
-  return `<div class="tgrid">
-      ${list.map(t => `<figure class="tcard reveal">
-        ${stars5()}
-        <blockquote>“${t.q}”</blockquote>
-        <figcaption class="who"><div class="av">${t.i}</div><div><b>${t.n}</b><span>${t.m}</span></div></figcaption>
-      </figure>`).join('\n      ')}
+/* ---------- Google reviews (real — from Google Business Profile) ----------
+   NOTE for the owner: replace GOOGLE_REVIEWS_URL / GOOGLE_WRITE_URL with the
+   canonical links from your Google Business Profile (Maps "share" link and the
+   "Ask for reviews" short link) so the buttons open your exact listing. */
+const GOOGLE_REVIEWS_URL = 'https://www.google.com/maps/search/?api=1&query=Stable+Structure+Botany+Downs+Auckland';
+const GOOGLE_WRITE_URL = GOOGLE_REVIEWS_URL;
+const REVIEWS = {
+  rating: '5.0',
+  count: 5,
+  featured: {
+    initial: 'S', name: 'Sonia Singh', meta: 'Local Guide · 26 reviews', when: 'a month ago',
+    text: 'Gajan &amp; Team are very Professional, reliable, and incredibly thorough. Highly recommend their structural engineering services.',
+    org: 'Proconcept Design Ltd',
+  },
+  others: [
+    { initial: 'A', name: 'Ananayan', when: '6 months ago' },
+    { initial: 'N', name: 'Niranjan Tharma', when: '2 years ago' },
+    { initial: 'A', name: 'arunthamil 2004', when: '4 years ago' },
+    { initial: 'G', name: 'Gajanthan Vethanathan', when: '5 years ago' },
+  ],
+};
+const googleGlyph = () => `<svg class="gg" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.2a5.3 5.3 0 0 1-2.3 3.5v2.9h3.7c2.2-2 3.4-5 3.4-8.6z"/><path fill="#34A853" d="M12 24c3.1 0 5.7-1 7.6-2.8l-3.7-2.9c-1 .7-2.3 1.1-3.9 1.1-3 0-5.6-2-6.5-4.8H1.7v3A11.9 11.9 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.5 14.6a7.1 7.1 0 0 1 0-4.6v-3H1.7a12 12 0 0 0 0 10.6z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.2.6 4.4 1.7l3.3-3.3A11.7 11.7 0 0 0 12 0 11.9 11.9 0 0 0 1.7 6l3.8 3c.9-2.8 3.5-4.8 6.5-4.8z"/></svg>`;
+
+function reviewsSummary() {
+  return `<div class="reviews-summary reveal">
+      <div class="rs-score">
+        <div class="rs-num">${REVIEWS.rating}</div>
+        <div>${stars5()}<span class="rs-meta">${googleGlyph()} Based on ${REVIEWS.count} Google reviews</span></div>
+      </div>
+      <div class="rs-actions">
+        <a class="btn btn-primary" href="${GOOGLE_REVIEWS_URL}" target="_blank" rel="noopener">Read our Google reviews ${si('arrow', 2.2)}</a>
+        <a class="btn btn-ghost" href="${GOOGLE_WRITE_URL}" target="_blank" rel="noopener">Write a review</a>
+      </div>
+    </div>`;
+}
+function featuredReview() {
+  const f = REVIEWS.featured;
+  return `<figure class="tcard featured-review reveal">
+      <div class="fr-top">${stars5()}<span class="via">${googleGlyph()} Google review</span></div>
+      <blockquote>“${f.text}”</blockquote>
+      <figcaption class="who"><div class="av">${f.initial}</div><div><b>${f.name}</b><span>${f.org} · ${f.meta} · ${f.when}</span></div></figcaption>
+    </figure>`;
+}
+function otherReviews() {
+  return `<div class="rev-mini-grid">
+      ${REVIEWS.others.map(r => `<div class="rev-mini reveal"><div class="av">${r.initial}</div><div class="rm-body"><b>${r.name}</b><div class="stars sm">${star().repeat(5)}</div><span>${r.when} · via Google</span></div></div>`).join('\n      ')}
     </div>`;
 }
 
@@ -551,9 +581,10 @@ pages.push({
     </div></section>`,
     `<section class="pad">${whyBlock('')}</section>`,
     `<section class="pad" style="background:var(--surface-2)"><div class="container">
-      <div class="section-head center reveal"><span class="eyebrow">Client reviews</span><h2 class="section-title">Trusted for quality, clarity &amp; care</h2><p class="lead">Clients consistently rate Stable Structure 5 stars for technical expertise, communication and attention to detail.</p></div>
-      ${testimonialCards(TESTIMONIALS.slice(0, 3))}
-      <div style="text-align:center;margin-top:36px" class="reveal"><a class="btn btn-ghost btn-lg" href="testimonials.html">Read more reviews ${si('arrow', 2.2)}</a></div>
+      <div class="section-head center reveal"><span class="eyebrow">Client reviews</span><h2 class="section-title">Rated 5.0 on Google</h2><p class="lead">Our clients rate Stable Structure 5 stars for technical expertise, communication and attention to detail.</p></div>
+      ${reviewsSummary()}
+      <div style="margin-top:24px">${featuredReview()}</div>
+      <div style="text-align:center;margin-top:36px" class="reveal"><a class="btn btn-ghost btn-lg" href="testimonials.html">Read all reviews ${si('arrow', 2.2)}</a></div>
     </div></section>`,
     ctaBand(''),
   ].join('\n'),
@@ -578,7 +609,7 @@ pages.push({
   body: [
     pageHero('', { eyebrow: 'Who we work with', title: 'Engineering across <span class="hl">every sector</span>', sub: 'The same rigour, clarity and compliance — whether it is a backyard deck or a commercial development.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Sectors' }] }),
     `<section class="pad"><div class="container">${sectorsBlock('')}</div></section>`,
-    `<section class="pad-sm" style="background:var(--surface-2)"><div class="container"><div class="section-head center reveal"><span class="eyebrow">Whatever you are building</span><h2 class="section-title">Trusted by homeowners, developers &amp; builders</h2><p class="lead">Our clients include homeowners, property developers, commercial investors, construction companies, architects, designers and real estate professionals.</p></div>${testimonialCards(TESTIMONIALS.slice(3, 6))}</div></section>`,
+    `<section class="pad-sm" style="background:var(--surface-2)"><div class="container"><div class="section-head center reveal"><span class="eyebrow">Whatever you are building</span><h2 class="section-title">Trusted by homeowners, developers &amp; builders</h2><p class="lead">Our clients include homeowners, property developers, commercial investors, construction companies, architects, designers and real estate professionals.</p></div>${reviewsSummary()}<div style="margin-top:24px">${featuredReview()}</div></div></section>`,
     ctaBand(''),
   ].join('\n'),
 });
@@ -620,8 +651,13 @@ pages.push({
   file: 'testimonials.html', base: '', active: 'reviews',
   headO: { title: 'Reviews | Stable Structure Limited', desc: 'Read what clients say about Stable Structure Limited — 5-star structural and civil engineering across New Zealand.' },
   body: [
-    pageHero('', { eyebrow: 'Client reviews', title: 'Trusted for quality, <span class="hl">clarity &amp; care</span>', sub: 'Clients consistently rate Stable Structure 5 stars for technical expertise, communication and attention to detail.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Reviews' }] }),
-    `<section class="pad"><div class="container">${testimonialCards(TESTIMONIALS)}</div></section>`,
+    pageHero('', { eyebrow: 'Client reviews', title: 'Rated <span class="hl">5.0 on Google</span>', sub: 'Every one of our Google reviews is a 5-star rating. Here is what clients say about working with Stable Structure.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Reviews' }] }),
+    `<section class="pad"><div class="container">
+      ${reviewsSummary()}
+      <div style="margin:36px 0 14px"><div class="section-head center reveal" style="margin-bottom:24px"><span class="eyebrow">Featured review</span></div>${featuredReview()}</div>
+      <div class="section-head center reveal" style="margin:48px auto 0"><span class="eyebrow">More 5-star ratings</span><h2 class="section-title">Consistently rated five stars</h2><p class="lead">Further verified Google ratings from clients across our projects.</p></div>
+      ${otherReviews()}
+    </div></section>`,
     ctaBand(''),
   ].join('\n'),
 });
