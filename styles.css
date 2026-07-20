@@ -59,6 +59,13 @@ h2.section-title{font-size:clamp(28px,4.4vw,44px); margin-top:14px; max-width:22
 .btn-lg{padding:17px 30px; font-size:16px}
 @media (prefers-reduced-motion:reduce){.btn:hover{transform:none}}
 
+/* Skip to main content — visually hidden until keyboard-focused */
+.skip-link{position:absolute; left:12px; top:-60px; z-index:1000;
+  background:var(--ink); color:#fff; padding:12px 18px; border-radius:var(--radius-sm);
+  font-weight:600; text-decoration:none; box-shadow:var(--shadow-md);
+  transition:top .2s var(--ease)}
+.skip-link:focus{top:12px; outline:3px solid var(--accent); outline-offset:2px}
+
 /* Header */
 header.site{position:sticky; top:0; z-index:100; height:var(--nav-h); display:flex; align-items:center;
   background:rgba(251,250,247,.82); backdrop-filter:saturate(160%) blur(12px);

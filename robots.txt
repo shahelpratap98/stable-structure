@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://shahelpratap98.github.io/stable-structure/sitemap.xml

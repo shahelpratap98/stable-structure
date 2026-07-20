@@ -10,6 +10,11 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 
+/* Canonical site origin. This client preview is served by GitHub Pages under
+   the /stable-structure/ subpath. Used for <link rel="canonical">, og:url,
+   sitemap.xml and robots.txt so every emitted URL stays in sync. */
+const SITE_URL = 'https://shahelpratap98.github.io/stable-structure/';
+
 /* ---------- Business constants ---------- */
 const PHONE_DISPLAY = '021 148 8984';
 const PHONE_TEL = '+64211488984';
@@ -124,7 +129,12 @@ const SERVICES = [
 const svcPath = (s) => `services/${s.slug}.html`;
 
 /* ---------- Shared building blocks ---------- */
-function head(o, base) {
+function head(o, base, file) {
+  // Absolute URL for this page, derived from its output path (file).
+  const pageUrl = SITE_URL + (file || '');
+  // Error pages (404) opt out of canonical/indexing via headO.noindex.
+  const canonical = o.noindex ? '' : `<link rel="canonical" href="${pageUrl}" />\n`;
+  const robots = o.noindex ? `<meta name="robots" content="noindex" />\n` : '';
   return `<!doctype html>
 <html lang="en-NZ">
 <head>
@@ -134,8 +144,9 @@ function head(o, base) {
 <title>${o.title}</title>
 <meta name="description" content="${o.desc}" />
 <meta name="theme-color" content="#0C1E33" />
-<meta property="og:title" content="${o.title}" />
+${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <meta property="og:description" content="${o.desc}" />
+<meta property="og:url" content="${pageUrl}" />
 <meta property="og:type" content="website" />
 <meta property="og:locale" content="en_NZ" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -471,8 +482,20 @@ function contactBlock(base) {
 }
 
 /* ---------- Page assembly ---------- */
-function layout({ base, active, headO, body }) {
-  return [head(headO, base), header(base, active), body, callbar(base), footer(base), scripts(base)].join('\n');
+const skipLink = () => `<a class="skip-link" href="#main">Skip to main content</a>`;
+
+function layout({ base, active, headO, body, file }) {
+  return [
+    head(headO, base, file),
+    skipLink(),
+    header(base, active),
+    `<main id="main">`,
+    body,
+    `</main>`,
+    callbar(base),
+    footer(base),
+    scripts(base),
+  ].join('\n');
 }
 
 /* Home hero (with structural visual) */
@@ -747,13 +770,66 @@ SERVICES.forEach((s) => {
   pages.push({ file: svcPath(s), base, active: 'services', headO: { title: `${s.title} | Stable Structure Limited`, desc: s.short }, body });
 });
 
+/* 404 — GitHub Pages serves /404.html for any unknown path (including nested
+   ones). Because the site lives under the /stable-structure/ subpath, ALL links
+   on this page must be absolute, or they would resolve relative to the bad URL.
+   Using an absolute base makes the shared header/footer/nav links absolute too.
+   Excluded from sitemap.xml and marked noindex. */
+const NOTFOUND_BASE = '/stable-structure/';
+const notFoundPage = {
+  file: '404.html', base: NOTFOUND_BASE, active: '', noindex: true,
+  headO: { title: 'Page not found | Stable Structure Limited', desc: 'The page you were looking for could not be found. Explore our structural and civil engineering services or get in touch.', noindex: true },
+  body: [
+    `<section class="page-hero">
+    <div class="container">
+      <span class="eyebrow on-dark">Error 404</span>
+      <h1>Page not found</h1>
+      <p class="sub">Sorry, the page you were looking for does not exist or may have moved. Let's get you back on track.</p>
+      <div class="ph-cta">
+        <a class="btn btn-primary btn-lg" href="${NOTFOUND_BASE}index.html">Back to home ${si('arrow', 2.2)}</a>
+        <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}contact.html">Contact us</a>
+      </div>
+    </div>
+  </section>`,
+    `<section class="pad"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">Popular pages</span><h2 class="section-title">Where would you like to go?</h2></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px" class="reveal">
+        <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}index.html">Home</a>
+        <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}services.html">Services</a>
+        <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}contact.html">Contact</a>
+      </div>
+    </div></section>`,
+  ].join('\n'),
+};
+
 /* ---------- Write files ---------- */
 let count = 0;
-pages.forEach((p) => {
+[...pages, notFoundPage].forEach((p) => {
   const outPath = path.join(ROOT, p.file);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, layout({ base: p.base, active: p.active, headO: p.headO, body: p.body }), 'utf8');
+  fs.writeFileSync(outPath, layout({ base: p.base, active: p.active, headO: p.headO, body: p.body, file: p.file }), 'utf8');
   count++;
   console.log('  ✓', p.file);
 });
-console.log(`\nGenerated ${count} pages.`);
+
+/* ---------- sitemap.xml (indexable pages only; excludes 404) ---------- */
+const sitemapUrls = pages.map((p) => {
+  const loc = SITE_URL + (p.file === 'index.html' ? '' : p.file);
+  return `  <url><loc>${loc}</loc></url>`;
+}).join('\n');
+const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${sitemapUrls}
+</urlset>\n`;
+fs.writeFileSync(path.join(ROOT, 'sitemap.xml'), sitemap, 'utf8');
+console.log('  ✓', 'sitemap.xml', `(${pages.length} urls)`);
+
+/* ---------- robots.txt (allow all; point crawlers to the sitemap) ---------- */
+const robots = `User-agent: *
+Allow: /
+
+Sitemap: ${SITE_URL}sitemap.xml\n`;
+fs.writeFileSync(path.join(ROOT, 'robots.txt'), robots, 'utf8');
+console.log('  ✓', 'robots.txt');
+
+console.log(`\nGenerated ${count} pages + sitemap.xml + robots.txt.`);
