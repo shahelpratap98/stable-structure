@@ -355,9 +355,9 @@ function servicesGrid(base) {
 /* Sectors block */
 function sectorsBlock(base) {
   const art = {
-    res: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#16324e"/><g stroke="#2a4f74" stroke-width="1.5" opacity=".7"><path d="M40 340 L200 120 L360 340" fill="none"/><path d="M40 340 H360"/><path d="M90 340 V240 H150 V340 M250 340 V240 H310 V340"/><path d="M180 340 V270 H220 V340"/></g><g fill="#E9A23C" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
-    com: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#123049"/><g stroke="#2a4f74" stroke-width="1.5" opacity=".7"><rect x="90" y="90" width="90" height="250"/><rect x="210" y="140" width="110" height="200"/><path d="M105 120h20M145 120h20M105 160h20M145 160h20M105 200h20M145 200h20M230 170h25M285 170h25M230 220h25M285 220h25"/></g><g fill="#E9A23C" opacity=".9"><rect x="90" y="86" width="90" height="6"/></g></svg>`,
-    ind: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#0f2c44"/><g stroke="#2a4f74" stroke-width="1.5" opacity=".7"><path d="M40 320 H360 M70 320 V180 L200 120 L330 180 V320"/><path d="M110 180 V320 M290 180 V320 M200 130 V320"/><path d="M70 210 H330 M70 260 H330"/></g><g fill="#E9A23C" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
+    res: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#16324e"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><path d="M40 340 L200 120 L360 340" fill="none"/><path d="M40 340 H360"/><path d="M90 340 V240 H150 V340 M250 340 V240 H310 V340"/><path d="M180 340 V270 H220 V340"/></g><g fill="#E9A23C" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
+    com: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#123049"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><rect x="90" y="90" width="90" height="250"/><rect x="210" y="140" width="110" height="200"/><path d="M105 120h20M145 120h20M105 160h20M145 160h20M105 200h20M145 200h20M230 170h25M285 170h25M230 220h25M285 220h25"/></g><g fill="#E9A23C" opacity=".9"><rect x="90" y="86" width="90" height="6"/></g></svg>`,
+    ind: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#0f2c44"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><path d="M40 320 H360 M70 320 V180 L200 120 L330 180 V320"/><path d="M110 180 V320 M290 180 V320 M200 130 V320"/><path d="M70 210 H330 M70 260 H330"/></g><g fill="#E9A23C" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
   };
   return `<div class="sectors">
       <article class="sector reveal">${art.res}<div><span class="k">Residential</span><h3>Homes &amp; renovations</h3><p>New builds, extensions, decks, retaining walls, pools and additions — designed to protect your investment and pass consent.</p></div></article>
@@ -439,7 +439,7 @@ function contactBlock(base) {
   return `<div class="container contact-grid">
     <div class="contact-info reveal">
       <span class="eyebrow">Get in touch</span>
-      <h2 class="section-title">Let's talk about your project</h2>
+      <h2 class="section-title">Reach us your way</h2>
       <p class="lead">Tell us what you are planning and we will get back to you with practical engineering advice and a free, no-obligation quote.</p>
       <div class="infolist">
         <div class="infoitem"><div class="ii">${si('phone', 2)}</div><div><b>Call us</b><a href="tel:${PHONE_TEL}">${PHONE_DISPLAY}</a></div></div>
@@ -647,7 +647,7 @@ pages.push({
   file: 'about.html', base: '', active: 'about',
   headO: { title: 'About | Stable Structure Limited — Kiwi-owned Engineering Consultancy', desc: 'Stable Structure Limited is a Kiwi-owned structural and civil engineering consultancy in Botany, Auckland, simplifying complex engineering with practical, compliant solutions.' },
   body: [
-    pageHero('', { eyebrow: 'About us', title: 'Complex engineering, made <span class="hl">simple and certain</span>', sub: 'A Kiwi-owned structural and civil engineering consultancy built on technical expertise, practical solutions and exceptional client service.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'About' }] }),
+    pageHero('', { eyebrow: 'About us', title: 'Engineering you can <span class="hl">build on</span>', sub: 'A Kiwi-owned structural and civil engineering consultancy built on technical expertise, practical solutions and exceptional client service.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'About' }] }),
     `<section class="pad">${whyBlock('')}</section>`,
     `<section class="pad-sm" style="background:var(--surface-2)"><div class="container"><div class="split" style="align-items:center">
       <div class="reveal">
