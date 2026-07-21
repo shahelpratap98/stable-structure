@@ -152,7 +152,7 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230C1E33'/%3E%3Cpath d='M6 22 L16 8 L26 22' fill='none' stroke='%23E9A23C' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 22 H26' stroke='%23E9A23C' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230C1E33'/%3E%3Cpath d='M6 22 L16 8 L26 22' fill='none' stroke='%231DA9E3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 22 H26' stroke='%231DA9E3' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="${base}styles.css" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"ProfessionalService","name":"Stable Structure Limited","description":"Structural and civil engineering consultancy in Botany, Auckland, serving all of New Zealand.","areaServed":"New Zealand","telephone":"${PHONE_TEL}","email":"${EMAIL}","founder":{"@type":"Person","name":"${OWNER}"},"address":{"@type":"PostalAddress","addressLocality":"Botany","addressRegion":"Auckland","addressCountry":"NZ"},"openingHours":"Mo-Fr 08:30-17:00","aggregateRating":{"@type":"AggregateRating","ratingValue":"5.0","reviewCount":"5"},"slogan":"Strong solutions for your vision"}
@@ -162,14 +162,7 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 }
 
 const brand = (base, footer) => `<a class="brand" href="${base}index.html" aria-label="Stable Structure Limited home">
-  <svg class="mark" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-    <rect width="40" height="40" rx="9" fill="${footer ? '#122A44' : '#0C1E33'}"/>
-    <path d="M8 28 L20 10 L32 28" stroke="#E9A23C" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M8 28 H32" stroke="#E9A23C" stroke-width="2.6" stroke-linecap="round"/>
-    <path d="M13 28 L20 18 L27 28" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity=".7"/>
-    <circle cx="20" cy="10" r="1.7" fill="#fff"/>
-  </svg>
-  <span>Stable Structure<small>Structural &amp; Civil Engineers</small></span>
+  <img class="logo" src="${base}assets/logo.jpg" width="1720" height="900" alt="Stable Structure Limited — Structural & Civil Engineering"${footer ? '' : ' fetchpriority="high"'} />
 </a>`;
 
 const NAV = [
@@ -355,9 +348,9 @@ function servicesGrid(base) {
 /* Sectors block */
 function sectorsBlock(base) {
   const art = {
-    res: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#16324e"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><path d="M40 340 L200 120 L360 340" fill="none"/><path d="M40 340 H360"/><path d="M90 340 V240 H150 V340 M250 340 V240 H310 V340"/><path d="M180 340 V270 H220 V340"/></g><g fill="#E9A23C" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
-    com: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#123049"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><rect x="90" y="90" width="90" height="250"/><rect x="210" y="140" width="110" height="200"/><path d="M105 120h20M145 120h20M105 160h20M145 160h20M105 200h20M145 200h20M230 170h25M285 170h25M230 220h25M285 220h25"/></g><g fill="#E9A23C" opacity=".9"><rect x="90" y="86" width="90" height="6"/></g></svg>`,
-    ind: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#0f2c44"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><path d="M40 320 H360 M70 320 V180 L200 120 L330 180 V320"/><path d="M110 180 V320 M290 180 V320 M200 130 V320"/><path d="M70 210 H330 M70 260 H330"/></g><g fill="#E9A23C" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
+    res: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#16324e"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><path d="M40 340 L200 120 L360 340" fill="none"/><path d="M40 340 H360"/><path d="M90 340 V240 H150 V340 M250 340 V240 H310 V340"/><path d="M180 340 V270 H220 V340"/></g><g fill="#1DA9E3" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
+    com: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#123049"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><rect x="90" y="90" width="90" height="250"/><rect x="210" y="140" width="110" height="200"/><path d="M105 120h20M145 120h20M105 160h20M145 160h20M105 200h20M145 200h20M230 170h25M285 170h25M230 220h25M285 220h25"/></g><g fill="#1DA9E3" opacity=".9"><rect x="90" y="86" width="90" height="6"/></g></svg>`,
+    ind: `<svg class="bgart" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><rect width="400" height="400" fill="#0f2c44"/><g stroke="#537FAC" stroke-width="2" opacity=".85"><path d="M40 320 H360 M70 320 V180 L200 120 L330 180 V320"/><path d="M110 180 V320 M290 180 V320 M200 130 V320"/><path d="M70 210 H330 M70 260 H330"/></g><g fill="#1DA9E3" opacity=".9"><circle cx="200" cy="120" r="4"/></g></svg>`,
   };
   return `<div class="sectors">
       <article class="sector reveal">${art.res}<div><span class="k">Residential</span><h3>Homes &amp; renovations</h3><p>New builds, extensions, decks, retaining walls, pools and additions — designed to protect your investment and pass consent.</p></div></article>
@@ -518,16 +511,16 @@ function homeHero(base) {
     </div>
     <div class="hero-visual reveal">
       <svg class="frame" viewBox="0 0 480 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Structural steel portal frame diagram">
-        <defs><linearGradient id="beam" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E9A23C"/><stop offset="1" stop-color="#C77F1E"/></linearGradient></defs>
+        <defs><linearGradient id="beam" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3FC0F0"/><stop offset="1" stop-color="#1580B0"/></linearGradient></defs>
         <line x1="30" y1="380" x2="450" y2="380" stroke="#3E6188" stroke-width="2" stroke-dasharray="2 8" stroke-linecap="round"/>
         <rect x="70" y="150" width="14" height="230" rx="3" fill="url(#beam)"/>
         <rect x="396" y="150" width="14" height="230" rx="3" fill="url(#beam)"/>
         <path d="M77 150 L240 66 L403 150" stroke="url(#beam)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         <line x1="77" y1="150" x2="403" y2="150" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".85"/>
         <g stroke="#7FA0C0" stroke-width="2.2" opacity=".85" stroke-linecap="round"><path d="M84 156 L240 118 L396 156"/><path d="M120 150 L160 118"/><path d="M200 150 L240 118"/><path d="M280 150 L240 118"/><path d="M360 150 L320 118"/><path d="M160 118 L200 150"/><path d="M320 118 L280 150"/></g>
-        <g stroke="#E9A23C" stroke-width="1.6" opacity=".9"><line x1="77" y1="404" x2="403" y2="404"/><line x1="77" y1="398" x2="77" y2="410"/><line x1="403" y1="398" x2="403" y2="410"/></g>
+        <g stroke="#1DA9E3" stroke-width="1.6" opacity=".9"><line x1="77" y1="404" x2="403" y2="404"/><line x1="77" y1="398" x2="77" y2="410"/><line x1="403" y1="398" x2="403" y2="410"/></g>
         <g fill="#fff"><circle cx="77" cy="150" r="5"/><circle cx="403" cy="150" r="5"/><circle cx="240" cy="66" r="5"/></g>
-        <g fill="#E9A23C"><circle cx="240" cy="118" r="4"/></g>
+        <g fill="#1DA9E3"><circle cx="240" cy="118" r="4"/></g>
       </svg>
       <div class="spec-card sc-1"><div class="ico">${si('shield', 2)}</div><div><b>Code-compliant</b><span>NZS &amp; NZ Building Code</span></div></div>
       <div class="spec-card sc-2"><div class="ico">${si('phone', 2)}</div><div><b>Concept → Completion</b><span>End-to-end engineering</span></div></div>
