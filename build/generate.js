@@ -548,6 +548,61 @@ function statsBlock() {
   </div></div></section>`;
 }
 
+function teamSection(base) {
+  const team = [
+    {
+      photo: 'gajanthan.jpg', name: OWNER, role: 'Director',
+      cred: 'BSc(Eng) · MSc(Struct) · MIStructE · CMEngNZ · CEng (UK) · CPEng (NZ)',
+      bio: [
+        `Gajanthan founded Stable Structure Limited and has spent more than eight years delivering innovative, practical engineering solutions. He holds a Bachelor of Engineering (Structural) from Sri Lanka and a Master of Science in Structural Engineering from the National University of Singapore, and is both a Chartered Structural Engineer (MIStructE, UK) and a Chartered Professional Engineer (CPEng) with Engineering New Zealand.`,
+        `With over 20 years of experience across Sri Lanka, Singapore and New Zealand, his work spans complex infrastructure and buildings — from underground structures for tunnels and railway stations and harbour jetties, through to residential developments, commercial buildings and industrial structures. He is passionate about mentoring engineers, delivering technical seminars, and finding practical, economical solutions that never compromise safety or quality.`,
+      ],
+      note: `Outside work, Gajanthan is a keen badminton player who enjoys organising tournaments, supporting charitable initiatives, and spending time with his family and in nature.`,
+      actions: `<div class="tm-actions">
+          <a class="btn btn-primary" href="mailto:${EMAIL}">${si('mail', 2)} Email Gajan</a>
+          <a class="btn btn-wa" href="${waHref()}" target="_blank" rel="noopener">${wa()} WhatsApp</a>
+        </div>`,
+    },
+    {
+      photo: 'morgan.jpg', name: 'Morgan Wang', role: 'Intermediate Structural Engineer',
+      cred: 'BE · MEngNZ',
+      bio: [
+        `Morgan brings over seven years of local New Zealand experience, specialising in temporary works, residential and light commercial projects. He delivers stable, buildable and compliant structural solutions that balance safety, cost and client requirements — working closely with architects, builders and clients across the whole project lifecycle, from pre-design reviews and structural analysis through to drawings, site inspections and construction documentation.`,
+        `His project record spans complex temporary works such as SED scaffolding, hanging platforms, grandstands and event platforms, as well as steel canopies, warehouse sheds, new residential developments and renovations.`,
+      ],
+      note: `Outside work, Morgan enjoys time with family and friends, and keeps balance through sport, music, good food and movies.`,
+      actions: '',
+    },
+    {
+      photo: 'thibakaran.jpg', name: 'Thibakaran Sivakumaran', role: 'Intermediate to Senior Structural Engineer',
+      cred: '',
+      bio: [
+        `Thibakaran has over five years of experience delivering practical, efficient and compliant structural design across commercial and residential projects. His work covers timber, structural steel, light-gauge steel and reinforced concrete systems — including new builds, alterations, additions and strengthening works — and he stays involved throughout the project, from early design and analysis to detailed documentation, construction support and coordination with architects, contractors and other stakeholders.`,
+        `He is committed to buildable, cost-effective and robust engineering solutions that meet project requirements, relevant standards and New Zealand building regulations.`,
+      ],
+      note: `Outside work, Thibakaran plays group badminton and local tournaments, and turns out for one-day grade cricket with his club.`,
+      actions: '',
+    },
+  ];
+  const members = team.map((m, i) => `<div class="team-member${i % 2 ? ' rev' : ''} reveal">
+        <div class="tm-photo"><img src="${base}assets/team/${m.photo}" width="720" height="900" loading="lazy" alt="${m.name}, ${m.role} at Stable Structure Limited" /></div>
+        <div class="tm-body">
+          <div class="tm-role">${m.role}</div>
+          <h3 class="tm-name">${m.name}</h3>
+          ${m.cred ? `<p class="tm-cred">${m.cred}</p>` : ''}
+          ${m.bio.map(p => `<p class="bio">${p}</p>`).join('\n          ')}
+          <p class="tm-note">${m.note}</p>
+          ${m.actions}
+        </div>
+      </div>`).join('\n      ');
+  return `<section class="pad" style="background:var(--surface-2)"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">Our team</span><h2 class="section-title">Meet the engineers behind your project</h2><p class="lead">You work directly with experienced, chartered engineers who take personal ownership of your project — from first concept through to final sign-off.</p></div>
+      <div class="team" style="margin-top:56px">
+      ${members}
+      </div>
+    </div></section>`;
+}
+
 function whyBlock(base) {
   return `<div class="container split">
     <div class="reveal">
@@ -642,23 +697,7 @@ pages.push({
   body: [
     pageHero('', { eyebrow: 'About us', title: 'Engineering you can <span class="hl">build on</span>', sub: 'A Kiwi-owned structural and civil engineering consultancy built on technical expertise, practical solutions and exceptional client service.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'About' }] }),
     `<section class="pad">${whyBlock('')}</section>`,
-    `<section class="pad-sm" style="background:var(--surface-2)"><div class="container"><div class="split" style="align-items:center">
-      <div class="reveal">
-        <span class="eyebrow">Who you'll work with</span>
-        <h2 class="section-title">Led by founder ${OWNER}</h2>
-        <p class="lead">Stable Structure is founded and led by ${OWNER} — the engineer clients know as “Gajan”. You work directly with an experienced structural and civil engineer who takes personal ownership of your project, from first concept through to final sign-off.</p>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:24px">
-          <a class="btn btn-primary" href="mailto:${EMAIL}">${si('mail', 2)} Email Gajan</a>
-          <a class="btn btn-wa" href="${waHref()}" target="_blank" rel="noopener">${wa()} WhatsApp</a>
-        </div>
-      </div>
-      <div class="founder-card reveal">
-        <div class="founder-av">GV</div>
-        <b>${OWNER}</b>
-        <span>Founder &amp; Principal Engineer</span>
-        <a href="mailto:${EMAIL}">${EMAIL}</a>
-      </div>
-    </div></div></section>`,
+    teamSection(''),
     statsBlock(),
     `<section class="pad-sm" style="background:var(--surface-2)"><div class="container"><div class="section-head center reveal"><span class="eyebrow">Our promise</span><h2 class="section-title">Technical confidence, from concept to completion</h2><p class="lead">Stable Structure simplifies complex engineering challenges through practical, cost-effective solutions — while ensuring every project meets New Zealand building standards and compliance requirements. From concept to completion, you receive expert guidance and technical confidence at every stage.</p></div></div></section>`,
     ctaBand(''),

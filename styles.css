@@ -294,14 +294,25 @@ section{scroll-margin-top:calc(var(--nav-h) + 12px)}
 .tcard .who b{display:block; font-size:15px; font-family:"Space Grotesk",sans-serif}
 .tcard .who span{font-size:13px; color:var(--muted)}
 
-/* Founder card */
-.founder-card{background:var(--ink); color:#fff; border-radius:var(--radius); padding:40px 32px; text-align:center; box-shadow:var(--shadow-md)}
-.founder-av{width:96px;height:96px;border-radius:50%;background:var(--accent);color:var(--ink);display:grid;place-items:center;
-  font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:34px;margin:0 auto 18px}
-.founder-card b{font-family:"Space Grotesk",sans-serif;font-size:22px;display:block;color:#fff}
-.founder-card > span{color:var(--accent); font-size:13.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; display:block; margin-top:6px}
-.founder-card a{display:inline-block; margin-top:16px; color:#C4D2E1; font-size:15px; word-break:break-word}
-.founder-card a:hover{color:var(--accent)}
+/* Team */
+.team{display:grid; gap:56px}
+.team-member{display:grid; grid-template-columns:1fr; gap:28px; align-items:center}
+@media(min-width:820px){
+  .team-member{grid-template-columns:340px 1fr; gap:48px}
+  .team-member.rev{grid-template-columns:1fr 340px}
+  .team-member.rev .tm-photo{order:2}
+}
+.tm-photo{position:relative; width:100%; max-width:360px; margin-inline:auto;
+  border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-md); background:var(--line)}
+.tm-photo img{width:100%; height:auto; display:block; aspect-ratio:4/5; object-fit:cover; object-position:top center}
+.tm-photo::after{content:""; position:absolute; left:0; right:0; bottom:0; height:5px; background:var(--accent)}
+.tm-role{color:var(--accent-600); font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:13.5px;
+  letter-spacing:.06em; text-transform:uppercase; margin-bottom:8px}
+.tm-name{font-size:clamp(23px,3vw,29px)}
+.tm-cred{color:var(--muted-2); font-size:13.5px; font-weight:500; margin-top:7px; letter-spacing:.01em}
+.tm-body p.bio{color:var(--muted); font-size:15.5px; margin-top:14px}
+.tm-note{margin-top:16px; padding-left:16px; border-left:3px solid var(--accent); color:var(--muted-2); font-size:14.5px; font-style:italic}
+.tm-actions{display:flex; gap:12px; flex-wrap:wrap; margin-top:24px}
 
 /* Google reviews */
 .gg{width:18px;height:18px;display:inline-block;vertical-align:middle}
