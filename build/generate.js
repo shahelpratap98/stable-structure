@@ -696,10 +696,10 @@ pages.push({
   headO: { title: 'About | Stable Structure Limited — Kiwi-owned Engineering Consultancy', desc: 'Stable Structure Limited is a Kiwi-owned structural and civil engineering consultancy in Botany, Auckland, simplifying complex engineering with practical, compliant solutions.' },
   body: [
     pageHero('', { eyebrow: 'About us', title: 'Engineering you can <span class="hl">build on</span>', sub: 'A Kiwi-owned structural and civil engineering consultancy built on technical expertise, practical solutions and exceptional client service.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'About' }] }),
-    `<section class="pad">${whyBlock('')}</section>`,
     teamSection(''),
     statsBlock(),
-    `<section class="pad-sm" style="background:var(--surface-2)"><div class="container"><div class="section-head center reveal"><span class="eyebrow">Our promise</span><h2 class="section-title">Technical confidence, from concept to completion</h2><p class="lead">Stable Structure simplifies complex engineering challenges through practical, cost-effective solutions — while ensuring every project meets New Zealand building standards and compliance requirements. From concept to completion, you receive expert guidance and technical confidence at every stage.</p></div></div></section>`,
+    `<section class="pad" style="background:var(--surface-2)">${whyBlock('')}</section>`,
+    `<section class="pad-sm"><div class="container"><div class="section-head center reveal"><span class="eyebrow">Our promise</span><h2 class="section-title">Technical confidence, from concept to completion</h2><p class="lead">Stable Structure simplifies complex engineering challenges through practical, cost-effective solutions — while ensuring every project meets New Zealand building standards and compliance requirements. From concept to completion, you receive expert guidance and technical confidence at every stage.</p></div></div></section>`,
     ctaBand(''),
   ].join('\n'),
 });
