@@ -1,0 +1,17 @@
+{
+  "name": "stable-structure",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stable Structure Limited — static marketing site generator",
+  "scripts": {
+    "build": "node build/generate.js",
+    "sync": "node build/fetch-facebook.js",
+    "sync:build": "node build/fetch-facebook.js && node build/generate.js"
+  },
+  "dependencies": {
+    "sharp": "^0.34.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

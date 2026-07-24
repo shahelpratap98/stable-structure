@@ -63,6 +63,68 @@
     revealEls.forEach(function (el) { el.classList.add('in'); });
   }
 
+  // Projects lightbox — click a card photo to view the full image and caption.
+  // Multi-photo posts are browsable with the arrows or left/right keys.
+  var lb = document.getElementById('lightbox');
+  var grid = document.querySelector('.proj-grid');
+  if (lb && grid) {
+    var lbImg = lb.querySelector('.lb-img');
+    var lbCap = lb.querySelector('.lb-cap');
+    var shots = [];
+    var idx = 0;
+    var lastFocus = null;
+
+    var show = function (i) {
+      idx = (i + shots.length) % shots.length;
+      lbImg.src = shots[idx];
+      lb.classList.toggle('single', shots.length < 2);
+    };
+
+    var open = function (card) {
+      try { shots = JSON.parse(card.getAttribute('data-images') || '[]'); }
+      catch (e) { shots = []; }
+      if (!shots.length) return;
+      lastFocus = document.activeElement;
+      var cap = card.getAttribute('data-caption') || '';
+      lbCap.textContent = cap;
+      lbImg.alt = cap ? cap.slice(0, 110) : 'Project photo';
+      lb.hidden = false;
+      show(0);
+      requestAnimationFrame(function () { lb.classList.add('open'); });
+      document.body.style.overflow = 'hidden';
+      lb.querySelector('.lb-close').focus();
+    };
+
+    var close = function () {
+      lb.classList.remove('open');
+      document.body.style.overflow = '';
+      window.setTimeout(function () { lb.hidden = true; lbImg.src = ''; }, 200);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    };
+
+    grid.addEventListener('click', function (e) {
+      var media = e.target.closest ? e.target.closest('.proj-media') : null;
+      if (!media) return;
+      var card = media.closest('.proj-card');
+      if (card) open(card);
+    });
+
+    lb.addEventListener('click', function (e) {
+      if (e.target.closest('.lb-close')) return close();
+      if (e.target.closest('.lb-next')) return show(idx + 1);
+      if (e.target.closest('.lb-prev')) return show(idx - 1);
+      // Clicking the backdrop (not the image or caption) closes it
+      if (!e.target.closest('.lb-figure')) close();
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (lb.hidden) return;
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowRight') show(idx + 1);
+      else if (e.key === 'ArrowLeft') show(idx - 1);
+    });
+  }
+
   // Enquiry form
   var form = document.getElementById('enquiryForm');
   if (form) {

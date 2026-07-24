@@ -22,6 +22,7 @@ const EMAIL = 'gajan@stablestructure.co.nz';
 const OWNER = 'Gajanthan Vethanathan';
 const WA_NUMBER = '64211488984';
 const WA_DEFAULT = "Hi Stable Structure, I'd like to enquire about a project.";
+const FACEBOOK_URL = 'https://www.facebook.com/StableStructure.Auckland';
 const waHref = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg || WA_DEFAULT)}`;
 
 /* ---------- Icons (24x24) ---------- */
@@ -51,12 +52,16 @@ const I = {
   factory: '<path d="m2 20 6-14 4 9 3-5 7 10zM2 20h20"/>',
   globe: '<path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
   mail: '<path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="m22 6-10 7L2 6"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
 };
 const WHATSAPP = '<path fill="currentColor" d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.9-4.45 9.91-9.91a9.82 9.82 0 0 0-2.91-7.02zM12.04 20.15a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.23 8.24-8.23a8.2 8.2 0 0 1 8.23 8.24c0 4.54-3.7 8.23-8.24 8.23zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.8-.79.97-.14.16-.29.18-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.13-.15.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43h-.48c-.17 0-.43.06-.66.31-.22.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.11-.22-.17-.47-.29z"/>';
 const STAR = '<path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>';
+const FACEBOOK = '<path fill="currentColor" d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.52 1.5-3.91 3.79-3.91 1.1 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.9h2.78l-.45 2.91h-2.33V22c4.78-.76 8.44-4.92 8.44-9.94z"/>';
 
 const si = (name, sw = 1.9) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name]}</svg>`;
 const wa = () => `<svg viewBox="0 0 24 24" aria-hidden="true">${WHATSAPP}</svg>`;
+const fb = () => `<svg viewBox="0 0 24 24" aria-hidden="true">${FACEBOOK}</svg>`;
 const star = () => `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${STAR}</svg>`;
 const stars5 = () => `<div class="stars" aria-label="5 out of 5 stars">${star().repeat(5)}</div>`;
 
@@ -128,6 +133,37 @@ const SERVICES = [
 ];
 const svcPath = (s) => `services/${s.slug}.html`;
 
+/* ---------- Our Projects data ----------
+   The gallery merges the hand-authored projects with the ones synced from
+   Facebook (see build/README.md). Newest first, deduped by id. A missing or
+   malformed data file degrades to an empty gallery rather than breaking the
+   build, so a bad sync can never take the site down. */
+const esc = (s) => String(s == null ? '' : s)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+function loadProjects() {
+  const read = (file) => {
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(__dirname, file), 'utf8'));
+      return Array.isArray(data) ? data : [];
+    } catch (err) {
+      if (err.code !== 'ENOENT') console.warn(`  ! ${file}: ${err.message} — ignored`);
+      return [];
+    }
+  };
+  const seen = new Set();
+  return [...read('projects.manual.json'), ...read('projects.facebook.json')]
+    .filter((p) => p && p.id && Array.isArray(p.images) && p.images.length)
+    .filter((p) => (seen.has(p.id) ? false : seen.add(p.id)))
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+
+const projectDate = (d) => {
+  const t = Date.parse(d);
+  return isNaN(t) ? '' : new Date(t).toLocaleDateString('en-NZ', { month: 'long', year: 'numeric' });
+};
+
 /* ---------- Shared building blocks ---------- */
 function head(o, base, file) {
   // Absolute URL for this page, derived from its output path (file).
@@ -169,6 +205,7 @@ const NAV = [
   { key: 'home', label: 'Home', href: 'index.html' },
   { key: 'services', label: 'Services', href: 'services.html', dd: true },
   { key: 'sectors', label: 'Sectors', href: 'sectors.html' },
+  { key: 'projects', label: 'Our Projects', href: 'projects.html' },
   { key: 'about', label: 'About', href: 'about.html' },
   { key: 'process', label: 'Process', href: 'process.html' },
   { key: 'contact', label: 'Contact', href: 'contact.html' },
@@ -227,6 +264,7 @@ function header(base, active) {
     </div>
   </details>
   <a class="m-link" href="${base}sectors.html">Sectors</a>
+  <a class="m-link" href="${base}projects.html">Our Projects</a>
   <a class="m-link" href="${base}about.html">About</a>
   <a class="m-link" href="${base}process.html">Process</a>
   <a class="m-link" href="${base}testimonials.html">Reviews</a>
@@ -257,6 +295,7 @@ function footer(base) {
       <div class="foot-col">
         <h5>Company</h5>
         <a href="${base}sectors.html">Sectors</a>
+        <a href="${base}projects.html">Our projects</a>
         <a href="${base}about.html">About us</a>
         <a href="${base}process.html">Our process</a>
         <a href="${base}testimonials.html">Reviews</a>
@@ -548,6 +587,60 @@ function statsBlock() {
   </div></div></section>`;
 }
 
+function projectsSection(base) {
+  const projects = loadProjects();
+
+  /* Nothing published yet — the sync only picks up newly tagged posts, so the
+     page must still read as intentional on day one. */
+  if (!projects.length) {
+    return `<section class="pad"><div class="container">
+      <div class="proj-empty reveal">
+        <div class="proj-empty-ic">${si('camera', 1.7)}</div>
+        <h2>Our latest projects are on their way</h2>
+        <p>We are putting this gallery together right now. In the meantime you can see our most recent work over on Facebook — or tell us about your project and we will get straight back to you.</p>
+        <div class="proj-empty-cta">
+          <a class="btn btn-primary btn-lg" href="${FACEBOOK_URL}" target="_blank" rel="noopener">${fb()} See our Facebook page</a>
+          <a class="btn btn-ghost btn-lg" href="${base}contact.html">Request a free quote</a>
+        </div>
+      </div>
+    </div></section>`;
+  }
+
+  const cards = projects.map((p) => {
+    const imgs = p.images.map((i) => `${base}${i}`);
+    const caption = p.caption || '';
+    const extra = imgs.length - 1;
+    const alt = caption ? caption.replace(/\s+/g, ' ').slice(0, 110) : 'Stable Structure project photo';
+    return `<article class="proj-card reveal" data-images="${esc(JSON.stringify(imgs))}" data-caption="${esc(caption)}"${p.permalink ? ` data-permalink="${esc(p.permalink)}"` : ''}>
+        <button class="proj-media" type="button" aria-label="View photos for this project">
+          <img src="${imgs[0]}" width="1200" height="900" loading="lazy" alt="${esc(alt)}" />
+          ${extra > 0 ? `<span class="proj-count">${si('camera', 2)}+${extra}</span>` : ''}
+        </button>
+        <div class="proj-body">
+          ${p.date ? `<time class="proj-date" datetime="${esc(p.date)}">${projectDate(p.date)}</time>` : ''}
+          ${caption ? `<p class="proj-cap">${esc(caption).replace(/\n/g, '<br />')}</p>` : ''}
+          ${p.permalink ? `<a class="proj-link" href="${esc(p.permalink)}" target="_blank" rel="noopener">${fb()} View post</a>` : ''}
+        </div>
+      </article>`;
+  }).join('\n      ');
+
+  return `<section class="pad"><div class="container">
+      <div class="proj-grid">
+      ${cards}
+      </div>
+      <p class="proj-foot reveal">Follow <a href="${FACEBOOK_URL}" target="_blank" rel="noopener">Stable Structure on Facebook</a> to see new projects as they are finished.</p>
+    </div></section>
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Project photo" hidden>
+  <button class="lb-btn lb-close" type="button" aria-label="Close">${si('close', 2.2)}</button>
+  <button class="lb-btn lb-prev" type="button" aria-label="Previous photo">${si('chevr', 2.2)}</button>
+  <figure class="lb-figure">
+    <img class="lb-img" src="" alt="" />
+    <figcaption class="lb-cap"></figcaption>
+  </figure>
+  <button class="lb-btn lb-next" type="button" aria-label="Next photo">${si('chevr', 2.2)}</button>
+</div>`;
+}
+
 function teamSection(base) {
   const team = [
     {
@@ -687,6 +780,17 @@ pages.push({
     `<section class="pad"><div class="container">${sectorsBlock('')}</div></section>`,
     `<section class="pad-sm" style="background:var(--surface-2)"><div class="container"><div class="section-head center reveal"><span class="eyebrow">Whatever you are building</span><h2 class="section-title">Trusted by homeowners, developers &amp; builders</h2><p class="lead">Our clients include homeowners, property developers, commercial investors, construction companies, architects, designers and real estate professionals.</p></div>${reviewsSummary()}<div style="margin-top:24px">${featuredReview()}</div></div></section>`,
     ctaBand(''),
+  ].join('\n'),
+});
+
+/* OUR PROJECTS — gallery of manual entries + hashtagged Facebook posts */
+pages.push({
+  file: 'projects.html', base: '', active: 'projects',
+  headO: { title: 'Our Projects | Stable Structure Limited — Recent Engineering Work', desc: 'Recent structural and civil engineering projects by Stable Structure Limited — new builds, decks, retaining walls, carports and commercial work across Auckland and New Zealand.' },
+  body: [
+    pageHero('', { eyebrow: 'Our projects', title: 'Recent work, <span class="hl">straight from site</span>', sub: 'A look at what we have been building — new builds, decks, retaining walls, carports and commercial projects from across New Zealand.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Our Projects' }] }),
+    projectsSection(''),
+    ctaBand('', { title: 'Have a project like these in mind?', waMsg: "Hi Stable Structure, I saw your projects and I'd like to enquire about mine." }),
   ].join('\n'),
 });
 
