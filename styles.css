@@ -350,6 +350,11 @@ section{scroll-margin-top:calc(var(--nav-h) + 12px)}
 .proj-empty p{color:var(--muted); font-size:16px; margin-top:14px}
 .proj-empty-cta{display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:26px}
 
+/* Facebook video embed */
+.video-embed{position:relative; width:100%; max-width:560px; margin-inline:auto; aspect-ratio:560/314;
+  border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-md); background:var(--ink)}
+.video-embed iframe{position:absolute; inset:0; width:100%; height:100%; border:0}
+
 /* Lightbox */
 .lightbox{position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center;
   background:rgba(6,16,28,.94); padding:24px; opacity:0; transition:opacity .2s var(--ease)}

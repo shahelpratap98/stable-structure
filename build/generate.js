@@ -23,6 +23,10 @@ const OWNER = 'Gajanthan Vethanathan';
 const WA_NUMBER = '64211488984';
 const WA_DEFAULT = "Hi Stable Structure, I'd like to enquire about a project.";
 const FACEBOOK_URL = 'https://www.facebook.com/StableStructure.Auckland';
+/* Optional featured video on the Projects page — a Facebook plugin embed URL
+   (the src from Facebook's "Embed" dialog), or '' to hide the section. This is
+   the one part of the page that loads from Facebook. */
+const PROJECT_VIDEO_EMBED = 'https://www.facebook.com/plugins/video.php?height=314&href=https%3A%2F%2Fwww.facebook.com%2Freel%2F28072485295674770%2F&show_text=false&width=560&t=0';
 const waHref = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg || WA_DEFAULT)}`;
 
 /* ---------- Icons (24x24) ---------- */
@@ -641,6 +645,16 @@ function projectsSection(base) {
 </div>`;
 }
 
+function projectsVideo() {
+  if (!PROJECT_VIDEO_EMBED) return '';
+  return `<section class="pad-sm"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">In motion</span><h2 class="section-title">See our work in action</h2><p class="lead">A closer look at one of our recent builds, straight from our Facebook.</p></div>
+      <div class="video-embed reveal">
+        <iframe title="Stable Structure project video" src="${PROJECT_VIDEO_EMBED}" loading="lazy" style="border:none;overflow:hidden" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>
+      </div>
+    </div></section>`;
+}
+
 function teamSection(base) {
   const team = [
     {
@@ -790,6 +804,7 @@ pages.push({
   body: [
     pageHero('', { eyebrow: 'Our projects', title: 'Recent work, <span class="hl">straight from site</span>', sub: 'A look at what we have been building — new builds, decks, retaining walls, carports and commercial projects from across New Zealand.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Our Projects' }] }),
     projectsSection(''),
+    projectsVideo(),
     ctaBand('', { title: 'Have a project like these in mind?', waMsg: "Hi Stable Structure, I saw your projects and I'd like to enquire about mine." }),
   ].join('\n'),
 });
