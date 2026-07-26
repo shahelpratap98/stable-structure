@@ -1,1 +1,32 @@
-[]
+[
+  {
+    "id": "manual-foodie-supermarket",
+    "source": "manual",
+    "caption": "Foodie Asian Supermarket — it is with great pride that we share our role as the sole structural designer of what is now the largest Asian supermarket in Auckland.",
+    "date": "2026-07-26",
+    "images": [
+      "assets/projects/foodie-supermarket-1.jpg"
+    ]
+  },
+  {
+    "id": "manual-helicopter-hangar",
+    "source": "manual",
+    "caption": "Helicopter hangar designed by Stable Structure — a clear-span steel portal building with column-free floor space for multiple aircraft, high-level sliding doors and a durable resin floor.",
+    "date": "2026-07-25",
+    "images": [
+      "assets/projects/hangar-1.jpg",
+      "assets/projects/hangar-2.jpg",
+      "assets/projects/hangar-3.jpg"
+    ]
+  },
+  {
+    "id": "manual-residential-auckland",
+    "source": "manual",
+    "caption": "Residential development in Auckland — structural design for new housing lots, with engineered timber framing and steel beams supporting open-plan and garage spans.",
+    "date": "2026-07-24",
+    "images": [
+      "assets/projects/residential-auckland-1.jpg",
+      "assets/projects/residential-auckland-2.jpg"
+    ]
+  }
+]
