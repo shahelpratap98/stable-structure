@@ -339,13 +339,17 @@ function ctaBand(base, opts) {
   const text = opts.text || 'Tell us about your project and we will get back to you with practical engineering advice and a free, no-obligation quote.';
   const waMsg = opts.waMsg || WA_DEFAULT;
   return `<section class="pad-sm"><div class="container">
-    <div class="cta-band reveal">
-      <span class="eyebrow on-dark">Let's talk</span>
-      <h2>${title}</h2>
-      <p>${text}</p>
-      <div class="cta-actions">
-        <a class="btn btn-primary btn-lg" href="${base}contact.html">Request a Free Quote ${si('arrow', 2.2)}</a>
-        <a class="btn btn-wa btn-lg" href="${waHref(waMsg)}" target="_blank" rel="noopener">${wa()} WhatsApp us</a>
+    <div class="cta-band border-glow-card reveal">
+      <span class="edge-light"></span>
+      <div class="border-glow-inner">
+        <div class="grid-bg"></div>
+        <span class="eyebrow on-dark">Let's talk</span>
+        <h2>${title}</h2>
+        <p>${text}</p>
+        <div class="cta-actions">
+          <a class="btn btn-primary btn-lg" href="${base}contact.html">Request a Free Quote ${si('arrow', 2.2)}</a>
+          <a class="btn btn-wa btn-lg" href="${waHref(waMsg)}" target="_blank" rel="noopener">${wa()} WhatsApp us</a>
+        </div>
       </div>
     </div>
   </div></section>`;

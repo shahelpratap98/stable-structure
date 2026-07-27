@@ -125,6 +125,30 @@
     });
   }
 
+  // Border glow — pointer-reactive edge glow on .border-glow-card
+  // (ported from React Bits "BorderGlow"; CSS holds the design, JS only
+  // feeds it the live cursor angle and how close the pointer is to an edge).
+  var glowCards = document.querySelectorAll('.border-glow-card');
+  glowCards.forEach(function (card) {
+    card.addEventListener('pointermove', function (e) {
+      var rect = card.getBoundingClientRect();
+      var cx = rect.width / 2;
+      var cy = rect.height / 2;
+      var dx = (e.clientX - rect.left) - cx;
+      var dy = (e.clientY - rect.top) - cy;
+      var kx = dx !== 0 ? cx / Math.abs(dx) : Infinity;
+      var ky = dy !== 0 ? cy / Math.abs(dy) : Infinity;
+      var edge = Math.min(Math.max(1 / Math.min(kx, ky), 0), 1);
+      var angle = 0;
+      if (dx !== 0 || dy !== 0) {
+        angle = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+        if (angle < 0) angle += 360;
+      }
+      card.style.setProperty('--edge-proximity', (edge * 100).toFixed(3));
+      card.style.setProperty('--cursor-angle', angle.toFixed(3) + 'deg');
+    });
+  });
+
   // Enquiry form
   var form = document.getElementById('enquiryForm');
   if (form) {
