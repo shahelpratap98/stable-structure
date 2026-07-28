@@ -202,7 +202,7 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 }
 
 const brand = (base, footer) => `<a class="brand" href="${base}index.html" aria-label="Stable Structure Limited home">
-  <img class="logo" src="${base}assets/logo.jpg" width="1720" height="900" alt="Stable Structure Limited — Structural & Civil Engineering"${footer ? '' : ' fetchpriority="high"'} />
+  <img class="logo" src="${base}assets/logo.png" width="1060" height="651" alt="Stable Structure Limited — Structural & Civil Engineering"${footer ? '' : ' fetchpriority="high"'} />
 </a>`;
 
 const NAV = [
@@ -692,6 +692,16 @@ function teamSection(base) {
         `He is committed to buildable, cost-effective and robust engineering solutions that meet project requirements, relevant standards and New Zealand building regulations.`,
       ],
       note: `Outside work, Thibakaran plays group badminton and local tournaments, and turns out for one-day grade cricket with his club.`,
+      actions: '',
+    },
+    {
+      photo: 'damitha.jpg', name: 'Damitha Disanthi', role: 'Structural Draughtsperson',
+      cred: 'B.Arch.(Hons) · AIA · RIBA · MSc in Project Management',
+      bio: [
+        `Damitha brings over ten years of experience across architecture, project management and technical documentation. She holds a Bachelor of Architecture (Honours) from the University of Moratuwa, Sri Lanka.`,
+        `Since relocating to New Zealand she has worked in structural drafting, preparing the detailed structural drawings and building consent documentation that carry a project through council — working in AutoCAD and Revit.`,
+      ],
+      note: `Outside work, Damitha enjoys time with her family, exploring New Zealand's natural landscapes, and continually building her knowledge of New Zealand building standards and construction practices.`,
       actions: '',
     },
   ];
