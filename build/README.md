@@ -10,6 +10,25 @@ npm run sync           # pull tagged project posts from Facebook
 npm run sync:build     # sync, then regenerate
 ```
 
+## Deployment
+
+`generate.js` writes the finished site to the **repo root**, not to a `public/`
+or `dist/` folder, because GitHub Pages serves from the root. `vercel.json`
+therefore sets `outputDirectory: "."` — without it Vercel fails the deploy with
+*"No Output Directory named `public` found"*.
+
+Canonical URLs are host-aware (see `SITE_URL` at the top of `generate.js`):
+
+| Host | Canonical URL comes from |
+| --- | --- |
+| Vercel + custom domain | `SITE_URL` env var, e.g. `https://stablestructure.co.nz/` |
+| Vercel (no custom domain) | `VERCEL_PROJECT_PRODUCTION_URL`, detected automatically |
+| GitHub Pages | the hardcoded fallback |
+
+Set `SITE_URL` in the Vercel project's environment variables once a custom
+domain is attached — otherwise the canonical tags, `sitemap.xml` and
+`robots.txt` will advertise the wrong host and split your search ranking.
+
 ## Our Projects data
 
 The Projects page merges **two** sources into one gallery (newest first, deduped by `id`):
