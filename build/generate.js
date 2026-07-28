@@ -10,10 +10,30 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 
-/* Canonical site origin. This client preview is served by GitHub Pages under
-   the /stable-structure/ subpath. Used for <link rel="canonical">, og:url,
-   sitemap.xml and robots.txt so every emitted URL stays in sync. */
-const SITE_URL = 'https://shahelpratap98.github.io/stable-structure/';
+/* Canonical site origin — used for <link rel="canonical">, og:url, sitemap.xml
+   and robots.txt so every emitted URL stays in sync, and for the 404 page's
+   absolute links.
+
+   The site is served from more than one host, so this must not be hardcoded:
+     - GitHub Pages serves it under the /stable-structure/ subpath
+     - Vercel serves it at the domain root
+   Resolution order:
+     1. SITE_URL env var          — set this once a custom domain is attached
+     2. Vercel's production URL   — detected automatically on Vercel builds
+     3. the GitHub Pages fallback — the original client preview
+   Getting this wrong points canonical tags at the other host, so a build on a
+   new host should always set SITE_URL explicitly. */
+const SITE_URL = (() => {
+  const raw = process.env.SITE_URL
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/`)
+    || 'https://shahelpratap98.github.io/stable-structure/';
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  return withProtocol.endsWith('/') ? withProtocol : `${withProtocol}/`;
+})();
+
+/* Path the site is served under ('/' on Vercel, '/stable-structure/' on
+   GitHub Pages). The 404 page needs absolute links, so it must match. */
+const BASE_PATH = new URL(SITE_URL).pathname;
 
 /* ---------- Business constants ---------- */
 const PHONE_DISPLAY = '021 148 8984';
@@ -935,12 +955,13 @@ SERVICES.forEach((s) => {
   pages.push({ file: svcPath(s), base, active: 'services', headO: { title: `${s.title} | Stable Structure Limited`, desc: s.short }, body });
 });
 
-/* 404 — GitHub Pages serves /404.html for any unknown path (including nested
-   ones). Because the site lives under the /stable-structure/ subpath, ALL links
-   on this page must be absolute, or they would resolve relative to the bad URL.
-   Using an absolute base makes the shared header/footer/nav links absolute too.
+/* 404 — both GitHub Pages and Vercel serve /404.html for any unknown path
+   (including nested ones), so ALL links on this page must be absolute or they
+   would resolve relative to the bad URL. Using an absolute base makes the
+   shared header/footer/nav links absolute too. BASE_PATH tracks the host, so
+   this stays correct at a domain root and under a subpath.
    Excluded from sitemap.xml and marked noindex. */
-const NOTFOUND_BASE = '/stable-structure/';
+const NOTFOUND_BASE = BASE_PATH;
 const notFoundPage = {
   file: '404.html', base: NOTFOUND_BASE, active: '', noindex: true,
   headO: { title: 'Page not found | Stable Structure Limited', desc: 'The page you were looking for could not be found. Explore our structural and civil engineering services or get in touch.', noindex: true },
