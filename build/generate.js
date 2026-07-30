@@ -14,19 +14,15 @@ const ROOT = path.join(__dirname, '..');
    and robots.txt so every emitted URL stays in sync, and for the 404 page's
    absolute links.
 
-   The site is served from more than one host, so this must not be hardcoded:
-     - GitHub Pages serves it under the /stable-structure/ subpath
-     - Vercel serves it at the domain root
-   Resolution order:
-     1. SITE_URL env var          — set this once a custom domain is attached
-     2. Vercel's production URL   — detected automatically on Vercel builds
-     3. the GitHub Pages fallback — the original client preview
-   Getting this wrong points canonical tags at the other host, so a build on a
-   new host should always set SITE_URL explicitly. */
+   The live site is www.stablestructure.co.nz (the apex 308-redirects to www),
+   so that is hardcoded as the canonical home. It deliberately takes priority
+   over Vercel's auto-detected *.vercel.app URL — otherwise preview and
+   production builds advertise the .vercel.app host as canonical and Google
+   indexes that instead of the real domain.
+
+   Override with the SITE_URL env var if the canonical domain ever changes. */
 const SITE_URL = (() => {
-  const raw = process.env.SITE_URL
-    || (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/`)
-    || 'https://shahelpratap98.github.io/stable-structure/';
+  const raw = process.env.SITE_URL || 'https://www.stablestructure.co.nz/';
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   return withProtocol.endsWith('/') ? withProtocol : `${withProtocol}/`;
 })();

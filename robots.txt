@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://shahelpratap98.github.io/stable-structure/sitemap.xml
+Sitemap: https://www.stablestructure.co.nz/sitemap.xml
