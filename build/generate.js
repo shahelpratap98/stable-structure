@@ -187,7 +187,10 @@ const projectDate = (d) => {
 /* ---------- Shared building blocks ---------- */
 function head(o, base, file) {
   // Absolute URL for this page, derived from its output path (file).
-  const pageUrl = SITE_URL + (file || '');
+  // The homepage resolves to the bare domain, not /index.html — that is the URL
+  // visitors land on and what sitemap.xml declares, so the canonical must match
+  // or Google sees two competing URLs for the same page.
+  const pageUrl = SITE_URL + (file === 'index.html' ? '' : (file || ''));
   // Error pages (404) opt out of canonical/indexing via headO.noindex.
   const canonical = o.noindex ? '' : `<link rel="canonical" href="${pageUrl}" />\n`;
   const robots = o.noindex ? `<meta name="robots" content="noindex" />\n` : '';
