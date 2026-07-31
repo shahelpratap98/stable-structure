@@ -729,6 +729,16 @@ function teamSection(base) {
       note: `Outside work, Damitha enjoys time with her family, exploring New Zealand's natural landscapes, and continually building her knowledge of New Zealand building standards and construction practices.`,
       actions: '',
     },
+    {
+      photo: 'kemaruban.jpg', name: 'Kemaruban Rajaratnam', role: 'Project Coordinator / Graduate Structural Engineer',
+      cred: 'BSc (Eng)',
+      bio: [
+        `Kemaruban brings over three years of experience delivering structural engineering solutions for New Zealand projects. He specialises in residential developments, producing practical, buildable and code-compliant designs that balance safety, cost efficiency and client requirements.`,
+        `He graduated with a Bachelor of Engineering (Honours) in Civil Engineering from the University of Peradeniya, Sri Lanka. His expertise covers structural analysis, design, documentation and project coordination for residential developments — including multi-unit buildings up to three storeys — with every design meeting the relevant New Zealand standards and building regulations.`,
+      ],
+      note: `Beyond engineering, Kemaruban keeps a balanced lifestyle through time with family and friends, sport, travel, and exploring different cultures and cuisines.`,
+      actions: '',
+    },
   ];
   const members = team.map((m, i) => `<div class="team-member${i % 2 ? ' rev' : ''} reveal">
         <div class="tm-photo"><img src="${base}assets/team/${m.photo}" width="720" height="900" loading="lazy" alt="${m.name}, ${m.role} at Stable Structure Limited" /></div>
