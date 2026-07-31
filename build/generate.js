@@ -211,7 +211,13 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230C1E33'/%3E%3Cpath d='M6 22 L16 8 L26 22' fill='none' stroke='%231DA9E3' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 22 H26' stroke='%231DA9E3' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+<!-- Favicons must be crawlable FILES — Google ignores data: URIs, which is why
+     no icon appeared beside the search result. PNG is sized 48px (Google
+     requires a multiple of 48). -->
+<link rel="icon" href="${base}assets/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="${base}assets/favicon-48.png" sizes="48x48" type="image/png" />
+<link rel="apple-touch-icon" href="${base}assets/apple-touch-icon.png" />
+<meta name="theme-color" content="#0C1E33" />
 <link rel="stylesheet" href="${base}styles.css" />
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"ProfessionalService","name":"Stable Structure Limited","description":"Structural and civil engineering consultancy in Botany, Auckland, serving all of New Zealand.","areaServed":"New Zealand","telephone":"${PHONE_TEL}","email":"${EMAIL}","founder":{"@type":"Person","name":"${OWNER}"},"address":{"@type":"PostalAddress","addressLocality":"Botany","addressRegion":"Auckland","addressCountry":"NZ"},"openingHours":"Mo-Fr 08:30-17:00","aggregateRating":{"@type":"AggregateRating","ratingValue":"5.0","reviewCount":"5"},"slogan":"Strong solutions for your vision"}
