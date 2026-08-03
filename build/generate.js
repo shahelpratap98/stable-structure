@@ -711,7 +711,7 @@ function teamSection(base) {
     },
     {
       photo: 'thibakaran.jpg', name: 'Thibakaran Sivakumaran', role: 'Intermediate to Senior Structural Engineer',
-      cred: '',
+      cred: 'HND Civil (UK) · BEng Civil (NZ) · MSc in Structural Engineering (NZ)',
       bio: [
         `Thibakaran has over five years of experience delivering practical, efficient and compliant structural design across commercial and residential projects. His work covers timber, structural steel, light-gauge steel and reinforced concrete systems — including new builds, alterations, additions and strengthening works — and he stays involved throughout the project, from early design and analysis to detailed documentation, construction support and coordination with architects, contractors and other stakeholders.`,
         `He is committed to buildable, cost-effective and robust engineering solutions that meet project requirements, relevant standards and New Zealand building regulations.`,
