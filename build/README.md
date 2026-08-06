@@ -29,6 +29,13 @@ Set `SITE_URL` in the Vercel project's environment variables once a custom
 domain is attached — otherwise the canonical tags, `sitemap.xml` and
 `robots.txt` will advertise the wrong host and split your search ranking.
 
+### Do not delete: `favicon.ico`
+
+The ICO in the repo root is committed by hand, not generated. Browsers and
+Google's favicon crawler probe `/favicon.ico` by default, so it must exist at
+that exact path even though the `<link rel="icon">` tags also point at
+`assets/favicon.svg`. Rebuild it from `assets/favicon.svg` if the logo changes.
+
 ### Do not delete: `google7a4e183aea221349.html`
 
 That file in the repo root is a **Google Search Console verification token**. It

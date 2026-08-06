@@ -214,6 +214,7 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <!-- Favicons must be crawlable FILES — Google ignores data: URIs, which is why
      no icon appeared beside the search result. PNG is sized 48px (Google
      requires a multiple of 48). -->
+<link rel="icon" href="${base}favicon.ico" sizes="any" />
 <link rel="icon" href="${base}assets/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="${base}assets/favicon-48.png" sizes="48x48" type="image/png" />
 <link rel="apple-touch-icon" href="${base}assets/apple-touch-icon.png" />
