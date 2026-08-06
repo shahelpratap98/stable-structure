@@ -625,6 +625,14 @@ footer .brand .logo{height:64px}
 .foot-col a{display:block; color:#9FB2C4; font-size:15px; padding:6px 0; transition:color .15s}
 .foot-col a:hover{color:var(--accent)}
 .foot-col span.fi{color:#9FB2C4; display:block; padding:6px 0; font-size:15px}
+/* Social links — must come after .foot-col a to override its block layout */
+.foot-social{display:flex; gap:10px; margin-top:14px}
+.foot-social a{display:grid; place-items:center; width:44px; height:44px; padding:0; border-radius:11px;
+  border:1px solid rgba(255,255,255,.16); color:#9FB2C4;
+  transition:color .15s var(--ease), border-color .15s var(--ease), background .15s var(--ease), transform .15s var(--ease)}
+.foot-social a:hover{color:#fff; border-color:var(--accent); background:rgba(29,169,227,.14); transform:translateY(-2px)}
+.foot-social svg{width:19px; height:19px}
+@media (prefers-reduced-motion:reduce){ .foot-social a:hover{transform:none} }
 .foot-bottom{display:flex; flex-wrap:wrap; gap:12px; justify-content:space-between; align-items:center; padding-top:24px; color:#7C8FA3; font-size:13.5px}
 .foot-bottom a:hover{color:#fff}
 
