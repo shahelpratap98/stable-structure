@@ -346,6 +346,7 @@ function footer(base) {
         <span class="fi">Mon–Fri, 8:30am–5:00pm</span>
         <div class="foot-social">
           <a href="${LINKEDIN_URL}" target="_blank" rel="noopener" aria-label="Stable Structure on LinkedIn">${li()}</a>
+          <a href="${FACEBOOK_URL}" target="_blank" rel="noopener" aria-label="Stable Structure on Facebook">${fb()}</a>
         </div>
       </div>
     </div>
