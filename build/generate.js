@@ -46,6 +46,16 @@ const LINKEDIN_URL = 'https://www.linkedin.com/company/stablestructure/';
 const PROJECT_VIDEO_EMBED = 'https://www.facebook.com/plugins/video.php?height=314&href=https%3A%2F%2Fwww.facebook.com%2Freel%2F28072485295674770%2F&show_text=false&width=560&t=0';
 const waHref = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg || WA_DEFAULT)}`;
 
+/* Google Business Profile Place ID — paste it here once retrieved from the GBP
+   dashboard (or https://developers.google.com/maps/documentation/places/web-service/place-id).
+   While empty, review CTAs fall back to the generic Maps search link. */
+const GOOGLE_PLACE_ID = '';
+
+/* Per-page lastmod discipline for sitemap.xml: every entry in `pages` carries a
+   `lastmod` — update it ONLY when that page's content meaningfully changes.
+   (2026-08-13 = the schema/font/perf sprint touched every page's head.) */
+const SPRINT_DATE = '2026-08-13';
+
 /* ---------- Icons (24x24) ---------- */
 const I = {
   structural: '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/>',
@@ -187,6 +197,111 @@ const projectDate = (d) => {
   return isNaN(t) ? '' : new Date(t).toLocaleDateString('en-NZ', { month: 'long', year: 'numeric' });
 };
 
+/* ---------- Structured data (JSON-LD @graph per page) ----------
+   One Organization node shared by @id across the site; WebSite on the homepage
+   only; BreadcrumbList mirroring the visible breadcrumb; Service on service
+   pages. Deliberately NO aggregateRating (self-serving review markup violates
+   Google's structured-data policy) and NO FAQPage (rich results retired).
+   NOTE: address stays at suburb level and there is no `geo` — street address and
+   coordinates must come from Gajan/GBP, never guessed. */
+const ORG_ID = `${SITE_URL}#organization`;
+
+const SERVICE_TYPE = {
+  'structural-design': 'Structural Engineering Design',
+  'civil-design': 'Civil Engineering Design',
+  'building-consent-documentation': 'PS1 Producer Statement Preparation',
+  'site-inspections': 'Structural Site Inspection (PS4)',
+  'construction-supervision': 'Construction Supervision (Engineering)',
+  'retaining-walls': 'Retaining Wall Structural Design',
+  'swimming-pools': 'Swimming Pool Structural Design',
+  'decks-outdoor-living': 'Deck & Outdoor Structure Design',
+  'carports-sheds-portals': 'Portal Frame & Shed Structural Design',
+};
+
+function orgNode() {
+  return {
+    '@type': 'ProfessionalService',
+    '@id': ORG_ID,
+    name: 'Stable Structure Limited',
+    url: SITE_URL,
+    logo: `${SITE_URL}assets/logo.png`,
+    image: `${SITE_URL}assets/og-image.jpg`,
+    description: 'Structural and civil engineering consultancy in Botany, Auckland, serving all of New Zealand.',
+    telephone: PHONE_TEL,
+    email: EMAIL,
+    address: { '@type': 'PostalAddress', addressLocality: 'Botany', addressRegion: 'Auckland', addressCountry: 'NZ' },
+    areaServed: 'New Zealand',
+    sameAs: [LINKEDIN_URL, FACEBOOK_URL],
+    founder: {
+      '@type': 'Person',
+      name: OWNER,
+      jobTitle: 'Director',
+      hasCredential: [
+        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Professional Engineer (CPEng), Engineering New Zealand' },
+        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Engineer (CEng), United Kingdom' },
+        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Member of the Institution of Structural Engineers (MIStructE)' },
+      ],
+    },
+    openingHoursSpecification: [{
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+      opens: '08:30', closes: '17:00',
+    }],
+    slogan: 'Strong solutions for your vision',
+  };
+}
+
+/* Breadcrumb trail derived from the output path so it always mirrors the
+   visible breadcrumb labels (2-level for top pages, 3-level for services and
+   guides). Returns null for the homepage and 404. */
+const TOP_LABELS = {
+  'services.html': 'Services', 'sectors.html': 'Sectors', 'projects.html': 'Our Projects',
+  'about.html': 'About', 'process.html': 'Process', 'testimonials.html': 'Reviews',
+  'faq.html': 'FAQ', 'contact.html': 'Contact', 'privacy.html': 'Privacy Policy',
+};
+function crumbTrail(file, pageTitle) {
+  if (!file || file === 'index.html' || file === '404.html') return null;
+  const home = { label: 'Home', url: SITE_URL };
+  if (file.startsWith('services/')) {
+    return [home, { label: 'Services', url: `${SITE_URL}services.html` }, { label: pageTitle, url: SITE_URL + file }];
+  }
+  if (file.startsWith('guides/')) {
+    return [home, { label: 'Guides', url: `${SITE_URL}services.html` }, { label: pageTitle, url: SITE_URL + file }];
+  }
+  if (!TOP_LABELS[file]) return null;
+  return [home, { label: TOP_LABELS[file], url: SITE_URL + file }];
+}
+
+function breadcrumbNode(trail) {
+  return {
+    '@type': 'BreadcrumbList',
+    itemListElement: trail.map((c, i) => ({
+      '@type': 'ListItem', position: i + 1, name: c.label, item: c.url,
+    })),
+  };
+}
+
+function ldFor(o, file, pageUrl) {
+  const graph = [orgNode()];
+  if (file === 'index.html') {
+    graph.push({ '@type': 'WebSite', '@id': `${SITE_URL}#website`, url: SITE_URL, name: 'Stable Structure Limited', publisher: { '@id': ORG_ID } });
+  }
+  const trail = o.noindex ? null : crumbTrail(file, o.serviceName || o.pageLabel || '');
+  if (trail) graph.push(breadcrumbNode(trail));
+  if (o.serviceType) {
+    graph.push({
+      '@type': 'Service',
+      name: o.serviceName || o.title,
+      serviceType: o.serviceType,
+      provider: { '@id': ORG_ID },
+      areaServed: 'New Zealand',
+      url: pageUrl,
+      description: o.desc,
+    });
+  }
+  return JSON.stringify({ '@context': 'https://schema.org', '@graph': graph });
+}
+
 /* ---------- Shared building blocks ---------- */
 function head(o, base, file) {
   // Absolute URL for this page, derived from its output path (file).
@@ -211,27 +326,29 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <meta property="og:url" content="${pageUrl}" />
 <meta property="og:type" content="website" />
 <meta property="og:locale" content="en_NZ" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
-<!-- Favicons must be crawlable FILES — Google ignores data: URIs, which is why
-     no icon appeared beside the search result. PNG is sized 48px (Google
-     requires a multiple of 48). -->
+<meta property="og:site_name" content="Stable Structure Limited" />
+<meta property="og:image" content="${SITE_URL}assets/og-image.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="preload" href="${base}assets/fonts/space-grotesk-var-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="${base}assets/fonts/inter-var-latin.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="icon" href="${base}favicon.ico" sizes="any" />
 <link rel="icon" href="${base}assets/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="${base}assets/favicon-48.png" sizes="48x48" type="image/png" />
 <link rel="apple-touch-icon" href="${base}assets/apple-touch-icon.png" />
-<meta name="theme-color" content="#0C1E33" />
-<link rel="stylesheet" href="${base}styles.css" />
+<link rel="stylesheet" href="${base}styles.css?v=${SPRINT_DATE}" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"ProfessionalService","name":"Stable Structure Limited","description":"Structural and civil engineering consultancy in Botany, Auckland, serving all of New Zealand.","areaServed":"New Zealand","telephone":"${PHONE_TEL}","email":"${EMAIL}","founder":{"@type":"Person","name":"${OWNER}"},"address":{"@type":"PostalAddress","addressLocality":"Botany","addressRegion":"Auckland","addressCountry":"NZ"},"openingHours":"Mo-Fr 08:30-17:00","aggregateRating":{"@type":"AggregateRating","ratingValue":"5.0","reviewCount":"5"},"slogan":"Strong solutions for your vision"}
+${ldFor(o, file, pageUrl)}
 </script>
 </head>
 <body>`;
 }
 
-const brand = (base, footer) => `<a class="brand" href="${base}index.html" aria-label="Stable Structure Limited home">
-  <img class="logo" src="${base}assets/logo.png" width="1060" height="651" alt="Stable Structure Limited — Structural & Civil Engineering"${footer ? '' : ' fetchpriority="high"'} />
+/* Brand links to the site root (works at any depth on Vercel); the logo is a
+   9KB 3x-density WebP (was a 207KB PNG) with explicit dimensions to avoid CLS. */
+const brand = (base, footer) => `<a class="brand" href="${BASE_PATH}" aria-label="Stable Structure Limited home">
+  <img class="logo" src="${base}assets/logo.webp" width="303" height="186" alt="Stable Structure Limited — Structural & Civil Engineering"${footer ? '' : ' fetchpriority="high"'} />
 </a>`;
 
 const NAV = [
@@ -241,6 +358,8 @@ const NAV = [
   { key: 'projects', label: 'Our Projects', href: 'projects.html' },
   { key: 'about', label: 'About', href: 'about.html' },
   { key: 'process', label: 'Process', href: 'process.html' },
+  { key: 'reviews', label: 'Reviews', href: 'testimonials.html' },
+  { key: 'faq', label: 'FAQ', href: 'faq.html' },
   { key: 'contact', label: 'Contact', href: 'contact.html' },
 ];
 
@@ -342,7 +461,7 @@ function footer(base) {
         <a href="tel:${PHONE_TEL}">${PHONE_DISPLAY}</a>
         <a href="mailto:${EMAIL}">${EMAIL}</a>
         <a href="${waHref()}" target="_blank" rel="noopener">WhatsApp us</a>
-        <span class="fi">Botany, Auckland — serving all of NZ</span>
+        <span class="fi">Botany, Auckland — serving Howick, Pakuranga, Flat Bush, East Auckland &amp; all of NZ</span>
         <span class="fi">Mon–Fri, 8:30am–5:00pm</span>
         <div class="foot-social">
           <a href="${LINKEDIN_URL}" target="_blank" rel="noopener" aria-label="Stable Structure on LinkedIn">${li()}</a>
@@ -352,7 +471,7 @@ function footer(base) {
     </div>
     <div class="foot-bottom">
       <span>© <span id="year">2026</span> Stable Structure Limited. All rights reserved.</span>
-      <span>Structural &amp; Civil Engineering · Auckland, New Zealand</span>
+      <span><a href="${base}privacy.html">Privacy Policy</a> · Structural &amp; Civil Engineering · Auckland, New Zealand</span>
     </div>
   </div>
 </footer>`;
@@ -371,7 +490,7 @@ function ctaBand(base, opts) {
   const title = opts.title || 'Ready to build with confidence?';
   const text = opts.text || 'Tell us about your project and we will get back to you with practical engineering advice and a free, no-obligation quote.';
   const waMsg = opts.waMsg || WA_DEFAULT;
-  return `<section class="pad-sm"><div class="container">
+  return `<section class="pad-sm cta-wrap"><div class="container">
     <div class="cta-band border-glow-card reveal">
       <span class="edge-light"></span>
       <div class="border-glow-inner">
@@ -388,7 +507,9 @@ function ctaBand(base, opts) {
   </div></section>`;
 }
 
-const scripts = (base) => `<script src="${base}main.js"></script>\n</body>\n</html>`;
+/* ?v= busts the long-lived immutable cache (vercel.json) whenever these change:
+   bump SPRINT_DATE on any styles.css / main.js edit. */
+const scripts = (base) => `<script src="${base}main.js?v=${SPRINT_DATE}"></script>\n</body>\n</html>`;
 
 function pageHero(base, o) {
   const crumbs = (o.crumbs || []).map((c, i, arr) => {
@@ -440,14 +561,19 @@ function sectorsBlock(base) {
 }
 
 /* ---------- Google reviews (real — from Google Business Profile) ----------
-   NOTE for the owner: replace GOOGLE_REVIEWS_URL / GOOGLE_WRITE_URL with the
-   canonical links from your Google Business Profile (Maps "share" link and the
-   "Ask for reviews" short link) so the buttons open your exact listing. */
-const GOOGLE_REVIEWS_URL = 'https://www.google.com/maps/search/?api=1&query=Stable+Structure+Botany+Downs+Auckland';
-const GOOGLE_WRITE_URL = GOOGLE_REVIEWS_URL;
+   Once GOOGLE_PLACE_ID is set (top of file) the CTAs switch to the direct
+   write-review and listing URLs; until then they fall back to a Maps search.
+   NOTE: the director's own rating is deliberately NOT displayed — showing it
+   as social proof is misleading, and its removal from the Google listing is
+   being handled separately. Do not re-add it. */
+const GOOGLE_REVIEWS_URL = GOOGLE_PLACE_ID
+  ? `https://www.google.com/maps/place/?q=place_id:${GOOGLE_PLACE_ID}`
+  : 'https://www.google.com/maps/search/?api=1&query=Stable+Structure+Botany+Downs+Auckland';
+const GOOGLE_WRITE_URL = GOOGLE_PLACE_ID
+  ? `https://search.google.com/local/writereview?placeid=${GOOGLE_PLACE_ID}`
+  : GOOGLE_REVIEWS_URL;
 const REVIEWS = {
   rating: '5.0',
-  count: 5,
   featured: {
     initial: 'S', name: 'Sonia Singh', meta: 'Local Guide · 26 reviews', when: 'a month ago',
     text: 'Gajan &amp; Team are very Professional, reliable, and incredibly thorough. Highly recommend their structural engineering services.',
@@ -457,7 +583,6 @@ const REVIEWS = {
     { initial: 'A', name: 'Ananayan', when: '6 months ago' },
     { initial: 'N', name: 'Niranjan Tharma', when: '2 years ago' },
     { initial: 'A', name: 'arunthamil 2004', when: '4 years ago' },
-    { initial: 'G', name: 'Gajanthan Vethanathan', when: '5 years ago' },
   ],
 };
 const googleGlyph = () => `<svg class="gg" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.2a5.3 5.3 0 0 1-2.3 3.5v2.9h3.7c2.2-2 3.4-5 3.4-8.6z"/><path fill="#34A853" d="M12 24c3.1 0 5.7-1 7.6-2.8l-3.7-2.9c-1 .7-2.3 1.1-3.9 1.1-3 0-5.6-2-6.5-4.8H1.7v3A11.9 11.9 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.5 14.6a7.1 7.1 0 0 1 0-4.6v-3H1.7a12 12 0 0 0 0 10.6z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.2.6 4.4 1.7l3.3-3.3A11.7 11.7 0 0 0 12 0 11.9 11.9 0 0 0 1.7 6l3.8 3c.9-2.8 3.5-4.8 6.5-4.8z"/></svg>`;
@@ -466,7 +591,7 @@ function reviewsSummary() {
   return `<div class="reviews-summary reveal">
       <div class="rs-score">
         <div class="rs-num">${REVIEWS.rating}</div>
-        <div>${stars5()}<span class="rs-meta">${googleGlyph()} Based on ${REVIEWS.count} Google reviews</span></div>
+        <div>${stars5()}<span class="rs-meta">${googleGlyph()} From our Google reviews</span></div>
       </div>
       <div class="rs-actions">
         <a class="btn btn-primary" href="${GOOGLE_REVIEWS_URL}" target="_blank" rel="noopener">Read our Google reviews ${si('arrow', 2.2)}</a>
@@ -521,6 +646,10 @@ function contactBlock(base) {
         <div class="infoitem"><div class="ii">${si('pin', 2)}</div><div><b>Location</b><span>Botany, Auckland — serving all of New Zealand</span></div></div>
         <div class="infoitem"><div class="ii">${si('clock', 2)}</div><div><b>Office hours</b><span>Monday – Friday, 8:30am – 5:00pm</span></div></div>
       </div>
+      <div class="map-embed reveal">
+        <iframe src="https://maps.google.com/maps?q=Stable%20Structure%20Limited%2C%20Botany%2C%20Auckland&z=13&output=embed" loading="lazy" title="Map showing Stable Structure Limited in Botany, Auckland" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+      </div>
+      <p class="areas"><b>Areas we serve:</b> Botany, Howick, Pakuranga, Flat Bush and wider East Auckland — with structural and civil engineering delivered nationwide across New Zealand.</p>
       <div class="callout">
         <div style="flex:1;min-width:180px"><b>Prefer to talk it through?</b><p>Call or WhatsApp for a quick, no-pressure chat about your build.</p></div>
         <a class="btn btn-wa" href="${waHref()}" target="_blank" rel="noopener">${wa()} WhatsApp</a>
@@ -800,13 +929,254 @@ function processSteps() {
     </div>`;
 }
 
+/* ---------- Phase-3 content: article helpers ---------- */
+const UPDATED_DISPLAY = 'Updated 13 August 2026';
+
+/* Byline shown on rewritten service pages and guides. The EngNZ register link
+   can be added once Gajan supplies his profile URL from the CPEng register. */
+const byline = (base) => `<div class="byline reveal">
+  <span class="bv">GV</span>
+  <span>Reviewed by <b>${OWNER}</b>, CPEng · <a href="${base}about.html">Director, Stable Structure</a></span>
+  <span class="upd">${UPDATED_DISPLAY}</span>
+</div>`;
+
+const miniFaq = (qas) => `<div class="mini-faq">
+  ${qas.map(([q, a]) => `<details><summary>${q}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">${I.plus}</svg></summary><div class="ans">${a}</div></details>`).join('\n  ')}
+</div>`;
+
+const guideLink = (base, href, label) => `<div class="guide-links"><a href="${base}${href}">${si('consent', 2)} ${label}</a></div>`;
+
+/* Cost figures below are framed as general Auckland-market guidance, not firm
+   quotes. >>> GAJAN TO CONFIRM/REPLACE the ranges before the next deploy. <<< */
+
+/* Unique closing paragraphs so no two service pages share the same boilerplate close. */
+const CLOSES = {
+  'structural-design': 'From a single steel beam to a full architectural home, the structural design we hand over is one your builder can price with confidence and council can approve without a fight.',
+  'civil-design': 'Land only becomes a building site once the water, access and earthworks are solved. That is the part we take off your plate.',
+  'swimming-pools': 'A pool is one of the few structures you build to hold force in every direction. Ours are designed so the only thing you think about is swimming in it.',
+  'decks-outdoor-living': 'The best decks disappear into the way you live. Get the engineering right once, and yours will do exactly that for decades.',
+  'carports-sheds-portals': 'Clear spans, honest steel and documentation council will accept the first time: that is what a good portal frame looks like on paper and on site.',
+};
+
+const ARTICLES = {
+  /* ---- Building Consent Documentation (PS1) — GSC: pos 22.8, "building documentation" ---- */
+  'building-consent-documentation': (base) => `
+    <p style="font-size:17px">Building consent documentation is the engineering evidence behind your consent application: the drawings, calculations and Producer Statements that show Auckland Council (or any NZ council) that your design complies with the Building Code. A complete, well-organised documentation package is the single biggest factor in how quickly your consent is granted.</p>
+    ${byline(base)}
+    <h2>What does consent documentation include?</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Detailed structural drawings your builder can price and build from</span></li>
+      <li>${si('check', 2.2)}<span>Engineering calculations covering gravity, wind and earthquake loads</span></li>
+      <li>${si('check', 2.2)}<span>A PS1 (Producer Statement, Design) signed by a Chartered Professional Engineer</span></li>
+      <li>${si('check', 2.2)}<span>Specifications and construction details for the structural elements</span></li>
+      <li>${si('check', 2.2)}<span>Responses to council Requests for Information (RFIs) at no drama</span></li>
+      <li>${si('check', 2.2)}<span>Coordination with your architect, designer or draughtsperson</span></li>
+    </ul>
+    <h2>What is a PS1 and why does council want one?</h2>
+    <p>A PS1 is a formal statement from a qualified engineer that the structural design complies with the New Zealand Building Code, most commonly clause B1 (Structure). Where a design goes beyond the standard NZS 3604 timber-framing rules (larger spans, steel beams, retaining, difficult ground), council relies on a PS1 from a CPEng engineer instead of checking the specific engineering design themselves. Our PS1s are signed by our director, a Chartered Professional Engineer, and are accepted by councils across New Zealand. If you want the full picture of how producer statements work, read our plain-English guide below.</p>
+    ${guideLink(base, 'guides/what-is-a-ps1.html', 'Guide: What is a PS1? Producer statements explained (PS1 vs PS4)')}
+    <h2>How much does a PS1 cost in Auckland?</h2>
+    <p>As a general guide across the Auckland market, engineering design plus PS1 for a single element (a beam, a deck, a standard retaining wall) commonly sits in the range of <b>$900 to $2,500 + GST</b>, while the full structural design and consent documentation for alterations or a new build typically runs from <b>$3,500 up to $15,000 + GST</b> depending on complexity. The real cost drivers are the number of structural elements, ground conditions, how complete the architectural drawings are, and whether geotech input is needed. We quote every job as a fixed fee up front, so you know the number before we start.</p>
+    <h2>How long does it take?</h2>
+    <p>For straightforward residential elements, allow <b>one to two weeks</b> from receiving your plans to issuing consent-ready documentation. Full new-build packages typically take <b>three to six weeks</b>. Once lodged, council has 20 working days to process a consent; clean documentation is what keeps that clock from restarting with RFIs.</p>
+    <h2>Auckland Council specifics we handle for you</h2>
+    <p>Auckland Council reviews structural documentation closely, and an incomplete package triggers an RFI that stops the 20-day clock. We prepare documentation to match what Auckland's processing engineers expect to see: clear load paths, referenced standards (NZS 3604, NZS 1170, NZS 3101, NZS 3404), buildable details and a tidy calculation set. When an RFI does arrive, we respond directly to council so your application keeps moving.</p>
+    <h2>What we need from you to start</h2>
+    <p>The short list: your architectural or draughting drawings (PDF or CAD), the site address, and any geotechnical report if one exists. From that we confirm the engineering scope and give you a fixed quote, usually within one business day. If your designer is still drawing, we are happy to work alongside them so the structure and architecture develop together instead of the engineering arriving as an afterthought. Owners managing their own consent are welcome: we explain each document in plain English so you know exactly what you are lodging and why council wants it.</p>
+    <h2>What council actually checks</h2>
+    <p>A processing engineer at council is looking for three things: a complete load path (every load has a named route to the ground), referenced design standards with calculations that match the drawings, and details a builder can actually construct. Packages fail on mismatches: a beam on the drawing that never appears in the calculations, a bracing schedule that disagrees with the plan, a detail copied from a different job. Because our drawings and calculations are produced together by the same engineer, those mismatches do not happen, and that is the single biggest reason our applications move through without RFIs.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Is a PS1 a guarantee of the build?', 'No. A PS1 covers the design. Verification that the build matches the design is a PS4, issued after construction monitoring. Many projects need both, and we provide both.'],
+      ['Can you work from my draughtsperson’s plans?', 'Yes. We regularly provide the engineering and PS1 to sit behind plans from architects, designers and draughtspeople. We slot into your existing team.'],
+      ['My consent got an RFI. Can you help?', 'Yes. We prepare the engineering response and liaise with council, whether or not we produced the original design.'],
+      ['Do minor renovations need a PS1?', 'Only where there is specific engineering design, such as removing a load-bearing wall or adding a steel beam. If your project stays fully within NZS 3604, a PS1 may not be needed. Send us your plans and we will tell you straight.'],
+    ])}
+    <h2>Why owners and designers use us for consent documentation</h2>
+    <p>Consent documentation is where an engineering consultancy either saves you weeks or costs you weeks. Ours is prepared by the same chartered engineer who signs the PS1, which is exactly the accountability council wants to see, and exactly what gets your project to site sooner.</p>`,
+
+  /* ---- Retaining Walls — GSC: pos 45.2, "concrete/engineered retaining walls", "nzs 3604" ---- */
+  'retaining-walls': (base) => `
+    <p style="font-size:17px">An engineered retaining wall holds back soil, water and load for decades without complaint. We design timber pole, concrete block and reinforced concrete retaining walls across East Auckland and New Zealand-wide, and prepare the calculations and consent documentation that councils require.</p>
+    ${byline(base)}
+    <h2>When does a retaining wall need an engineer?</h2>
+    <p>Under the Building Act, a retaining wall retaining up to 1.5 metres with no extra load behind it (no surcharge) is generally exempt from building consent. Engineering enters the picture when the wall retains <b>more than 1.5 metres</b>, or carries a <b>surcharge</b>: a driveway, building, pool or sloping ground above the wall. Those walls need specific engineering design and consent, and councils will not accept them without calculations and a PS1. Walls near boundaries, on soft ground, or supporting vehicle loads deserve engineering even when they are technically exempt, because they are the ones that fail expensively.</p>
+    ${guideLink(base, 'guides/retaining-wall-consent-nz.html', 'Guide: When does a retaining wall need consent in NZ?')}
+    <h2>Timber, block or concrete: which wall is right?</h2>
+    <p><b>Timber pole walls</b> are the workhorse of Auckland sections: economical up to around 2 to 3 metres, quick to build, and well suited to sloped landscaping. <b>Concrete block (masonry) walls</b> suit tighter urban sites and tie in neatly with buildings and boundary walls. <b>Reinforced concrete walls</b> carry the biggest loads in the least thickness, which makes them the pick for driveways, basements and heavily surcharged boundaries. We design all three, and we will tell you honestly which one your site actually needs rather than defaulting to the most expensive option.</p>
+    <h2>How much does retaining wall engineering cost?</h2>
+    <p>As a general Auckland-market guide, the engineering design and PS1 for a residential retaining wall typically sits between <b>$1,200 and $3,000 + GST</b>. The drivers are wall height, surcharge, ground conditions (and whether a geotechnical report is needed), total wall length and site access. The wall itself is priced by your contractor; a well-engineered design usually pays for itself by trimming over-conservative sizing from the build. Every job gets a fixed quote before we start.</p>
+    <h2>Drainage: the part that actually keeps walls standing</h2>
+    <p>Most retaining wall failures in Auckland are water failures, not soil failures. Every wall we design includes subsoil drainage: drainage metal, a properly falled novacoil drain and an outlet that daylights somewhere sensible. It is unglamorous, invisible after backfill, and the reason our walls stay straight through an Auckland winter.</p>
+    <h2>What about the ground itself?</h2>
+    <p>A retaining wall is only as good as what it stands in. For most residential walls we design from conservative published soil parameters appropriate to your area, which keeps costs down. Taller walls, soft or filled ground, and walls supporting buildings justify a geotechnical investigation, and we will tell you up front when that is genuinely needed rather than discovering it mid-project. Where a geotech report exists we design directly to its parameters, which usually sharpens the design and saves construction cost.</p>
+    <h2>How the design process runs</h2>
+    <p>First we look at your site: photos, plans and levels are often enough to scope and quote. Then we design the wall and its drainage, produce the drawings and calculations, and issue the PS1 for consent where one is required. During construction we inspect the critical stages, typically pole embedment or footing steel and the drainage before backfill, and close out with the PS4 your council needs. One engineer, one thread of responsibility, from first sketch to sign-off.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['My wall is under 1.5m. Do I still need an engineer?', 'If it carries no surcharge, usually not for consent. But walls under 1.5m holding up driveways, pools or buildings still need engineering, and any wall near a boundary is worth designing properly.'],
+      ['Do you handle the building consent too?', 'Yes. We prepare the drawings, calculations and PS1, and can manage the consent application and any council RFIs end to end.'],
+      ['Can you design walls outside Auckland?', 'Yes. We design retaining walls throughout New Zealand and prepare documentation for any council, with site-specific loads and ground assumptions for your region.'],
+      ['What about existing walls that are leaning?', 'We inspect and assess existing retaining walls, report on their condition, and design remediation or replacement where needed.'],
+    ])}
+    <h2>Fences, pools and boundaries on top of walls</h2>
+    <p>Two details catch people out. A fence or barrier fixed to the top of a retaining wall adds wind and impact load the wall must be designed for, so tell your engineer about it before the design is done, not after the fence goes up. And where a wall sits on or near a boundary, the design must respect both properties: footing positions, drainage discharge and construction access all need answers your neighbour can live with. We deal with both situations weekly and design for them from the start.</p>
+    <h2>Built on slopes, priced for real budgets</h2>
+    <p>Auckland is a city of slopes, and almost every section eventually needs ground held back. Our walls are engineered to carry exactly the loads your site imposes, with drainage that keeps them working and documentation that goes through council first time.</p>`,
+
+  /* ---- Construction Supervision — GSC: pos 35.3, biggest impression pool, "south auckland" ---- */
+  'construction-supervision': (base) => `
+    <p style="font-size:17px">Construction supervision (often called construction monitoring) is ongoing engineering oversight of the structural work on your build: an engineer who visits site at the moments that matter, solves problems before they become defects, and issues the completion documentation your council requires. We provide construction supervision across South and East Auckland, and for projects throughout New Zealand.</p>
+    ${byline(base)}
+    <h2>What does an engineer actually do during supervision?</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Inspects critical structural stages before they are covered up: foundations, reinforcing, framing, connections</span></li>
+      <li>${si('check', 2.2)}<span>Answers builder queries fast so the site never waits on engineering</span></li>
+      <li>${si('check', 2.2)}<span>Resolves the surprises every build produces: unexpected ground, substitutions, clashes</span></li>
+      <li>${si('check', 2.2)}<span>Documents each visit with a written site report</span></li>
+      <li>${si('check', 2.2)}<span>Issues the PS4 (Construction Review) council needs before Code Compliance</span></li>
+    </ul>
+    <h2>Is construction monitoring required on my project?</h2>
+    <p>If your consent involved specific engineering design, the consent conditions almost always require engineering construction monitoring, and council will withhold the Code Compliance Certificate until a PS4 is issued. In New Zealand this is formalised as construction monitoring service levels <b>CM1 to CM5</b>: CM1 is occasional review of a simple element, CM5 is near-continuous oversight of complex structures. Residential projects typically sit at CM2 or CM3, meaning inspections at defined critical stages. Your consent documents state the required level; if you are unsure, send them to us and we will tell you exactly what is needed.</p>
+    <h2>What does construction supervision cost?</h2>
+    <p>As a general market guide, engineering construction monitoring on a typical Auckland residential project runs from around <b>$250 to $450 + GST per site visit</b>, with most single-dwelling builds needing three to six visits plus the PS4. Larger or more complex projects are usually priced as a monitoring package agreed up front. The honest comparison is not against zero: it is against the cost of rebuilding covered-up work that failed a council inspection, which is always more.</p>
+    <h2>Supervision in South and East Auckland</h2>
+    <p>Being based in Botany means South Auckland and East Auckland sites (Flat Bush, Howick, Pakuranga, Manukau and surrounds) get genuinely responsive coverage: an engineer who can be on site quickly when the concrete truck is booked for tomorrow morning. For projects further afield we plan monitoring visits around the construction programme, and we supervise builds nationwide.</p>
+    <h2>How monitoring fits your build programme</h2>
+    <p>At engagement we agree the hold points with you and your builder: the stages that must not proceed until they are inspected. Typical residential hold points are foundation excavation, footing reinforcement before pour, subfloor or slab steel, structural framing before lining, and retaining drainage before backfill. Your builder gives us a day or two of notice as each stage approaches; we inspect, report the same day, and the build carries straight on. Done this way, monitoring costs the programme nothing: the inspections slot into gaps that exist anyway between trades.</p>
+    <h2>When something on site is not right</h2>
+    <p>It happens on most builds: reinforcing in the wrong place, a substituted beam, ground that does not match the borelog. What matters is what happens next. We document the issue, design the fix (often on the spot), and confirm it at the next visit, keeping a clear paper trail so the PS4 at the end is honest and defensible. Builders tend to like working with us for exactly this reason: problems get solved in hours, not buried in emails.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['What is the difference between supervision and a one-off inspection?', 'A one-off inspection answers a single question. Supervision is a planned series of stage inspections across the build, ending in a PS4. Council conditions usually require the latter for engineered designs.'],
+      ['Can you supervise a design by another engineer?', 'Yes, subject to reviewing the design first. We regularly pick up monitoring for projects where the original designer is unavailable.'],
+      ['Who books the inspections?', 'Your builder calls us at the agreed hold points, typically a day or two ahead. We fit site visits around concrete pours and council inspections so the programme never slips on our account.'],
+      ['Do you issue the PS4 at the end?', 'Yes. Once the monitored work is complete and any items closed out, we issue the PS4 council needs for your Code Compliance Certificate.'],
+    ])}
+    <h2>Who engages us for supervision</h2>
+    <p>Homeowners building or renovating engage us so someone technical is watching their biggest investment. Builders engage us because consent conditions demand monitoring and they want an engineer who answers the phone and turns up. Architects and designers engage us to protect their design intent through construction. Whoever holds the contract, the service is the same: planned inspections, fast answers, honest reports and a PS4 at the end that means something.</p>
+    <h2>The engineer on your side of the fence</h2>
+    <p>A build is a thousand small decisions made quickly. Supervision means those decisions get made with an engineer in the loop, your documentation arrives complete at the end, and nobody is arguing with council about covered-up work a year later.</p>`,
+
+  /* ---- Site Inspections (stretch 4th) — GSC: pos 38.0, "structural inspection", "ps4" ---- */
+  'site-inspections': (base) => `
+    <p style="font-size:17px">A structural site inspection is an engineer's independent check of structural work at a critical stage: before the concrete pour, before the framing is lined, before anything is buried or covered. We carry out inspections across Auckland and New Zealand-wide, with written reports and PS4 documentation councils accept.</p>
+    ${byline(base)}
+    <h2>Which stages need a structural inspection?</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Foundation excavations: confirming bearing before footings are poured</span></li>
+      <li>${si('check', 2.2)}<span>Reinforcing steel: placement, cover and laps checked against the drawings</span></li>
+      <li>${si('check', 2.2)}<span>Structural framing, beams and connections before linings close them in</span></li>
+      <li>${si('check', 2.2)}<span>Retaining wall construction and drainage before backfill</span></li>
+      <li>${si('check', 2.2)}<span>Remedial and pre-purchase structural assessments</span></li>
+    </ul>
+    <h2>What is a PS4 construction review?</h2>
+    <p>A PS4 (Producer Statement, Construction Review) is the engineer's formal statement that the structural work has been built in accordance with the consented design. Council requires it before issuing your Code Compliance Certificate whenever the project involved specific engineering design. A PS4 can only responsibly be issued by an engineer who actually inspected the critical stages, which is why booking inspections early matters: an engineer cannot review work that is already buried.</p>
+    <h2>What does a site inspection cost?</h2>
+    <p>As a general Auckland guide, a single structural site inspection with a written report typically costs <b>$250 to $450 + GST</b> depending on location and scope, with PS4 documentation priced within a monitoring package. For projects outside Auckland we quote travel transparently, and for construction monitoring across a whole build our <a href="construction-supervision.html">construction supervision service</a> is usually the better-value structure.</p>
+    <h2>How an inspection visit works</h2>
+    <p>Your builder (or you) books the inspection a day or two ahead, telling us the stage and what is being covered up. On site, the engineer checks the work against the consented drawings: dimensions, materials, reinforcing placement and cover, fixings and connections, drainage falls. Anything that does not match is identified immediately and a fix agreed, usually while everyone is still standing next to it. You receive a written report the same day recording what was inspected, what was found and what, if anything, must change before the stage proceeds.</p>
+    <h2>What the written report gives you</h2>
+    <p>Each report states the date, stage, drawings referenced, observations and outcome, which builds the evidence chain behind the final PS4. That paper trail matters beyond council: it is what a future buyer's lawyer, an insurer or a dispute resolver will ask for when questions arise years later. Owners who keep our inspection reports with their property records are consistently glad they did.</p>
+    <h2>Inspections anywhere in New Zealand</h2>
+    <p>Most of our inspection work is in Auckland, but engineered builds happen everywhere, and regional projects from Waikato to Queenstown regularly need independent PS4 construction review. We support remote projects with planned inspection visits scheduled around your critical stages, so distance never becomes a compliance gap.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['The builder says council inspects anyway. Why add an engineer?', 'Council inspectors check Code minimums; they do not verify specific engineering design, and they will ask for the engineer’s PS4 on engineered elements. The two inspections do different jobs.'],
+      ['Can I book a one-off inspection?', 'Yes. Single inspections with a written report are common for retaining walls, decks and remedial questions. If a PS4 is needed across multiple stages, we will say so up front.'],
+      ['How much notice do you need?', 'For Auckland sites, a day or two is usually enough. Booking the sequence of hold points at the start of the build is even better.'],
+      ['Can you inspect a problem in an existing house?', 'Yes. We assess cracking, sagging, leaks with structural implications and other concerns, and report with clear next steps.'],
+    ])}
+    <h2>Beyond new builds: assessments of existing structures</h2>
+    <p>Inspections are not only for construction. We assess existing houses and structures for buyers before purchase, for owners worried about cracking or movement, and for insurers and lawyers who need an engineer's written opinion. The output is the same discipline applied to an existing building: a clear report stating what we observed, what it means structurally, and what to do about it, with costs and urgency ranked honestly.</p>
+    <h2>Independent eyes at the moments that matter</h2>
+    <p>Structural problems are cheap to fix at inspection and expensive to fix at discovery. An hour of engineering eyes at the right stage is the best money on the whole build programme.</p>`,
+};
+
+/* ---------- Guides (Phase 3) ---------- */
+const GUIDES = [
+  {
+    slug: 'what-is-a-ps1', title: 'What is a PS1? Producer Statements Explained',
+    label: 'What is a PS1?',
+    desc: 'A plain-English guide to New Zealand producer statements: what a PS1 covers, how it differs from a PS4, who can issue them, what they cost and when your building consent needs one.',
+    eyebrow: 'Guide', h1: 'What is a PS1? Producer statements, <span class="hl">explained simply</span>',
+    sub: 'What a PS1 actually covers, how it differs from a PS4, who can issue one, and what it should cost. Written by a chartered structural engineer.',
+    body: (base) => `
+    <p style="font-size:17px">A PS1 (Producer Statement, Design) is a formal statement signed by a qualified engineer confirming that a design complies with the New Zealand Building Code. Councils rely on producer statements instead of re-checking specialist engineering themselves, which makes the PS1 one of the most important documents in your building consent application.</p>
+    ${byline(base)}
+    <h2>The four producer statements, in one minute</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span><b>PS1, Design:</b> the designer's statement that the design complies with the Building Code. Lodged with your consent application.</span></li>
+      <li>${si('check', 2.2)}<span><b>PS2, Design Review:</b> an independent engineer's peer review of someone else's design. Councils request it for complex or unusual structures.</span></li>
+      <li>${si('check', 2.2)}<span><b>PS3, Construction:</b> the contractor's statement that they built the works in accordance with the design.</span></li>
+      <li>${si('check', 2.2)}<span><b>PS4, Construction Review:</b> the engineer's statement, after construction monitoring, that the built work matches the consented design. Council wants this before your Code Compliance Certificate.</span></li>
+    </ul>
+    <h2>When does a building consent need a PS1?</h2>
+    <p>Whenever your project includes <b>specific engineering design</b>: anything outside the standard "acceptable solutions" such as NZS 3604 timber framing. Common triggers include removing a load-bearing wall, steel beams and portals, decks above 1.5 metres, retaining walls over 1.5 metres or carrying surcharge, swimming pools, difficult ground, and almost every commercial structure. If your project stays entirely within NZS 3604, you may not need one at all: a good engineer will tell you that for free rather than sell you paperwork you do not need.</p>
+    <h2>Who can issue a PS1?</h2>
+    <p>Producer statements are only worth what the signature behind them is worth. Councils generally accept PS1s from Chartered Professional Engineers (CPEng), the legally protected quality mark administered by Engineering New Zealand. At Stable Structure every PS1 is signed by our director, ${OWNER}, CPEng, a chartered structural engineer with more than 20 years of experience across New Zealand, Singapore and Sri Lanka.</p>
+    <h2>How much does a PS1 cost in NZ?</h2>
+    <p>The PS1 itself is the last page of a body of engineering work, so the real question is what the design behind it costs. As a general Auckland-market guide: a single engineered element (beam, deck, standard retaining wall) commonly runs <b>$900 to $2,500 + GST</b> including the PS1; complete structural design for renovations or new builds ranges upward from <b>$3,500 + GST</b> with complexity. Be wary of very cheap PS1s advertised online: a producer statement signed without real design work behind it is exactly the kind councils reject.</p>
+    <h2>Is a PS1 a guarantee?</h2>
+    <p>No, and it is worth understanding why. A PS1 is the designer's professional statement about the <i>design</i>. It does not certify the construction: that is the PS4's job, issued after the engineer has monitored the build. This is why councils commonly require both on engineered projects, and why we offer design, monitoring and PS4 as one continuous service, so nothing falls between the gaps.</p>
+    <h2>Where the PS1 sits in your consent timeline</h2>
+    <p>The sequence for a typical engineered residential project: your designer completes the architectural drawings, the engineer designs the structural elements and issues the PS1 (one to two weeks for simple scopes), the full package is lodged with council, and council's 20 working day clock starts. If engineering is engaged late, it becomes the critical path, so the cheapest schedule decision you can make is bringing the engineer in while the drawings are still being finished. To lodge, your engineer will need the current drawing set, the site address and any geotech report that exists: three things you can send in one email.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['My council asked for a PS1 after lodgement. Is that bad?', 'Not at all, it simply means an element of your design needs specific engineering. We can usually design the element and issue the PS1 within one to two weeks.'],
+      ['Can a draughtsperson issue a PS1?', 'No. Producer statements for structural design need to come from a suitably qualified engineer, in practice a CPEng for council acceptance.'],
+      ['Does a PS1 expire?', 'The statement itself does not carry an expiry, but if the design changes after issue, it must be re-confirmed or re-issued to match what is actually built.'],
+      ['What does council do with the PS1?', 'It forms part of your consent documentation: council relies on it to grant consent for the engineered elements without independently re-checking the calculations.'],
+    ])}
+    <h2>Need a PS1 for your project?</h2>
+    <p>Send us your plans and we will confirm the scope, quote a fixed fee, and deliver consent-ready documentation with the PS1 signed by a chartered engineer. See our <a href="${base}services/building-consent-documentation.html">building consent documentation service</a> for what is included.</p>`,
+  },
+  {
+    slug: 'retaining-wall-consent-nz', title: 'When Does a Retaining Wall Need Consent in NZ?',
+    label: 'Retaining wall consent rules',
+    desc: 'The New Zealand retaining wall consent rules in plain English: the 1.5 metre threshold, what counts as a surcharge, when you need an engineer, and how the design process works.',
+    eyebrow: 'Guide', h1: 'When does a retaining wall need <span class="hl">consent in NZ?</span>',
+    sub: 'The 1.5 metre rule, what surcharge actually means, and when a wall needs engineering. The plain-English version of the rules.',
+    body: (base) => `
+    <p style="font-size:17px">In New Zealand, a retaining wall needs building consent when it retains more than 1.5 metres of ground, or when it retains any height with a surcharge: extra load above the wall such as a driveway, building or sloping ground. That is the short answer. The details, and the traps, are below.</p>
+    ${byline(base)}
+    <h2>The 1.5 metre rule, precisely</h2>
+    <p>The Building Act's Schedule 1 exempts a retaining wall from consent when it retains <b>no more than 1.5 metres depth of ground</b> and does not support any surcharge or load additional to the ground itself. Both conditions must hold. A 1.2 metre wall under a flat lawn is typically exempt; the same wall holding up the edge of a driveway is not, because vehicles are a surcharge.</p>
+    <h2>What counts as a surcharge?</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Driveways, parking or vehicle access above the wall</span></li>
+      <li>${si('check', 2.2)}<span>Buildings, sheds or pools within the wall's zone of influence</span></li>
+      <li>${si('check', 2.2)}<span>Ground that slopes up and away behind the wall</span></li>
+      <li>${si('check', 2.2)}<span>Another retaining wall stepping above (terraced walls load each other)</span></li>
+    </ul>
+    <p>If any of these sit behind your wall, treat it as needing engineering design and consent regardless of height.</p>
+    <h2>Exempt from consent is not exempt from physics</h2>
+    <p>Plenty of sub-1.5 metre walls are built without consent, badly, and Auckland's winters find them. Exemption removes the paperwork, not the loads: soil pressure, water pressure and time work on every wall. For walls near boundaries, above paths, or anywhere a failure would be expensive or dangerous, engineering design is cheap insurance even when the law does not demand it.</p>
+    <h2>What does the engineering process look like?</h2>
+    <p>For a consented wall the sequence is straightforward: we assess the site and ground conditions (sometimes with a geotech report for larger walls), design the wall in timber, concrete block or reinforced concrete, produce the drawings and calculations, and issue the PS1 for your consent application. During construction, council conditions typically require inspection of footings and drainage before backfill, ending in a PS4. Design fees for residential walls generally sit between <b>$1,200 and $3,000 + GST</b> as an Auckland-market guide, quoted fixed before we start.</p>
+    <h2>The council process, step by step</h2>
+    <p>For a wall that needs consent, expect this sequence: engineering design and PS1 (typically one to two weeks), consent lodgement, council processing (20 working days, paused by any RFI), then construction with the inspections named in your consent conditions, usually footings or pole embedment and drainage before backfill. The engineer's PS4 after the final inspection is what unlocks your Code Compliance Certificate. Start to finish, a straightforward consented wall commonly runs eight to twelve weeks including council time, which is worth knowing before you book a contractor.</p>
+    <h2>Does this differ around the country?</h2>
+    <p>The Building Act exemption is national, so the 1.5 metre and surcharge tests apply from Kaitaia to Bluff. What changes regionally is the engineering itself: ground conditions, seismic loads and council documentation preferences differ, which is why walls in Canterbury or Otago are designed to the same standards but not the same numbers as walls in Auckland. We design retaining walls for sites throughout New Zealand.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Who is responsible if my neighbour’s wall fails onto my land?', 'Generally the owner of the land the wall retains, but boundaries make this legally messy fast. An engineering assessment gives you the facts before it becomes a dispute.'],
+      ['Can I replace an old wall like-for-like without consent?', 'Only if the replacement itself meets the exemption tests (under 1.5m, no surcharge). The age of the old wall does not grandfather the new one.'],
+      ['Do timber walls need engineering too?', 'Yes, when over 1.5m or surcharged. Timber pole walls are engineered structures: pole embedment, spacing and drainage all come from calculation, not habit.'],
+      ['How tall can a retaining wall go?', 'With proper engineering, effectively as tall as your project needs: taller walls simply move into reinforced concrete, tiebacks or terraced designs with geotech input.'],
+    ])}
+    <h2>Get a straight answer on your wall</h2>
+    <p>Send us a photo, a rough height and what sits above the wall, and we will tell you whether it needs consent, what design makes sense, and a fixed price for the engineering. Details on our <a href="${base}services/retaining-walls.html">retaining wall design service</a>.</p>`,
+  },
+];
+
 /* ---------- Individual pages ---------- */
 const pages = [];
 
 /* HOME */
 pages.push({
   file: 'index.html', base: '', active: 'home',
-  headO: { title: 'Stable Structure Limited | Structural & Civil Engineering — Auckland, NZ', desc: 'Kiwi-owned structural and civil engineering consultancy in Botany, Auckland. Structural design, civil design, building consent documentation, inspections and construction supervision across New Zealand.' },
+  headO: { title: 'Structural Engineer Auckland | Stable Structure Limited', desc: 'Chartered structural and civil engineers in Botany, Auckland. Structural design, PS1 consent documentation, site inspections and construction supervision — across Auckland and all of New Zealand.' },
   body: [
     homeHero(''),
     trustbar(),
@@ -837,6 +1207,12 @@ pages.push({
   body: [
     pageHero('', { eyebrow: 'Our services', title: 'Structural &amp; civil engineering, end to end', sub: 'From foundations to final sign-off, we cover every stage of your project. Choose a service to see how we can help.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Services' }] }),
     `<section class="pad"><div class="container">${servicesGrid('')}</div></section>`,
+    `<section class="pad-sm" style="background:var(--surface-2)"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">Helpful guides</span><h2 class="section-title">Straight answers from our engineers</h2></div>
+      <div class="guide-links reveal" style="max-width:640px;margin-inline:auto">
+        ${GUIDES.map(g => `<a href="guides/${g.slug}.html">${si('consent', 2)} ${g.title}</a>`).join('\n        ')}
+      </div>
+    </div></section>`,
     `<section class="pad-sm process"><div class="container"><div class="section-head reveal"><span class="eyebrow">How it works</span><h2 class="section-title">A clear path from concept to completion</h2><p class="lead">A straightforward, transparent process that keeps you informed at every step.</p></div>${processSteps()}</div></section>`,
     ctaBand(''),
   ].join('\n'),
@@ -936,10 +1312,37 @@ pages.push({
   ].join('\n'),
 });
 
-/* SERVICE detail pages */
+/* SERVICE detail pages
+   Titles are search-first (service + Auckland + credential terms), not
+   brand-first — "structural engineer auckland" sat at position 14 in GSC with a
+   33% CTR the one time it reached page 1. */
+const SERVICE_TITLES = {
+  'structural-design': 'Structural Design Engineer, Auckland | Stable Structure',
+  'civil-design': 'Civil Engineering Design, Auckland | Stable Structure',
+  'building-consent-documentation': 'PS1 & Building Consent Documentation, Auckland | Stable Structure',
+  'site-inspections': 'Structural Site Inspections & PS4, Auckland | Stable Structure',
+  'construction-supervision': 'Construction Supervision Engineers, Auckland | Stable Structure',
+  'retaining-walls': 'Retaining Wall Design & PS1 Engineer, Auckland | Stable Structure',
+  'swimming-pools': 'Swimming Pool Structural Design, Auckland | Stable Structure',
+  'decks-outdoor-living': 'Deck & Outdoor Structure Engineering, Auckland | Stable Structure',
+  'carports-sheds-portals': 'Portal Frame, Carport & Shed Design NZ | Stable Structure',
+};
+
 SERVICES.forEach((s) => {
   const base = '../';
   const asideList = SERVICES.map(x => `<a href="${x.slug}.html"${x.slug === s.slug ? ' class="current" aria-current="page"' : ''}>${x.title} ${si('chevr', 2)}</a>`).join('\n          ');
+  const article = ARTICLES[s.slug];
+  const prose = article
+    ? `<span class="eyebrow">${s.title}</span>
+        ${article(base)}`
+    : `<span class="eyebrow">${s.title}</span>
+        ${s.intro.map(p => `<p style="font-size:17px">${p}</p>`).join('\n        ')}
+        <h2>What's included</h2>
+        <ul class="ticks">${s.includes.map(x => `<li>${si('check', 2.2)}<span>${x}</span></li>`).join('')}</ul>
+        <h2>Ideal for</h2>
+        <ul class="ticks">${s.ideal.map(x => `<li>${si('check', 2.2)}<span>${x}</span></li>`).join('')}</ul>
+        <h2>Why it matters</h2>
+        <p style="font-size:17px">${CLOSES[s.slug] || s.short}</p>`;
   const body = [
     pageHero(base, {
       eyebrow: 'Service', title: s.title, sub: s.sub,
@@ -948,14 +1351,7 @@ SERVICES.forEach((s) => {
     }),
     `<section class="pad"><div class="container"><div class="svc-layout">
       <div class="prose reveal">
-        <span class="eyebrow">${s.title}</span>
-        ${s.intro.map(p => `<p style="font-size:17px">${p}</p>`).join('\n        ')}
-        <h2>What's included</h2>
-        <ul class="ticks">${s.includes.map(x => `<li>${si('check', 2.2)}<span>${x}</span></li>`).join('')}</ul>
-        <h2>Ideal for</h2>
-        <ul class="ticks">${s.ideal.map(x => `<li>${si('check', 2.2)}<span>${x}</span></li>`).join('')}</ul>
-        <h2>Why it matters</h2>
-        <p style="font-size:17px">Every ${s.title.toLowerCase()} project we take on is designed to be practical, cost-effective and fully compliant with the New Zealand Building Code — with clear documentation to carry it smoothly through consent and construction.</p>
+        ${prose}
       </div>
       <aside class="svc-aside reveal">
         <div class="aside-card">
@@ -975,7 +1371,78 @@ SERVICES.forEach((s) => {
     </div></div></section>`,
     ctaBand(base, { title: `Ready to start your ${s.title.toLowerCase()} project?`, waMsg: `Hi Stable Structure, I'd like to enquire about ${s.title}.` }),
   ].join('\n');
-  pages.push({ file: svcPath(s), base, active: 'services', headO: { title: `${s.title} | Stable Structure Limited`, desc: s.short }, body });
+  pages.push({
+    file: svcPath(s), base, active: 'services', lastmod: SPRINT_DATE,
+    headO: {
+      title: SERVICE_TITLES[s.slug] || `${s.title} | Stable Structure Limited`,
+      desc: s.short,
+      serviceType: SERVICE_TYPE[s.slug],
+      serviceName: s.title,
+    },
+    body,
+  });
+});
+
+/* GUIDE pages (Phase 3) */
+GUIDES.forEach((g) => {
+  const base = '../';
+  const body = [
+    pageHero(base, {
+      eyebrow: g.eyebrow, title: g.h1, sub: g.sub,
+      crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Guides', href: 'services.html' }, { label: g.label }],
+      waMsg: `Hi Stable Structure, I read your guide "${g.title}" and have a question.`,
+    }),
+    `<section class="pad"><div class="container"><div class="svc-layout">
+      <div class="prose reveal">
+        <span class="eyebrow">${g.eyebrow}</span>
+        ${g.body(base)}
+      </div>
+      <aside class="svc-aside reveal">
+        <div class="aside-card">
+          <h4>Ask an engineer</h4>
+          <p>Free, no-obligation advice on your project from a chartered structural engineer.</p>
+          <a class="btn btn-primary" href="${base}contact.html">Request a Free Quote ${si('arrow', 2.2)}</a>
+          <a class="btn btn-wa" href="${waHref()}" target="_blank" rel="noopener">${wa()} WhatsApp us</a>
+          <a class="btn btn-ghost" href="tel:${PHONE_TEL}">${si('phone', 2)} Call ${PHONE_DISPLAY}</a>
+        </div>
+        <div class="aside-card">
+          <h4>Guides</h4>
+          <nav class="aside-list" aria-label="All guides">
+          ${GUIDES.map(x => `<a href="${x.slug}.html"${x.slug === g.slug ? ' class="current" aria-current="page"' : ''}>${x.label} ${si('chevr', 2)}</a>`).join('\n          ')}
+          </nav>
+        </div>
+      </aside>
+    </div></div></section>`,
+    ctaBand(base),
+  ].join('\n');
+  pages.push({
+    file: `guides/${g.slug}.html`, base, active: '', lastmod: SPRINT_DATE,
+    headO: { title: `${g.title} | Stable Structure`, desc: g.desc, pageLabel: g.label },
+    body,
+  });
+});
+
+/* PRIVACY POLICY (T8: the enquiry form promises privacy; this page backs it up) */
+pages.push({
+  file: 'privacy.html', base: '', active: '', lastmod: SPRINT_DATE,
+  headO: { title: 'Privacy Policy | Stable Structure Limited', desc: 'How Stable Structure Limited collects, uses and protects your personal information, in line with the New Zealand Privacy Act 2020.', pageLabel: 'Privacy Policy' },
+  body: [
+    pageHero('', { eyebrow: 'Privacy', title: 'Privacy <span class="hl">policy</span>', sub: 'How we collect, use and look after your information.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Privacy Policy' }], cta: false }),
+    `<section class="pad"><div class="container"><div class="prose reveal" style="max-width:760px">
+      <p style="font-size:17px">Stable Structure Limited ("we", "us") respects your privacy. This policy explains what personal information we collect through this website and how we handle it, in line with the New Zealand Privacy Act 2020.</p>
+      <h2>What we collect</h2>
+      <p>When you contact us by enquiry form, email, phone or WhatsApp, we collect the details you provide: typically your name, contact details, property address and information about your project. We do not collect payment information through this website.</p>
+      <h2>How we use it</h2>
+      <p>We use your information solely to respond to your enquiry, provide engineering services you engage us for, and communicate about your project. We do not sell, rent or share your personal information with third parties for marketing. Project information may be shared with councils, contractors or consultants only as needed to deliver the services you have asked for.</p>
+      <h2>Storage and security</h2>
+      <p>Your information is stored securely and retained only as long as needed for the purpose it was collected, or as required for our professional records. Engineering documentation carries statutory retention obligations, so project records are kept accordingly.</p>
+      <h2>Cookies and analytics</h2>
+      <p>This website does not run advertising trackers. Basic, privacy-respecting traffic measurement may be used to understand how the site is used.</p>
+      <h2>Your rights</h2>
+      <p>Under the Privacy Act 2020 you may ask for a copy of the personal information we hold about you, and ask us to correct it. Contact us at <a href="mailto:${EMAIL}">${EMAIL}</a> or ${PHONE_DISPLAY} and we will respond promptly.</p>
+      <p><i>Last updated: 13 August 2026</i></p>
+    </div></div></section>`,
+  ].join('\n'),
 });
 
 /* 404 — both GitHub Pages and Vercel serve /404.html for any unknown path
@@ -1021,10 +1488,14 @@ let count = 0;
   console.log('  ✓', p.file);
 });
 
-/* ---------- sitemap.xml (indexable pages only; excludes 404) ---------- */
+/* ---------- sitemap.xml (indexable pages only; excludes 404) ----------
+   lastmod discipline: every entry defaults to SPRINT_DATE because the
+   2026-08-13 sprint changed every page's head (schema/fonts/og). From now on,
+   set `lastmod` on a page's entry ONLY when its content meaningfully changes —
+   never blanket-update all pages to the build date. */
 const sitemapUrls = pages.map((p) => {
   const loc = SITE_URL + (p.file === 'index.html' ? '' : p.file);
-  return `  <url><loc>${loc}</loc></url>`;
+  return `  <url><loc>${loc}</loc><lastmod>${p.lastmod || SPRINT_DATE}</lastmod></url>`;
 }).join('\n');
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
