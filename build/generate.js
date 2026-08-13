@@ -237,7 +237,7 @@ function orgNode() {
       name: OWNER,
       jobTitle: 'Director',
       hasCredential: [
-        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Professional Engineer (CPEng), Engineering New Zealand' },
+        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Professional Engineer (CPEng), Engineering New Zealand', identifier: '1030007', url: 'https://members.engineeringnz.org/s/cpeng-register' },
         { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Engineer (CEng), United Kingdom' },
         { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Member of the Institution of Structural Engineers (MIStructE)' },
       ],
@@ -825,7 +825,7 @@ function teamSection(base) {
   const team = [
     {
       photo: 'gajanthan.jpg', name: OWNER, role: 'Director',
-      cred: 'BSc(Eng) · MSc(Struct) · MIStructE · CMEngNZ · CEng (UK) · CPEng (NZ)',
+      cred: 'BSc(Eng) · MSc(Struct) · MIStructE · CMEngNZ · CEng (UK) · CPEng (NZ) #1030007',
       bio: [
         `Gajanthan founded Stable Structure Limited and has spent more than eight years delivering innovative, practical engineering solutions. He holds a Bachelor of Engineering (Structural) from Sri Lanka and a Master of Science in Structural Engineering from the National University of Singapore, and is both a Chartered Structural Engineer (MIStructE, UK) and a Chartered Professional Engineer (CPEng) with Engineering New Zealand.`,
         `With over 20 years of experience across Sri Lanka, Singapore and New Zealand, his work spans complex infrastructure and buildings — from underground structures for tunnels and railway stations and harbour jetties, through to residential developments, commercial buildings and industrial structures. He is passionate about mentoring engineers, delivering technical seminars, and finding practical, economical solutions that never compromise safety or quality.`,
@@ -932,11 +932,15 @@ function processSteps() {
 /* ---------- Phase-3 content: article helpers ---------- */
 const UPDATED_DISPLAY = 'Updated 13 August 2026';
 
-/* Byline shown on rewritten service pages and guides. The EngNZ register link
-   can be added once Gajan supplies his profile URL from the CPEng register. */
+/* Byline shown on rewritten service pages and guides. CPEng #1030007 verified
+   on the Registration Authority's CPEng register (status Current, first
+   registered 5/10/2018, practice field Structural engineering, 2026-08-13).
+   The register has no per-person permalink, so we link its search page. */
+const CPENG_REGISTER_URL = 'https://members.engineeringnz.org/s/cpeng-register';
+const CPENG_NUMBER = '1030007';
 const byline = (base) => `<div class="byline reveal">
   <span class="bv">GV</span>
-  <span>Reviewed by <b>${OWNER}</b>, CPEng · <a href="${base}about.html">Director, Stable Structure</a></span>
+  <span>Reviewed by <b>${OWNER}</b>, <a href="${CPENG_REGISTER_URL}" target="_blank" rel="noopener" title="Verify on the CPEng register">CPEng #${CPENG_NUMBER}</a> · <a href="${base}about.html">Director, Stable Structure</a></span>
   <span class="upd">${UPDATED_DISPLAY}</span>
 </div>`;
 
