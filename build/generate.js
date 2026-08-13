@@ -46,10 +46,9 @@ const LINKEDIN_URL = 'https://www.linkedin.com/company/stablestructure/';
 const PROJECT_VIDEO_EMBED = 'https://www.facebook.com/plugins/video.php?height=314&href=https%3A%2F%2Fwww.facebook.com%2Freel%2F28072485295674770%2F&show_text=false&width=560&t=0';
 const waHref = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg || WA_DEFAULT)}`;
 
-/* Google Business Profile Place ID — paste it here once retrieved from the GBP
-   dashboard (or https://developers.google.com/maps/documentation/places/web-service/place-id).
-   While empty, review CTAs fall back to the generic Maps search link. */
-const GOOGLE_PLACE_ID = '';
+/* Google Business Profile Place ID (supplied by owner 2026-08-13).
+   Drives the direct write-review and listing URLs for every review CTA. */
+const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 
 /* Per-page lastmod discipline for sitemap.xml: every entry in `pages` carries a
    `lastmod` — update it ONLY when that page's content meaningfully changes.
