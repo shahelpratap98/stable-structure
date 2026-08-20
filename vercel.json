@@ -14,18 +14,18 @@
     { "source": "/.gitignore", "destination": "/", "permanent": true },
     { "source": "/reports/:path*", "destination": "/", "permanent": true },
 
-    { "source": "/services/", "destination": "/services.html", "permanent": true },
-    { "source": "/guides/", "destination": "/guides.html", "permanent": true },
-    { "source": "/sectors/", "destination": "/sectors.html", "permanent": true },
-    { "source": "/projects/", "destination": "/projects.html", "permanent": true },
-    { "source": "/about/", "destination": "/about.html", "permanent": true },
-    { "source": "/process/", "destination": "/process.html", "permanent": true },
-    { "source": "/contact/", "destination": "/contact.html", "permanent": true },
-    { "source": "/faq/", "destination": "/faq.html", "permanent": true },
-    { "source": "/testimonials/", "destination": "/testimonials.html", "permanent": true },
-    { "source": "/privacy/", "destination": "/privacy.html", "permanent": true },
-    { "source": "/services/:slug/", "destination": "/services/:slug.html", "permanent": true },
-    { "source": "/guides/:slug/", "destination": "/guides/:slug.html", "permanent": true }
+    { "source": "/services", "destination": "/services.html", "permanent": true },
+    { "source": "/guides", "destination": "/guides.html", "permanent": true },
+    { "source": "/sectors", "destination": "/sectors.html", "permanent": true },
+    { "source": "/projects", "destination": "/projects.html", "permanent": true },
+    { "source": "/about", "destination": "/about.html", "permanent": true },
+    { "source": "/process", "destination": "/process.html", "permanent": true },
+    { "source": "/contact", "destination": "/contact.html", "permanent": true },
+    { "source": "/faq", "destination": "/faq.html", "permanent": true },
+    { "source": "/testimonials", "destination": "/testimonials.html", "permanent": true },
+    { "source": "/privacy", "destination": "/privacy.html", "permanent": true },
+    { "source": "/services/:slug([^.]+)", "destination": "/services/:slug.html", "permanent": true },
+    { "source": "/guides/:slug([^.]+)", "destination": "/guides/:slug.html", "permanent": true }
   ],
   "headers": [
     {
