@@ -781,7 +781,22 @@ function projectsSection(base) {
     const imgs = p.images.map((i) => `${base}${i}`);
     const caption = p.caption || '';
     const extra = imgs.length - 1;
-    const alt = caption ? caption.replace(/\s+/g, ' ').slice(0, 110) : 'Stable Structure project photo';
+    /* Alt text comes from the post caption, but a hard slice cut mid-word
+       ("...engineered timber framing a"), which reads as broken to a screen
+       reader. Trim on a clause or whole-word boundary instead. */
+    const DANGLING = /\s+(?:a|an|the|of|for|with|and|or|to|in|on|at|by|from|as|is|are|was|were|that|which|our|its|their)$/i;
+    const altFrom = (c) => {
+      const flat = c.replace(/\s+/g, ' ').trim();
+      if (flat.length <= 110) return flat;
+      const cut = flat.slice(0, 110);
+      const stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf(' — '), cut.lastIndexOf(', '));
+      const end = stop > 45 ? stop : cut.lastIndexOf(' ');
+      let out = flat.slice(0, end > 0 ? end : 110).replace(/[\s,—–-]+$/, '');
+      // never end on a dangling function word — trim until the phrase closes
+      while (DANGLING.test(out)) out = out.replace(DANGLING, '');
+      return out;
+    };
+    const alt = caption.trim() ? altFrom(caption) : `Stable Structure engineering project${p.date ? `, ${projectDate(p.date)}` : ''}`;
     return `<article class="proj-card reveal" data-images="${esc(JSON.stringify(imgs))}" data-caption="${esc(caption)}"${p.permalink ? ` data-permalink="${esc(p.permalink)}"` : ''}>
         <button class="proj-media" type="button" aria-label="View photos for this project">
           <img src="${imgs[0]}" width="1200" height="900" loading="lazy" alt="${esc(alt)}" />

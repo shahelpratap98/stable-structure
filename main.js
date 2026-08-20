@@ -87,7 +87,9 @@
       lastFocus = document.activeElement;
       var cap = card.getAttribute('data-caption') || '';
       lbCap.textContent = cap;
-      lbImg.alt = cap ? cap.slice(0, 110) : 'Project photo';
+      // Trim on a word boundary, never mid-word, and never on a dangling
+      // function word — a screen reader reads this label aloud in full.
+      lbImg.alt = cap ? altFromCaption(cap) : 'Stable Structure project photo';
       lb.hidden = false;
       show(0);
       requestAnimationFrame(function () { lb.classList.add('open'); });
@@ -148,6 +150,19 @@
       card.style.setProperty('--cursor-angle', angle.toFixed(3) + 'deg');
     });
   });
+
+  // Shared with build/generate.js: keep both in step if either changes.
+  var DANGLING = /\s+(?:a|an|the|of|for|with|and|or|to|in|on|at|by|from|as|is|are|was|were|that|which|our|its|their)$/i;
+  function altFromCaption(c) {
+    var flat = String(c).replace(/\s+/g, ' ').trim();
+    if (flat.length <= 110) return flat;
+    var cut = flat.slice(0, 110);
+    var stop = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf(' — '), cut.lastIndexOf(', '));
+    var end = stop > 45 ? stop : cut.lastIndexOf(' ');
+    var out = flat.slice(0, end > 0 ? end : 110).replace(/[\s,—–-]+$/, '');
+    while (DANGLING.test(out)) out = out.replace(DANGLING, '');
+    return out;
+  }
 
   // Enquiry form
   var form = document.getElementById('enquiryForm');
