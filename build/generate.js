@@ -267,7 +267,9 @@ function crumbTrail(file, pageTitle) {
     return [home, { label: 'Services', url: `${SITE_URL}services.html` }, { label: pageTitle, url: SITE_URL + file }];
   }
   if (file.startsWith('guides/')) {
-    return [home, { label: 'Guides', url: `${SITE_URL}services.html` }, { label: pageTitle, url: SITE_URL + file }];
+    // Points at the real guides hub — it previously claimed a page called
+    // "Guides" lived at services.html, which is a factual error in the graph.
+    return [home, { label: 'Guides', url: `${SITE_URL}guides.html` }, { label: pageTitle, url: SITE_URL + file }];
   }
   if (!TOP_LABELS[file]) return null;
   return [home, { label: TOP_LABELS[file], url: SITE_URL + file }];
@@ -353,7 +355,10 @@ const brand = (base, footer) => `<a class="brand" href="${BASE_PATH}" aria-label
 </a>`;
 
 const NAV = [
-  { key: 'home', label: 'Home', href: 'index.html' },
+  /* Home points at the site root, not index.html — vercel.json permanently
+     redirects /index.html to /, so linking the latter made the most-clicked
+     link on every page pay a needless 308 hop. */
+  { key: 'home', label: 'Home', href: '', root: true },
   { key: 'services', label: 'Services', href: 'services.html', dd: true },
   { key: 'sectors', label: 'Sectors', href: 'sectors.html' },
   { key: 'projects', label: 'Our Projects', href: 'projects.html' },
@@ -389,7 +394,8 @@ function header(base, active) {
         ${ddPanel(base)}
       </div>`;
     }
-    return `<a class="${cls}" href="${base}${n.href}">${n.label}</a>`;
+    // root links resolve to the site root (BASE_PATH), never to /index.html
+    return `<a class="${cls}" href="${n.root ? BASE_PATH : base + n.href}">${n.label}</a>`;
   }).join('\n      ');
 
   const mobileServices = SERVICES.map(s => `<a href="${base}${svcPath(s)}">${s.title}</a>`).join('\n          ');
@@ -408,7 +414,7 @@ function header(base, active) {
 </header>
 
 <div class="mobile-menu" id="mobileMenu">
-  <a class="m-link" href="${base}index.html">Home</a>
+  <a class="m-link" href="${BASE_PATH}">Home</a>
   <details class="m-acc">
     <summary>Services <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I.caret}</svg></summary>
     <div class="m-sub">
@@ -618,7 +624,7 @@ function otherReviews() {
 const FAQS = [
   ['Do you provide PS1 documentation for building consent?', 'Yes. We prepare detailed structural and civil drawings, calculations and Producer Statements (PS1) so your building consent application is complete and consent-ready.'],
   ['Which areas of New Zealand do you cover?', 'We are based in Botany, Auckland and provide structural and civil engineering services for residential, commercial and industrial projects throughout New Zealand.'],
-  ['Do I need a structural engineer for a deck or retaining wall?', 'Often, yes — higher decks, cantilevered structures and retaining walls above certain heights require engineering design and council consent. If you are unsure, give us a call and we will let you know what is needed.'],
+  ['Do I need a structural engineer for a deck or retaining wall?', 'Often, yes. A retaining wall needs engineering design and building consent once it retains more than 1.5 metres of ground, or at any height if it carries a surcharge such as a driveway, building or sloping ground above it. Decks generally need engineering once they are more than 1.5 metres off the ground, or where they are cantilevered. Our <a href="guides/retaining-wall-consent-nz.html">guide to retaining wall consent</a> covers the rules in full, and if you are unsure, give us a call and we will tell you straight.'],
   ['How much does structural engineering cost?', 'It depends on the size and complexity of your project. We provide a clear, upfront quote before any work begins — get in touch with your plans or a description and we will give you a free, no-obligation estimate.'],
   ['How soon can you start?', 'We pride ourselves on responsive turnaround. Timeframes vary with workload and project scope, so call or send an enquiry and we will confirm our current availability for you.'],
   ['Can you work from my architect or designer’s plans?', 'Absolutely. We regularly collaborate with architects, designers and builders, providing the structural and civil engineering to bring their plans to life and through consent.'],
@@ -777,7 +783,7 @@ function projectsSection(base) {
     </div></section>`;
   }
 
-  const cards = projects.map((p) => {
+  const cards = projects.map((p, cardIdx) => {
     const imgs = p.images.map((i) => `${base}${i}`);
     const caption = p.caption || '';
     const extra = imgs.length - 1;
@@ -799,7 +805,7 @@ function projectsSection(base) {
     const alt = caption.trim() ? altFrom(caption) : `Stable Structure engineering project${p.date ? `, ${projectDate(p.date)}` : ''}`;
     return `<article class="proj-card reveal" data-images="${esc(JSON.stringify(imgs))}" data-caption="${esc(caption)}"${p.permalink ? ` data-permalink="${esc(p.permalink)}"` : ''}>
         <button class="proj-media" type="button" aria-label="View photos for this project">
-          <img src="${imgs[0]}" width="1200" height="900" loading="lazy" alt="${esc(alt)}" />
+          <img src="${imgs[0]}" width="1200" height="900" ${cardIdx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} alt="${esc(alt)}" />
           ${extra > 0 ? `<span class="proj-count">${si('camera', 2)}+${extra}</span>` : ''}
         </button>
         <div class="proj-body">
@@ -843,7 +849,7 @@ function teamSection(base) {
       photo: 'gajanthan.jpg', name: OWNER, role: 'Director',
       cred: 'BSc(Eng) · MSc(Struct) · MIStructE · CMEngNZ · CEng (UK) · CPEng (NZ) #1030007',
       bio: [
-        `Gajanthan founded Stable Structure Limited and has spent more than eight years delivering innovative, practical engineering solutions. He holds a Bachelor of Engineering (Structural) from Sri Lanka and a Master of Science in Structural Engineering from the National University of Singapore, and is both a Chartered Structural Engineer (MIStructE, UK) and a Chartered Professional Engineer (CPEng) with Engineering New Zealand.`,
+        `Gajanthan founded Stable Structure Limited more than eight years ago, bringing over 20 years of structural engineering experience to the practice. He holds a Bachelor of Engineering (Structural) from Sri Lanka and a Master of Science in Structural Engineering from the National University of Singapore, and is both a Chartered Structural Engineer (MIStructE, UK) and a Chartered Professional Engineer (CPEng) with Engineering New Zealand.`,
         `With over 20 years of experience across Sri Lanka, Singapore and New Zealand, his work spans complex infrastructure and buildings — from underground structures for tunnels and railway stations and harbour jetties, through to residential developments, commercial buildings and industrial structures. He is passionate about mentoring engineers, delivering technical seminars, and finding practical, economical solutions that never compromise safety or quality.`,
       ],
       note: `Outside work, Gajanthan is a keen badminton player who enjoys organising tournaments, supporting charitable initiatives, and spending time with his family and in nature.`,
@@ -1117,7 +1123,7 @@ const ARTICLES = {
 /* ---------- Guides (Phase 3) ---------- */
 const GUIDES = [
   {
-    slug: 'what-is-a-ps1', title: 'What is a PS1? Producer Statements Explained',
+    slug: 'what-is-a-ps1', title: 'What is a PS1? Producer Statements Explained', metaTitle: 'What is a PS1? Explained | Stable Structure',
     label: 'What is a PS1?',
     desc: 'A plain-English guide to New Zealand producer statements: what a PS1 covers, how it differs from a PS4, who can issue them, what they cost and when your building consent needs one.',
     eyebrow: 'Guide', h1: 'What is a PS1? Producer statements, <span class="hl">explained simply</span>',
@@ -1153,7 +1159,7 @@ const GUIDES = [
     <p>Send us your plans and we will confirm the scope, quote a fixed fee, and deliver consent-ready documentation with the PS1 signed by a chartered engineer. See our <a href="${base}services/building-consent-documentation.html">building consent documentation service</a> for what is included.</p>`,
   },
   {
-    slug: 'retaining-wall-consent-nz', title: 'When Does a Retaining Wall Need Consent in NZ?',
+    slug: 'retaining-wall-consent-nz', title: 'When Does a Retaining Wall Need Consent in NZ?', metaTitle: 'Retaining Wall Consent Rules NZ | Stable Structure',
     label: 'Retaining wall consent rules',
     desc: 'The New Zealand retaining wall consent rules in plain English: the 1.5 metre threshold, what counts as a surcharge, when you need an engineer, and how the design process works.',
     eyebrow: 'Guide', h1: 'When does a retaining wall need <span class="hl">consent in NZ?</span>',
@@ -1224,7 +1230,7 @@ pages.push({
 /* SERVICES overview */
 pages.push({
   file: 'services.html', base: '', active: 'services',
-  headO: { title: 'Services | Stable Structure Limited — Structural & Civil Engineering', desc: 'Explore Stable Structure’s engineering services: structural design, civil design, building consent documentation, site inspections, construction supervision, retaining walls, pools, decks and more.' },
+  headO: { title: 'Structural &amp; Civil Engineering Services | Stable Structure', desc: 'Explore Stable Structure’s engineering services: structural design, civil design, building consent documentation, site inspections, construction supervision, retaining walls, pools, decks and more.' },
   body: [
     pageHero('', { eyebrow: 'Our services', title: 'Structural &amp; civil engineering, end to end', sub: 'From foundations to final sign-off, we cover every stage of your project. Choose a service to see how we can help.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Services' }] }),
     `<section class="pad"><div class="container">${servicesGrid('')}</div></section>`,
@@ -1242,7 +1248,7 @@ pages.push({
 /* SECTORS */
 pages.push({
   file: 'sectors.html', base: '', active: 'sectors',
-  headO: { title: 'Sectors | Stable Structure Limited — Residential, Commercial & Industrial', desc: 'Structural and civil engineering for residential, commercial and industrial projects across New Zealand.' },
+  headO: { title: 'Sectors We Engineer | Stable Structure, Auckland', desc: 'Structural and civil engineering for residential, commercial and industrial projects across New Zealand.' },
   body: [
     pageHero('', { eyebrow: 'Who we work with', title: 'Engineering across <span class="hl">every sector</span>', sub: 'The same rigour, clarity and compliance — whether it is a backyard deck or a commercial development.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Sectors' }] }),
     `<section class="pad"><div class="container">${sectorsBlock('')}</div></section>`,
@@ -1254,7 +1260,7 @@ pages.push({
 /* OUR PROJECTS — gallery of manual entries + hashtagged Facebook posts */
 pages.push({
   file: 'projects.html', base: '', active: 'projects',
-  headO: { title: 'Our Projects | Stable Structure Limited — Recent Engineering Work', desc: 'Recent structural and civil engineering projects by Stable Structure Limited — new builds, decks, retaining walls, carports and commercial work across Auckland and New Zealand.' },
+  headO: { title: 'Recent Engineering Projects | Stable Structure', desc: 'Recent structural and civil engineering projects by Stable Structure Limited — new builds, decks, retaining walls, carports and commercial work across Auckland and New Zealand.' },
   body: [
     pageHero('', { eyebrow: 'Our projects', title: 'Recent work, <span class="hl">straight from site</span>', sub: 'A look at what we have been building — new builds, decks, retaining walls, carports and commercial projects from across New Zealand.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Our Projects' }] }),
     projectsSection(''),
@@ -1266,7 +1272,7 @@ pages.push({
 /* ABOUT / WHY US */
 pages.push({
   file: 'about.html', base: '', active: 'about',
-  headO: { title: 'About | Stable Structure Limited — Kiwi-owned Engineering Consultancy', desc: 'Stable Structure Limited is a Kiwi-owned structural and civil engineering consultancy in Botany, Auckland, simplifying complex engineering with practical, compliant solutions.' },
+  headO: { title: 'About Our Engineers | Stable Structure, Auckland', desc: 'Stable Structure Limited is a Kiwi-owned structural and civil engineering consultancy in Botany, Auckland, simplifying complex engineering with practical, compliant solutions.' },
   body: [
     pageHero('', { eyebrow: 'About us', title: 'Engineering you can <span class="hl">build on</span>', sub: 'A Kiwi-owned structural and civil engineering consultancy built on technical expertise, practical solutions and exceptional client service.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'About' }] }),
     teamSection(''),
@@ -1338,15 +1344,15 @@ pages.push({
    brand-first — "structural engineer auckland" sat at position 14 in GSC with a
    33% CTR the one time it reached page 1. */
 const SERVICE_TITLES = {
-  'structural-design': 'Structural Design Engineer, Auckland | Stable Structure',
+  'structural-design': 'Structural Design Engineer Auckland | Stable Structure',
   'civil-design': 'Civil Engineering Design, Auckland | Stable Structure',
-  'building-consent-documentation': 'PS1 & Building Consent Documentation, Auckland | Stable Structure',
-  'site-inspections': 'Structural Site Inspections & PS4, Auckland | Stable Structure',
-  'construction-supervision': 'Construction Supervision Engineers, Auckland | Stable Structure',
-  'retaining-walls': 'Retaining Wall Design & PS1 Engineer, Auckland | Stable Structure',
+  'building-consent-documentation': 'PS1 &amp; Building Consent Docs, Auckland | Stable Structure',
+  'site-inspections': 'Site Inspections &amp; PS4, Auckland | Stable Structure',
+  'construction-supervision': 'Construction Supervision, Auckland | Stable Structure',
+  'retaining-walls': 'Retaining Wall Design &amp; PS1, Auckland | Stable Structure',
   'swimming-pools': 'Swimming Pool Structural Design, Auckland | Stable Structure',
-  'decks-outdoor-living': 'Deck & Outdoor Structure Engineering, Auckland | Stable Structure',
-  'carports-sheds-portals': 'Portal Frame, Carport & Shed Design NZ | Stable Structure',
+  'decks-outdoor-living': 'Deck Engineering, Auckland | Stable Structure',
+  'carports-sheds-portals': 'Portal Frame &amp; Shed Design NZ | Stable Structure',
 };
 
 SERVICES.forEach((s) => {
@@ -1438,9 +1444,32 @@ GUIDES.forEach((g) => {
   ].join('\n');
   pages.push({
     file: `guides/${g.slug}.html`, base, active: '', lastmod: SPRINT_DATE,
-    headO: { title: `${g.title} | Stable Structure`, desc: g.desc, pageLabel: g.label },
+    headO: { title: g.metaTitle || `${g.title} | Stable Structure`, desc: g.desc, pageLabel: g.label },
     body,
   });
+});
+
+/* GUIDES HUB — the breadcrumb on each guide points here, and it gives the two
+   guides a topical cluster point instead of leaving them as orphans hanging off
+   the services page. */
+pages.push({
+  file: 'guides.html', base: '', active: '', lastmod: SPRINT_DATE,
+  headO: { title: 'Engineering Guides | Stable Structure', desc: 'Plain-English guides to New Zealand structural engineering: what a PS1 producer statement is, and when a retaining wall needs building consent.', pageLabel: 'Guides' },
+  body: [
+    pageHero('', { eyebrow: 'Guides', title: 'Straight answers from <span class="hl">our engineers</span>', sub: 'The questions we are asked most, answered properly. Written and reviewed by a Chartered Professional Engineer.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Guides' }] }),
+    `<section class="pad"><div class="container">
+      <div class="grid-services">
+      ${GUIDES.map(g => `<a class="svc reveal" href="guides/${g.slug}.html">
+        <div class="ic">${si('consent')}</div>
+        <h3>${g.title}</h3>
+        <p>${g.desc}</p>
+        <div class="spacer"></div>
+        <span class="more">Read the guide ${si('arrow', 2.2)}</span>
+      </a>`).join('\n      ')}
+      </div>
+    </div></section>`,
+    ctaBand(''),
+  ].join('\n'),
 });
 
 /* PRIVACY POLICY (T8: the enquiry form promises privacy; this page backs it up) */
