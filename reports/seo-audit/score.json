@@ -1,0 +1,40 @@
+{
+  "health_score": 84,
+  "categories": [
+    {
+      "name": "Technical SEO",
+      "weight": 22,
+      "score": 88
+    },
+    {
+      "name": "Content Quality",
+      "weight": 23,
+      "score": 70
+    },
+    {
+      "name": "On-Page SEO",
+      "weight": 20,
+      "score": 88
+    },
+    {
+      "name": "Schema / Structured Data",
+      "weight": 10,
+      "score": 92
+    },
+    {
+      "name": "Performance (CWV)",
+      "weight": 10,
+      "score": 97
+    },
+    {
+      "name": "AI Search Readiness",
+      "weight": 10,
+      "score": 82
+    },
+    {
+      "name": "Images",
+      "weight": 5,
+      "score": 72
+    }
+  ]
+}

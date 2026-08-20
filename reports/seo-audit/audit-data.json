@@ -1,0 +1,105 @@
+{
+  "summary": {
+    "health_score": 84,
+    "audited": "2026-08-20",
+    "business_type": "Local professional service (hybrid: Botany office + service area, nationwide NZ)",
+    "pages_audited": 22,
+    "top_findings": [
+      "Five service pages carry ~160-183 unique words vs 741-900 on the four rewritten pages; structural-design is the most commercially significant",
+      "No Auckland-specific regulatory content (TC1/TC2/TC3 appears zero times sitewide)",
+      "Build sources were publicly served (build/generate.js returned 200 with 127KB) - FIXED",
+      "Guide breadcrumbs pointed at a page that did not exist - FIXED",
+      "Project photos unoptimised (289KB/276KB JPEGs, ~1MB on the projects page)"
+    ],
+    "quick_wins_completed": [
+      "source exposure closed",
+      "trailing-slash 404s fixed",
+      "Home nav redirect hop removed",
+      "guides hub created",
+      "FAQ/About factual inconsistencies resolved",
+      "11 over-length titles trimmed",
+      "alt-text truncation fixed",
+      "ARIA + heading-order defects fixed (accessibility 94 -> 100)"
+    ]
+  },
+  "categories": [
+    {
+      "name": "Technical SEO",
+      "score": 88
+    },
+    {
+      "name": "Content Quality",
+      "score": 70
+    },
+    {
+      "name": "On-Page SEO",
+      "score": 88
+    },
+    {
+      "name": "Schema / Structured Data",
+      "score": 92
+    },
+    {
+      "name": "Performance (CWV)",
+      "score": 97
+    },
+    {
+      "name": "AI Search Readiness",
+      "score": 82
+    },
+    {
+      "name": "Images",
+      "score": 72
+    }
+  ],
+  "verified": {
+    "lighthouse_mobile_home": {
+      "performance": 100,
+      "accessibility": 100,
+      "best_practices": 100,
+      "seo": 100,
+      "lcp_s": 1.53
+    },
+    "rich_results": "pass on home, service and guide; breadcrumbs valid",
+    "broken_links": 0,
+    "orphan_pages": 0
+  },
+  "action_plan": {
+    "phases": [
+      {
+        "name": "Phase 1: Highest commercial value",
+        "timeframe": "Weeks 1-2",
+        "items": [
+          "Rewrite structural-design.html to full depth",
+          "Publish Auckland TC1/TC2/TC3 + council consent article"
+        ]
+      },
+      {
+        "name": "Phase 2: Content depth",
+        "timeframe": "Weeks 3-6",
+        "items": [
+          "Rewrite remaining 4 thin service pages",
+          "Replicate local-relevance pattern across service pages"
+        ]
+      },
+      {
+        "name": "Phase 3: Technical polish",
+        "timeframe": "Month 2",
+        "items": [
+          "Convert project photos to WebP",
+          "Article schema on guides, city-level areaServed, NZBN in sameAs",
+          "Collapse apex redirect chain to one hop"
+        ]
+      },
+      {
+        "name": "Phase 4: Ongoing",
+        "timeframe": "Ongoing",
+        "items": [
+          "Review-ask at every PS4/CCC sign-off",
+          "GBP Q&A + Services from existing copy",
+          "Quarterly re-audit"
+        ]
+      }
+    ]
+  }
+}
