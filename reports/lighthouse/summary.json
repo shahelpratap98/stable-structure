@@ -28,17 +28,18 @@
       "url": "https://www.stablestructure.co.nz/",
       "scores": {
         "performance": 100,
-        "accessibility": 94,
+        "accessibility": 100,
         "best-practices": 100,
         "seo": 100
       },
       "metrics": {
-        "LCP_ms": 1526.4155,
-        "FCP_ms": 1076.4155,
-        "CLS": 0,
-        "TBT_ms": 90,
-        "speed_index_ms": 1076.4155
-      }
+        "LCP_ms": 1620.7205,
+        "FCP_ms": 1356.7205,
+        "CLS": 0.00756500902810894,
+        "TBT_ms": 0,
+        "speed_index_ms": 1897.9417446599623
+      },
+      "note": "re-run after accessibility fixes (commit dd412ff)"
     },
     "projects": {
       "url": "https://www.stablestructure.co.nz/projects.html",
@@ -77,5 +78,13 @@
     "performance": "84 -> 100",
     "lcp": "3.46s -> 1.53s",
     "lcp_improvement_pct": 56
+  },
+  "rich_results_test": {
+    "tested": "2026-08-20",
+    "home": "2 valid items (Local businesses, Organization)",
+    "service_page": "3 valid items (Breadcrumbs, Local businesses, Organization)",
+    "guide_page": "3 valid items (Breadcrumbs, Local businesses, Organization)",
+    "errors": 0,
+    "warnings": "non-critical only \u2014 recommended fields intentionally omitted (streetAddress, geo, priceRange)"
   }
 }
