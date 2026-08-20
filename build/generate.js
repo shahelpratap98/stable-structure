@@ -95,7 +95,9 @@ const wa = () => `<svg viewBox="0 0 24 24" aria-hidden="true">${WHATSAPP}</svg>`
 const fb = () => `<svg viewBox="0 0 24 24" aria-hidden="true">${FACEBOOK}</svg>`;
 const li = () => `<svg viewBox="0 0 24 24" aria-hidden="true">${LINKEDIN}</svg>`;
 const star = () => `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${STAR}</svg>`;
-const stars5 = () => `<div class="stars" aria-label="5 out of 5 stars">${star().repeat(5)}</div>`;
+/* role="img" is required: aria-label is prohibited on a bare <div> (no implicit
+   role), so screen readers ignored the rating. Flagged by Lighthouse 2026-08-20. */
+const stars5 = () => `<div class="stars" role="img" aria-label="Rated 5 out of 5 stars">${star().repeat(5)}</div>`;
 
 /* ---------- Services data ---------- */
 const SERVICES = [
@@ -439,12 +441,12 @@ function footer(base) {
         <p class="foot-about">Kiwi-owned structural and civil engineering consultancy in Botany, Auckland — delivering practical, compliant engineering from concept to completion, right across New Zealand.</p>
       </div>
       <div class="foot-col">
-        <h5>Services</h5>
+        <h2 class="fh">Services</h2>
         ${someServices}
         <a href="${base}services.html">View all services →</a>
       </div>
       <div class="foot-col">
-        <h5>Company</h5>
+        <h2 class="fh">Company</h2>
         <a href="${base}sectors.html">Sectors</a>
         <a href="${base}projects.html">Our projects</a>
         <a href="${base}about.html">About us</a>
@@ -456,7 +458,7 @@ function footer(base) {
     </div>
     <div class="foot-grid" style="border-bottom:none;padding-bottom:0;grid-template-columns:1fr">
       <div class="foot-col">
-        <h5>Get in touch</h5>
+        <h2 class="fh">Get in touch</h2>
         <a href="tel:${PHONE_TEL}">${PHONE_DISPLAY}</a>
         <a href="mailto:${EMAIL}">${EMAIL}</a>
         <a href="${waHref()}" target="_blank" rel="noopener">WhatsApp us</a>
@@ -608,7 +610,7 @@ function featuredReview() {
 }
 function otherReviews() {
   return `<div class="rev-mini-grid">
-      ${REVIEWS.others.map(r => `<div class="rev-mini reveal"><div class="av">${r.initial}</div><div class="rm-body"><b>${r.name}</b><div class="stars sm">${star().repeat(5)}</div><span>${r.when} · via Google</span></div></div>`).join('\n      ')}
+      ${REVIEWS.others.map(r => `<div class="rev-mini reveal"><div class="av">${r.initial}</div><div class="rm-body"><b>${r.name}</b><div class="stars sm" role="img" aria-label="Rated 5 out of 5 stars">${star().repeat(5)}</div><span>${r.when} · via Google</span></div></div>`).join('\n      ')}
     </div>`;
 }
 
@@ -902,10 +904,10 @@ function whyBlock(base) {
       <h2 class="section-title">Complex engineering, made simple and certain</h2>
       <p class="lead">Our job is to remove the risk and guesswork from your build. We translate ambitious ideas into designs that are practical to build, kind to your budget, and confidently compliant with New Zealand standards.</p>
       <div class="feature-list">
-        <div class="feature"><div class="fic">${si('gem', 2)}</div><div><h4>Practical, cost-effective solutions</h4><p>We value-engineer every design so it is economical to build without compromising safety or performance.</p></div></div>
-        <div class="feature"><div class="fic">${si('shield', 2)}</div><div><h4>Compliance you can rely on</h4><p>Every project is designed to the NZ Building Code and relevant standards, with clear documentation for council.</p></div></div>
-        <div class="feature"><div class="fic">${si('users', 2)}</div><div><h4>Expert guidance at every stage</h4><p>Clear communication and hands-on advice from concept to completion — you are never left guessing.</p></div></div>
-        <div class="feature"><div class="fic">${si('clock', 2)}</div><div><h4>Responsive, on-time delivery</h4><p>We keep your project moving with fast turnaround and proactive engineering support.</p></div></div>
+        <div class="feature"><div class="fic">${si('gem', 2)}</div><div><h3 class="fh4">Practical, cost-effective solutions</h3><p>We value-engineer every design so it is economical to build without compromising safety or performance.</p></div></div>
+        <div class="feature"><div class="fic">${si('shield', 2)}</div><div><h3 class="fh4">Compliance you can rely on</h3><p>Every project is designed to the NZ Building Code and relevant standards, with clear documentation for council.</p></div></div>
+        <div class="feature"><div class="fic">${si('users', 2)}</div><div><h3 class="fh4">Expert guidance at every stage</h3><p>Clear communication and hands-on advice from concept to completion — you are never left guessing.</p></div></div>
+        <div class="feature"><div class="fic">${si('clock', 2)}</div><div><h3 class="fh4">Responsive, on-time delivery</h3><p>We keep your project moving with fast turnaround and proactive engineering support.</p></div></div>
       </div>
     </div>
     <div class="why-visual reveal">
@@ -1269,10 +1271,10 @@ pages.push({
     `<section class="pad process"><div class="container">${processSteps()}</div></section>`,
     `<section class="pad-sm"><div class="container"><div class="section-head center reveal"><span class="eyebrow">Every step covered</span><h2 class="section-title">What you can expect from us</h2></div>
       <div class="feature-list" style="max-width:760px;margin-inline:auto">
-        <div class="feature"><div class="fic">${si('check', 2)}</div><div><h4>An upfront, transparent quote</h4><p>You will know the scope and cost before we begin — no surprises.</p></div></div>
-        <div class="feature"><div class="fic">${si('consent', 2)}</div><div><h4>Clear, consent-ready documentation</h4><p>Drawings, calculations and PS1s prepared to move smoothly through council.</p></div></div>
-        <div class="feature"><div class="fic">${si('users', 2)}</div><div><h4>A responsive point of contact</h4><p>Real engineering advice whenever you need it, throughout the project.</p></div></div>
-        <div class="feature"><div class="fic">${si('supervision', 2)}</div><div><h4>Verified, supervised construction</h4><p>Site inspections and supervision so the build matches the design.</p></div></div>
+        <div class="feature"><div class="fic">${si('check', 2)}</div><div><h3 class="fh4">An upfront, transparent quote</h3><p>You will know the scope and cost before we begin — no surprises.</p></div></div>
+        <div class="feature"><div class="fic">${si('consent', 2)}</div><div><h3 class="fh4">Clear, consent-ready documentation</h3><p>Drawings, calculations and PS1s prepared to move smoothly through council.</p></div></div>
+        <div class="feature"><div class="fic">${si('users', 2)}</div><div><h3 class="fh4">A responsive point of contact</h3><p>Real engineering advice whenever you need it, throughout the project.</p></div></div>
+        <div class="feature"><div class="fic">${si('supervision', 2)}</div><div><h3 class="fh4">Verified, supervised construction</h3><p>Site inspections and supervision so the build matches the design.</p></div></div>
       </div>
     </div></section>`,
     ctaBand(''),

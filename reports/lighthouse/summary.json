@@ -1,0 +1,81 @@
+{
+  "captured": "2026-08-20",
+  "tool": "Lighthouse (mobile, headless Chrome)",
+  "site": "https://www.stablestructure.co.nz/",
+  "baseline_before_sprint": {
+    "source": "WO-2026-SS01 audit, 11 Aug 2026",
+    "performance": 84,
+    "lcp_seconds": 3.46
+  },
+  "pages": {
+    "guide": {
+      "url": "https://www.stablestructure.co.nz/guides/what-is-a-ps1.html",
+      "scores": {
+        "performance": 100,
+        "accessibility": 98,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "LCP_ms": 1504.6779999999999,
+        "FCP_ms": 1054.6779999999999,
+        "CLS": 0,
+        "TBT_ms": 76,
+        "speed_index_ms": 2303.172223930656
+      }
+    },
+    "home": {
+      "url": "https://www.stablestructure.co.nz/",
+      "scores": {
+        "performance": 100,
+        "accessibility": 94,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "LCP_ms": 1526.4155,
+        "FCP_ms": 1076.4155,
+        "CLS": 0,
+        "TBT_ms": 90,
+        "speed_index_ms": 1076.4155
+      }
+    },
+    "projects": {
+      "url": "https://www.stablestructure.co.nz/projects.html",
+      "scores": {
+        "performance": 95,
+        "accessibility": 98,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "LCP_ms": 2778.566,
+        "FCP_ms": 978.566,
+        "CLS": 0,
+        "TBT_ms": 0,
+        "speed_index_ms": 3426.709214319985
+      }
+    },
+    "service": {
+      "url": "https://www.stablestructure.co.nz/services/retaining-walls.html",
+      "scores": {
+        "performance": 100,
+        "accessibility": 98,
+        "best-practices": 100,
+        "seo": 100
+      },
+      "metrics": {
+        "LCP_ms": 1506.804,
+        "FCP_ms": 1056.804,
+        "CLS": 0,
+        "TBT_ms": 72,
+        "speed_index_ms": 1056.804
+      }
+    }
+  },
+  "headline": {
+    "performance": "84 -> 100",
+    "lcp": "3.46s -> 1.53s",
+    "lcp_improvement_pct": 56
+  }
+}

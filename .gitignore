@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 *.log
+
+# Lighthouse raw runs (large); summary.json is kept
+reports/lighthouse/mobile-*.json

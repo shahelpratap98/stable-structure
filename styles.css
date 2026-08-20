@@ -255,7 +255,7 @@ section{scroll-margin-top:calc(var(--nav-h) + 12px)}
 .feature:hover{box-shadow:var(--shadow-sm); transform:translateX(3px)}
 .feature .fic{width:44px;height:44px;border-radius:11px;background:var(--accent-100);color:var(--accent-600);display:grid;place-items:center;flex:none}
 .feature .fic svg{width:22px;height:22px}
-.feature h4{font-size:17px; margin-bottom:3px}
+.feature h4,.feature .fh4{font-size:17px; margin-bottom:3px}
 .feature p{color:var(--muted); font-size:14.5px}
 .why-visual{position:relative; border-radius:var(--radius); overflow:hidden; background:var(--ink); min-height:420px; padding:34px;
   display:flex; flex-direction:column; justify-content:space-between; color:#fff}
@@ -639,7 +639,7 @@ footer.site{background:var(--ink); color:#C4D2E1; padding:60px 0 28px}
 @media(min-width:760px){ .foot-grid{grid-template-columns:1.6fr 1fr 1fr} }
 footer .brand .logo{height:64px}
 .foot-about{color:#9FB2C4; font-size:15px; margin-top:16px; max-width:40ch}
-.foot-col h5{color:#fff; font-family:"Space Grotesk",sans-serif; font-size:14px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:16px}
+.foot-col h5,.foot-col .fh{color:#fff; font-family:"Space Grotesk",sans-serif; font-size:14px; letter-spacing:.06em; text-transform:uppercase; margin-bottom:16px}
 .foot-col a{display:block; color:#9FB2C4; font-size:15px; padding:6px 0; transition:color .15s}
 .foot-col a:hover{color:var(--accent)}
 .foot-col span.fi{color:#9FB2C4; display:block; padding:6px 0; font-size:15px}
