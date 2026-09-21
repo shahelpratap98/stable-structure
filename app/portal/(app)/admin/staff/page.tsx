@@ -1,0 +1,126 @@
+import type { Metadata } from "next";
+import { ActionForm } from "@/components/action-form";
+import { requireAdmin } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import type { Profile } from "@/lib/types";
+import { inviteStaff, staffSignInLink, updateStaff } from "../actions";
+
+export const metadata: Metadata = { title: "Staff" };
+
+const ROLE_OPTIONS = [
+  { value: "employee", label: "Staff — enters own time" },
+  { value: "approver", label: "Approver — sees all time and rates, approves" },
+  { value: "admin", label: "Admin — approver plus setup and invoices" },
+];
+
+export default async function StaffPage() {
+  const me = await requireAdmin();
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("user_id, display_name, email, role, standard_day_hours, is_active")
+    .order("is_active", { ascending: false })
+    .order("display_name");
+  const staff = (data ?? []) as Profile[];
+
+  // Who has actually signed in yet (needs the service key; optional).
+  const admin = createAdminClient();
+  const signedIn = new Map<string, boolean>();
+  if (admin) {
+    const { data: users } = await admin.auth.admin.listUsers({ perPage: 200 });
+    users?.users.forEach((u) => signedIn.set(u.id, Boolean(u.last_sign_in_at)));
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      {!admin ? (
+        <p className="rounded-xl border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn">
+          <span className="font-semibold">Adding staff is switched off.</span> The server is missing{" "}
+          <code>SUPABASE_SERVICE_ROLE_KEY</code>. Add it to <code>portal/.env.local</code> (and to the Vercel project), then restart.
+        </p>
+      ) : null}
+
+      <section aria-labelledby="invite-heading" className="rounded-xl border border-line bg-surface p-5">
+        <h2 id="invite-heading" className="text-xl font-semibold">Add a staff member</h2>
+        <p className="mt-1 text-sm text-muted">
+          Creates their account and gives you a one-time link to send them. They choose their own password.
+        </p>
+        <ActionForm action={inviteStaff} submitLabel="Create account and get link" pendingLabel="Creating…" className="mt-4 flex flex-col gap-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <label htmlFor="invite-name" className="field-label">Name</label>
+              <input id="invite-name" name="display_name" required maxLength={80} className="field" placeholder="As it should appear on timesheets" />
+            </div>
+            <div>
+              <label htmlFor="invite-email" className="field-label">Email</label>
+              <input id="invite-email" name="email" type="email" required className="field" />
+            </div>
+            <div>
+              <label htmlFor="invite-role" className="field-label">Role</label>
+              <select id="invite-role" name="role" defaultValue="employee" className="field">
+                {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+              </select>
+            </div>
+          </div>
+        </ActionForm>
+      </section>
+
+      <section aria-labelledby="staff-heading">
+        <h2 id="staff-heading" className="text-xl font-semibold">Team ({staff.filter((s) => s.is_active).length} active)</h2>
+        <ul className="mt-3 flex flex-col gap-2">
+          {staff.map((person) => {
+            const pending = admin && signedIn.get(person.user_id) === false;
+            return (
+              <li key={person.user_id} className="rounded-xl border border-line bg-surface">
+                <details>
+                  <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3">
+                    <span className="font-semibold text-ink">{person.display_name}</span>
+                    <span className="text-sm text-muted">{person.email}</span>
+                    <span className="ml-auto flex flex-wrap gap-1.5">
+                      {person.user_id === me.user_id ? <span className="chip bg-steel-100 text-steel">You</span> : null}
+                      {pending ? <span className="chip bg-warn-bg text-warn">Hasn&apos;t signed in yet</span> : null}
+                      {!person.is_active ? <span className="chip bg-bad-bg text-bad">Deactivated</span> : null}
+                      <span className="chip bg-surface-2 text-ink capitalize">{person.role === "employee" ? "Staff" : person.role}</span>
+                    </span>
+                  </summary>
+                  <div className="flex flex-col gap-5 border-t border-line px-4 py-4">
+                    <ActionForm action={updateStaff} submitLabel="Save changes" className="flex flex-col gap-4">
+                      <input type="hidden" name="user_id" value={person.user_id} />
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label htmlFor={`name-${person.user_id}`} className="field-label">Name</label>
+                          <input id={`name-${person.user_id}`} name="display_name" defaultValue={person.display_name} required maxLength={80} className="field" />
+                        </div>
+                        <div>
+                          <label htmlFor={`role-${person.user_id}`} className="field-label">Role</label>
+                          <select id={`role-${person.user_id}`} name="role" defaultValue={person.role} className="field">
+                            {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label htmlFor={`std-${person.user_id}`} className="field-label">Standard day (hours)</label>
+                          <input id={`std-${person.user_id}`} name="standard_day_hours" type="number" min={0.25} max={24} step={0.25} defaultValue={person.standard_day_hours ?? ""} placeholder="Company default" className="field" />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="is_active" defaultChecked={person.is_active} className="size-4 accent-ink" />
+                        Active — can sign in. Untick to lock them out; their past time is kept.
+                      </label>
+                    </ActionForm>
+                    {admin ? (
+                      <ActionForm action={staffSignInLink} submitLabel="Get a new sign-in link" pendingLabel="Creating…" quiet className="border-t border-line pt-4">
+                        <input type="hidden" name="email" value={person.email} />
+                        <p className="mb-2 text-sm text-muted">Lost invite or forgotten password? This makes a fresh one-time link for {person.display_name}.</p>
+                      </ActionForm>
+                    ) : null}
+                  </div>
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    </div>
+  );
+}

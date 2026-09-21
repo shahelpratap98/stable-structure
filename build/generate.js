@@ -54,6 +54,9 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
    `lastmod` — update it ONLY when that page's content meaningfully changes.
    (2026-08-13 = the schema/font/perf sprint touched every page's head.) */
 const SPRINT_DATE = '2026-08-13';
+/* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
+   styling tweak does not also rewrite every page's sitemap <lastmod>. */
+const ASSET_VERSION = '2026-09-21';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -340,7 +343,7 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <link rel="icon" href="${base}assets/favicon.svg" type="image/svg+xml" />
 <link rel="icon" href="${base}assets/favicon-48.png" sizes="48x48" type="image/png" />
 <link rel="apple-touch-icon" href="${base}assets/apple-touch-icon.png" />
-<link rel="stylesheet" href="${base}styles.css?v=${SPRINT_DATE}" />
+<link rel="stylesheet" href="${base}styles.css?v=${ASSET_VERSION}" />
 <script type="application/ld+json">
 ${ldFor(o, file, pageUrl)}
 </script>
@@ -407,6 +410,7 @@ function header(base, active) {
       ${links}
     </nav>
     <div class="nav-cta">
+      <a class="staff-login" href="/portal/login" rel="nofollow">Staff login</a>
       <a class="btn btn-primary" href="${base}contact.html">Get a Free Quote</a>
     </div>
     <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false" aria-controls="mobileMenu">${si('burger', 2)}</button>
@@ -429,6 +433,7 @@ function header(base, active) {
   <a class="m-link" href="${base}testimonials.html">Reviews</a>
   <a class="m-link" href="${base}faq.html">FAQ</a>
   <a class="m-link" href="${base}contact.html">Contact</a>
+  <a class="m-link m-staff" href="/portal/login" rel="nofollow">Staff login</a>
   <div class="m-cta">
     <a class="btn btn-primary btn-lg" href="${base}contact.html">Get a Free Quote</a>
     <a class="btn btn-wa btn-lg" href="${waHref()}" target="_blank" rel="noopener">${wa()} WhatsApp us</a>
@@ -478,7 +483,7 @@ function footer(base) {
     </div>
     <div class="foot-bottom">
       <span>© <span id="year">2026</span> Stable Structure Limited. All rights reserved.</span>
-      <span><a href="${base}privacy.html">Privacy Policy</a> · Structural &amp; Civil Engineering · Auckland, New Zealand</span>
+      <span><a href="${base}privacy.html">Privacy Policy</a> · <a href="/portal/login" rel="nofollow">Staff login</a> · Structural &amp; Civil Engineering · Auckland, New Zealand</span>
     </div>
   </div>
 </footer>`;
@@ -515,8 +520,8 @@ function ctaBand(base, opts) {
 }
 
 /* ?v= busts the long-lived immutable cache (vercel.json) whenever these change:
-   bump SPRINT_DATE on any styles.css / main.js edit. */
-const scripts = (base) => `<script src="${base}main.js?v=${SPRINT_DATE}"></script>\n</body>\n</html>`;
+   bump ASSET_VERSION on any styles.css / main.js edit. */
+const scripts = (base) => `<script src="${base}main.js?v=${ASSET_VERSION}"></script>\n</body>\n</html>`;
 
 function pageHero(base, o) {
   const crumbs = (o.crumbs || []).map((c, i, arr) => {
