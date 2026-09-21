@@ -2,6 +2,7 @@
 
 import { useActionState, type ReactNode } from "react";
 import { CopyField } from "@/components/copy-field";
+import { Spinner } from "@/components/spinner";
 
 export type ActionState = { ok: boolean; message: string; link?: string } | undefined;
 export type FormAction = (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -32,7 +33,7 @@ export function ActionForm({
       <div className="flex flex-col gap-2">
         {hideSubmit ? null : (
           <button type="submit" disabled={pending} className={`btn self-start ${quiet ? "btn-quiet" : "btn-primary"}`}>
-            {pending ? pendingLabel : submitLabel}
+            {pending ? <><Spinner /> {pendingLabel}</> : submitLabel}
           </button>
         )}
         {state ? (

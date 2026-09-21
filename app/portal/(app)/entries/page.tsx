@@ -5,6 +5,7 @@ import { requireApprover } from "@/lib/auth";
 import { formatDay, formatHours, isIsoDate, todayNZ } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 import type { EntryStatus, EntryView } from "@/lib/types";
+import { FilterSubmit } from "@/components/pending-buttons";
 
 export const metadata: Metadata = { title: "All entries" };
 
@@ -106,7 +107,7 @@ export default async function EntriesPage({
           </select>
         </div>
         <div className="flex items-end gap-2">
-          <button type="submit" className="btn btn-primary">Filter</button>
+          <FilterSubmit>Filter</FilterSubmit>
           <Link href="/portal/entries" className="btn btn-quiet">Reset</Link>
         </div>
       </form>

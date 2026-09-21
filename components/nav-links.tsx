@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LinkPending } from "@/components/pending-buttons";
 
 type NavLink = { href: string; label: string; badge?: number };
 
@@ -17,11 +18,12 @@ export function NavLinks({ links }: { links: NavLink[] }) {
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold whitespace-nowrap transition-colors ${
               active ? "bg-white/15 text-white" : "text-white/75 hover:bg-white/10 hover:text-white"
             }`}
           >
             {link.label}
+            <LinkPending />
             {link.badge ? (
               <span className="ml-2 rounded-full bg-accent px-1.5 py-0.5 text-xs text-ink">{link.badge}</span>
             ) : null}

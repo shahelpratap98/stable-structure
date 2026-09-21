@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { signIn } from "@/app/portal/auth-actions";
 import { FormMessage } from "@/components/auth-card";
+import { Spinner } from "@/components/spinner";
 
 export function LoginForm({ next, notice }: { next: string; notice?: string }) {
   const [state, action, pending] = useActionState(signIn, undefined);
@@ -21,7 +22,7 @@ export function LoginForm({ next, notice }: { next: string; notice?: string }) {
       </div>
       {error ? <FormMessage tone="error">{error}</FormMessage> : null}
       <button type="submit" disabled={pending} className="btn btn-primary mt-1">
-        {pending ? "Signing in…" : "Sign in"}
+        {pending ? <><Spinner /> Signing in…</> : "Sign in"}
       </button>
     </form>
   );

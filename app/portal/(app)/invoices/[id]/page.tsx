@@ -10,6 +10,7 @@ import { emailEnabled } from "@/lib/email";
 import { loadInvoice } from "@/lib/invoices";
 import { createClient } from "@/lib/supabase/server";
 import { emailInvoice, setInvoiceStatus, voidInvoice } from "../actions";
+import { DownloadButton } from "@/components/pending-buttons";
 
 export const metadata: Metadata = { title: "Invoice" };
 
@@ -39,8 +40,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             <InvoiceStatusChip status={invoice.status} dueOn={invoice.due_on} />
           </h1>
         </div>
-        {/* Plain <a>: a file download, not a page. */}
-        <a href={`/portal/invoices/${invoice.id}/pdf`} className="btn btn-primary">Download PDF</a>
+        <DownloadButton href={`/portal/invoices/${invoice.id}/pdf`} busyLabel="Creating PDF…" className="btn btn-primary">Download PDF</DownloadButton>
       </div>
 
       {incomplete && !isVoid ? (

@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { setPassword } from "@/app/portal/auth-actions";
 import { FormMessage } from "@/components/auth-card";
+import { Spinner } from "@/components/spinner";
 
 export function SetPasswordForm() {
   const [state, action, pending] = useActionState(setPassword, undefined);
@@ -19,7 +20,7 @@ export function SetPasswordForm() {
       </div>
       {state?.error ? <FormMessage tone="error">{state.error}</FormMessage> : null}
       <button type="submit" disabled={pending} className="btn btn-primary mt-1">
-        {pending ? "Saving…" : "Save password and continue"}
+        {pending ? <><Spinner /> Saving…</> : "Save password and continue"}
       </button>
     </form>
   );

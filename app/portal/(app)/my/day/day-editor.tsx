@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { formatHours } from "@/lib/dates";
 import type { ProjectOption, TimeEntry, WorkTypeOption } from "@/lib/types";
 import { saveDay, type RowInput, type SaveDayResult } from "./actions";
+import { Spinner } from "@/components/spinner";
 
 type Row = {
   key: string;
@@ -61,6 +62,7 @@ export function DayEditor({
   const [removed, setRemoved] = useState<string[]>([]);
   const [result, setResult] = useState<SaveDayResult | null>(null);
   const [pending, startTransition] = useTransition();
+  const [action, setAction] = useState<"draft" | "submit">("draft"); // which button shows the wheel
 
   const update = (key: string, patch: Partial<Row>) => {
     setResult(null);
@@ -83,6 +85,7 @@ export function DayEditor({
   const gap = standard - total;
 
   const save = (submit: boolean) => {
+    setAction(submit ? "submit" : "draft");
     const payload: RowInput[] = rows.map((r) => ({
       key: r.key,
       id: r.id,
@@ -201,10 +204,10 @@ export function DayEditor({
         </button>
         <span className="flex-1" />
         <button type="button" disabled={pending} onClick={() => save(false)} className="btn btn-quiet">
-          {pending ? "Saving…" : "Save draft"}
+          {pending && action === "draft" ? <><Spinner /> Saving…</> : "Save draft"}
         </button>
         <button type="button" disabled={pending} onClick={() => save(true)} className="btn btn-accent">
-          Submit day for approval
+          {pending && action === "submit" ? <><Spinner /> Submitting…</> : "Submit day for approval"}
         </button>
       </div>
 

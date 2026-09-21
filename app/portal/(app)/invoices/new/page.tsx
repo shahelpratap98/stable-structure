@@ -7,6 +7,7 @@ import { isIsoDate, todayNZ } from "@/lib/dates";
 import { previewInvoice } from "@/lib/invoices";
 import { createClient } from "@/lib/supabase/server";
 import { createInvoice } from "../actions";
+import { FilterSubmit } from "@/components/pending-buttons";
 
 export const metadata: Metadata = { title: "New invoice" };
 
@@ -71,7 +72,7 @@ export default async function NewInvoicePage({
           <label htmlFor="i-to" className="field-label">Period to</label>
           <input id="i-to" name="to" type="date" defaultValue={to} required className="field" />
         </div>
-        <button type="submit" className="btn btn-quiet">Preview</button>
+        <FilterSubmit className="btn btn-quiet">Preview</FilterSubmit>
       </form>
 
       {failure ? <p role="alert" className="rounded-lg bg-bad-bg px-3 py-2 text-sm text-bad">{failure}</p> : null}

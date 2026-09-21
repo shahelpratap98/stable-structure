@@ -6,6 +6,8 @@ import { isApprover, requireProfile } from "@/lib/auth";
 import { findReport, parseReportParams, reportQuery } from "@/lib/report-params";
 import { buildReport, REPORTS, type Report } from "@/lib/reports";
 import { createClient } from "@/lib/supabase/server";
+import { DownloadButton, FilterSubmit } from "@/components/pending-buttons";
+import { LinkPending } from "@/components/pending-buttons";
 
 export const metadata: Metadata = { title: "Reports" };
 
@@ -65,11 +67,12 @@ export default async function ReportPage({
             key={t.slug}
             href={`/portal/reports/${t.slug}?from=${p.from}&to=${p.to}`}
             aria-current={t.slug === def.slug ? "page" : undefined}
-            className={`border-b-2 px-3 py-2 text-sm font-semibold whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-semibold whitespace-nowrap ${
               t.slug === def.slug ? "border-ink text-ink" : "border-transparent text-muted hover:text-ink"
             }`}
           >
             {approver || t.slug !== "employee" ? t.label : "My time"}
+            <LinkPending />
           </Link>
         ))}
       </nav>
@@ -111,11 +114,10 @@ export default async function ReportPage({
             </select>
           </div>
         ) : null}
-        <button type="submit" className="btn btn-primary">Update</button>
+        <FilterSubmit>Update</FilterSubmit>
         <span className="flex-1" />
         {hasRows ? (
-          // Plain <a>: this is a file download, not a page navigation.
-          <a href={`/portal/reports/${def.slug}/export?${reportQuery(p)}`} className="btn btn-quiet">Export to Excel</a>
+          <DownloadButton href={`/portal/reports/${def.slug}/export?${reportQuery(p)}`} busyLabel="Building the file…">Export to Excel</DownloadButton>
         ) : null}
       </form>
 
