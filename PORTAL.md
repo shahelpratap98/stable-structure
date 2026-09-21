@@ -50,6 +50,7 @@ is the same four files concatenated for pasting into the Supabase SQL editor.
 | `0400_seed_lists` | work types, clients and projects from the workbook's Lists sheet |
 | `0500_public_holidays` | NZ + Auckland public holidays 2025-2028; holiday-aware `hours_check` |
 | `0600_rate_limits` | shared rate-limit counters, callable only by the server |
+| `0700_external_invoices` | `invoices.is_external` + `record_external_invoice` for time billed from another system |
 
 Roles: `employee` (own time only, never sees rates or values), `approver`
 (all time, rates, approve / return), `admin` (approver + setup + invoices).

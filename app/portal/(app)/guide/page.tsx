@@ -147,7 +147,7 @@ export default async function GuidePage() {
             <li><Term>Hours check</Term> lists every day in a date range with its status: <span className="chip bg-bad-bg text-bad">SHORT by 2 hrs</span>, <span className="chip bg-warn-bg text-warn">Over by 1 hrs</span>, <span className="chip bg-ok-bg text-ok">OK - full day</span> or <span className="chip bg-steel-100 text-steel">Public holiday</span>, plus totals. Use it on a Friday to find any day you forgot.</li>
             <li><Term>{approver ? "Employee detail" : "My time"}</Term> lists every entry you&apos;ve submitted in the range, with its status.</li>
           </Points>
-          <p className="mt-4">Set the dates and choose <Term>Update</Term>. <Term>Export to Excel</Term> downloads exactly what is on screen.</p>
+          <p className="mt-4">Set the dates and choose <Term>Update</Term>. <Term>Export to Excel</Term> downloads exactly what is on screen, and <Term>Print / save as PDF</Term> gives a clean copy without the menus.</p>
           {!approver ? <Tip>You only ever see your own time. Charge-out rates and dollar values are not shown to staff.</Tip> : null}
         </>
       ),
@@ -197,7 +197,7 @@ export default async function GuidePage() {
       audience: "approver",
       body: (
         <>
-          <p><Go href="/portal/entries">All entries</Go> is the full timesheet: every line from everyone, including drafts. Filter by date range, employee, project, status or chargeable; the totals above the table follow the filter.</p>
+          <p><Go href="/portal/entries">All entries</Go> is the full timesheet: every line from everyone, including drafts. Filter by date range, employee, project, status or chargeable; the totals above the table follow the filter. <Term>Export to Excel</Term> downloads the filtered list in the old workbook&apos;s Timesheet layout.</p>
           <Points>
             <li><Term>Edit</Term> opens an entry so you can correct the date, project, work type, chargeable flag, hours or description.</li>
             <li><Term>Rate override</Term> charges that one entry at a different hourly rate from the project&apos;s. Leave it blank to use the project rate. Overridden rates show a <Term>*</Term> in the table.</li>
@@ -215,7 +215,7 @@ export default async function GuidePage() {
       audience: "approver",
       body: (
         <>
-          <p><Go href="/portal/reports">Reports</Go> has the same six views the workbook had. Each takes a date range, and <Term>Export to Excel</Term> downloads what&apos;s on screen. Drafts are never included.</p>
+          <p><Go href="/portal/reports">Reports</Go> has the same six views the workbook had. Each takes a date range. <Term>Export to Excel</Term> downloads what&apos;s on screen and <Term>Print / save as PDF</Term> prints it without the menus (the Client statement makes a tidy PDF to send with an invoice). Drafts are never included.</p>
           <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-[11rem_1fr]">
             <dt><Term>Hours check</Term></dt><dd>Short, over and full days for everyone or one person, with overtime and totals. For everyone at once, keep the range to two months or less.</dd>
             <dt><Term>Employee detail</Term></dt><dd>One person&apos;s entries line by line, with total hours and value.</dd>
@@ -305,6 +305,7 @@ export default async function GuidePage() {
           <Points>
             <li>If the preview says some time has <Term>no charge-out rate</Term>, set the rate on the project (or a rate override on those entries) and preview again.</li>
             <li>A sent invoice past its due date shows as <span className="chip bg-warn-bg text-warn">Overdue</span>.</li>
+            <li><Term>Invoiced it from Xero or another system instead?</Term> Preview the project and period as usual, then open <Term>Already invoiced this somewhere else?</Term>, enter that invoice&apos;s number and choose <Term>Mark this time as invoiced</Term>. The time drops off &quot;ready to invoice&quot; and shows as <span className="chip bg-steel-100 text-steel">Billed elsewhere</span> in the list. It doesn&apos;t use up a portal invoice number.</li>
             <li><Term>Made a mistake?</Term> <Term>Void</Term> the invoice. Its entries go back to Approved so they can be corrected and billed again. The voided number is never reused, which keeps your numbering clean for your accountant.</li>
           </Points>
           <Tip>Fill in your GST number and bank details under <Go href="/portal/admin/settings">Company &amp; GST</Go> before sending your first invoice. The invoice page warns you while they&apos;re missing.</Tip>

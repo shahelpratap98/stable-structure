@@ -22,6 +22,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
   const loaded = await loadInvoice(supabase, id);
   if (!loaded) return new NextResponse("Not found.", { status: 404 });
+  if (loaded.invoice.is_external) return new NextResponse("This invoice was raised outside the portal, so there is no PDF.", { status: 404 });
 
   const pdf = await renderInvoicePdf(loaded);
   return new NextResponse(new Uint8Array(pdf), {

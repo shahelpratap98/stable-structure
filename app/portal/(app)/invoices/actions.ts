@@ -39,6 +39,35 @@ export async function createInvoice(_prev: ActionState, fd: FormData): Promise<A
   redirect(`/portal/invoices/${data}`);
 }
 
+// Time that was invoiced from another system: record its number so the time
+// stops showing as "ready to invoice". Same selection rule as createInvoice.
+export async function recordExternalInvoice(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const me = await requireAdmin();
+  const limit = await rateLimit("bulkActions", me.user_id);
+  if (!limit.ok) return { ok: false, message: "Too many actions in a short time. " + waitMessage(limit.retryAfter) };
+
+  const projectId = text(fd, "project_id");
+  const from = text(fd, "from");
+  const to = text(fd, "to");
+  const issued = text(fd, "issued_on");
+  const invoiceNo = text(fd, "invoice_no");
+  if (!projectId || !isIsoDate(from) || !isIsoDate(to) || !isIsoDate(issued)) return { ok: false, message: "Pick a project, a period and the invoice date." };
+  if (!invoiceNo) return { ok: false, message: "Enter the invoice number from your other system." };
+  if (invoiceNo.length > 40) return { ok: false, message: "Invoice numbers can be up to 40 characters." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("record_external_invoice", {
+    p_project_id: projectId, p_from: from, p_to: to, p_invoice_no: invoiceNo, p_issued_on: issued,
+  });
+  if (error) {
+    const missing = /record_external_invoice|schema cache/i.test(error.message);
+    return { ok: false, message: missing ? "This feature needs a database update that hasn't been run yet (migration 0700)." : error.message };
+  }
+
+  refresh();
+  redirect(`/portal/invoices/${data}`);
+}
+
 export async function setInvoiceStatus(_prev: ActionState, fd: FormData): Promise<ActionState> {
   await requireAdmin();
   const id = text(fd, "id");

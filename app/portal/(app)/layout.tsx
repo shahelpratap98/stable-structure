@@ -34,7 +34,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen">
-      <header className="bg-ink text-white">
+      <header className="bg-ink text-white print:hidden">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-2 px-4 py-3 sm:px-6">
           <a href={WEBSITE_URL} className="flex items-center gap-3" aria-label="Stable Structure website">
             {/* Same logo file as the website header. */}
@@ -60,7 +60,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>
+      {/* printed pages get a plain letterhead line instead of the menu bar */}
+      <p className="hidden border-b border-ink pb-2 text-sm font-semibold text-ink print:block">Stable Structure Limited · Staff portal</p>
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 print:max-w-none print:p-0 print:pt-4">{children}</main>
     </div>
   );
 }
