@@ -6,15 +6,16 @@ import type { Profile, Role } from "@/lib/types";
 // The signed-in person's profile, or a redirect to /login. Cached per request.
 export const requireProfile = cache(async (): Promise<Profile> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/portal/login");
+  // Local signature check (no network). The profile query below runs under
+  // this token, so the database re-validates it and applies row-level security.
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims?.sub;
+  if (!userId) redirect("/portal/login");
 
   const { data: profile } = await supabase
     .from("profiles")
     .select("user_id, display_name, email, role, standard_day_hours, is_active")
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .maybeSingle();
 
   // Deactivated staff keep their auth user (history stays intact) but the

@@ -64,9 +64,11 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims() checks the token's signature against the project's public key
+  // (fetched once and cached), so this costs no network round trip. It still
+  // refreshes an expired session. getUser() would call Supabase on every request.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims?.sub ? { id: data.claims.sub } : null;
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
