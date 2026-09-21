@@ -112,6 +112,16 @@ Two layers, both in code:
 Requests are also size-capped: 50 entries per day, 500 ids per bulk action,
 500-character descriptions. Supabase Auth applies its own limits on top.
 
+## Keeping the free database awake
+
+Free Supabase projects pause after about a week without activity. Vercel Cron
+(`crons` in `vercel.json`) calls `/portal/auth/keepalive` every day at 18:00 UTC
+(6 am NZST); it runs one real query using the service key. Check it under
+Vercel -> project -> Cron Jobs, or open the URL yourself: `{"ok":true,...}`.
+Optional: set `CRON_SECRET` in Vercel to restrict the endpoint to Vercel's cron.
+This is a workaround, not a backup. Delete the `crons` entry after moving to
+Supabase Pro.
+
 ## Deploying (existing Vercel project)
 
 No new project and no settings to change: `vercel.json` on this branch tells
