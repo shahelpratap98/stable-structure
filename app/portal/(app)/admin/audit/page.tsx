@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { FilterSubmit } from "@/components/pending-buttons";
 
 export const metadata: Metadata = { title: "Audit log" };
 
@@ -67,7 +68,7 @@ export default async function AuditPage({
             {Object.entries(TABLES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
-        <button type="submit" className="btn btn-quiet">Filter</button>
+        <FilterSubmit className="btn btn-quiet">Filter</FilterSubmit>
       </form>
 
       {error ? (

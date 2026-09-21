@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { requestReset } from "@/app/portal/auth-actions";
 import { FormMessage } from "@/components/auth-card";
+import { Spinner } from "@/components/spinner";
 
 export function ResetForm() {
   const [state, action, pending] = useActionState(requestReset, undefined);
@@ -16,7 +17,7 @@ export function ResetForm() {
       {state?.error ? <FormMessage tone="error">{state.error}</FormMessage> : null}
       {state?.ok ? <FormMessage tone="ok">{state.ok}</FormMessage> : null}
       <button type="submit" disabled={pending} className="btn btn-primary mt-1">
-        {pending ? "Sending…" : "Send reset link"}
+        {pending ? <><Spinner /> Sending…</> : "Send reset link"}
       </button>
     </form>
   );

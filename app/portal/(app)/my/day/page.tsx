@@ -6,6 +6,7 @@ import { addDays, formatDay, formatHours, isIsoDate, isWeekend, todayNZ, weekSta
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectOption, TimeEntry, WorkTypeOption } from "@/lib/types";
 import { DayEditor } from "./day-editor";
+import { FilterSubmit, LinkPending } from "@/components/pending-buttons";
 
 export const metadata: Metadata = { title: "My day" };
 
@@ -67,7 +68,7 @@ export default async function MyDayPage({
             <label htmlFor="day-picker" className="field-label">Go to date</label>
             <input id="day-picker" type="date" name="date" defaultValue={date} max={addDays(today, 31)} className="field" />
           </div>
-          <button type="submit" className="btn btn-quiet">Go</button>
+          <FilterSubmit className="btn btn-quiet">Go</FilterSubmit>
         </form>
       </div>
 
@@ -92,7 +93,7 @@ export default async function MyDayPage({
               key={d}
               href={`/portal/my/day?date=${d}`}
               aria-current={d === date ? "date" : undefined}
-              className={`flex min-w-0 flex-col items-center rounded-xl border px-1 py-2 text-center ${tone} ${
+              className={`relative flex min-w-0 flex-col items-center rounded-xl border px-1 py-2 text-center ${tone} ${
                 d === date ? "ring-2 ring-ink ring-offset-2 ring-offset-bg" : "hover:border-ink/40"
               }`}
             >
@@ -100,14 +101,15 @@ export default async function MyDayPage({
               <span className="font-display text-lg font-semibold text-ink">{formatDay(d, { day: "numeric" })}</span>
               <span className="text-xs font-semibold tabular-nums">{formatHours(sent)} h</span>
               <span className="hidden truncate text-[11px] sm:block">{note || " "}</span>
+              <LinkPending className="absolute top-1 right-1 size-3" />
             </Link>
           );
         })}
       </nav>
       <div className="-mt-5 flex justify-between text-sm">
-        <Link href={`/portal/my/day?date=${addDays(monday, -7)}`} className="font-semibold text-accent-600 hover:underline">← Previous week</Link>
+        <Link href={`/portal/my/day?date=${addDays(monday, -7)}`} className="inline-flex items-center gap-1.5 font-semibold text-accent-600 hover:underline">← Previous week <LinkPending /></Link>
         {date !== today ? <Link href="/portal/my/day" className="font-semibold text-accent-600 hover:underline">Today</Link> : null}
-        <Link href={`/portal/my/day?date=${addDays(monday, 7)}`} className="font-semibold text-accent-600 hover:underline">Next week →</Link>
+        <Link href={`/portal/my/day?date=${addDays(monday, 7)}`} className="inline-flex items-center gap-1.5 font-semibold text-accent-600 hover:underline"><LinkPending /> Next week →</Link>
       </div>
 
       {projects.length === 0 ? (

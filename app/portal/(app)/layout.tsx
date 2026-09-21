@@ -4,6 +4,7 @@ import { NavLinks } from "@/components/nav-links";
 import { isAdmin, isApprover, requireProfile } from "@/lib/auth";
 import { WEBSITE_URL } from "@/lib/paths";
 import { createClient } from "@/lib/supabase/server";
+import { ActionSubmit } from "@/components/pending-buttons";
 
 const ROLE_LABEL = { employee: "Staff", approver: "Approver", admin: "Admin" } as const;
 
@@ -51,9 +52,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               </span>
             </span>
             <form action={signOut}>
-              <button type="submit" className="font-semibold text-white/80 underline-offset-4 hover:text-white hover:underline">
+              <ActionSubmit pendingLabel="Signing out…" className="font-semibold text-white/80 underline-offset-4 hover:text-white hover:underline">
                 Sign out
-              </button>
+              </ActionSubmit>
             </form>
           </div>
         </div>

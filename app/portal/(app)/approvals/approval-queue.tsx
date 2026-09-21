@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { formatDay, formatHours } from "@/lib/dates";
 import type { EntryView } from "@/lib/types";
 import { approveEntries, returnEntries, type ApprovalResult } from "./actions";
+import { Spinner } from "@/components/spinner";
 
 const money = new Intl.NumberFormat("en-NZ", { style: "currency", currency: "NZD" });
 
@@ -14,6 +15,7 @@ export function ApprovalQueue({ entries }: { entries: EntryView[] }) {
   const [note, setNote] = useState("");
   const [result, setResult] = useState<ApprovalResult | null>(null);
   const [pending, startTransition] = useTransition();
+  const [action, setAction] = useState<"approve" | "return">("approve"); // which button shows the wheel
 
   // person -> their submitted entries, in date order
   const groups = useMemo(() => {
@@ -129,11 +131,11 @@ export function ApprovalQueue({ entries }: { entries: EntryView[] }) {
             <label htmlFor="return-note" className="field-label">Note (only needed when returning)</label>
             <input id="return-note" className="field" type="text" maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Wrong project — should be 26104" />
           </div>
-          <button type="button" disabled={pending || ids.length === 0} onClick={() => run(() => returnEntries(ids, note))} className="btn btn-quiet">
-            Return selected
+          <button type="button" disabled={pending || ids.length === 0} onClick={() => { setAction("return"); run(() => returnEntries(ids, note)); }} className="btn btn-quiet">
+            {pending && action === "return" ? <><Spinner /> Returning…</> : "Return selected"}
           </button>
-          <button type="button" disabled={pending || ids.length === 0} onClick={() => run(() => approveEntries(ids))} className="btn btn-accent">
-            {pending ? "Working…" : "Approve selected"}
+          <button type="button" disabled={pending || ids.length === 0} onClick={() => { setAction("approve"); run(() => approveEntries(ids)); }} className="btn btn-accent">
+            {pending && action === "approve" ? <><Spinner /> Approving…</> : "Approve selected"}
           </button>
         </div>
         {result ? (
