@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/auth";
 import { isIsoDate, todayNZ } from "@/lib/dates";
 import { previewInvoice } from "@/lib/invoices";
 import { createClient } from "@/lib/supabase/server";
-import { createInvoice } from "../actions";
+import { createInvoice, recordExternalInvoice } from "../actions";
 import { FilterSubmit } from "@/components/pending-buttons";
 
 export const metadata: Metadata = { title: "New invoice" };
@@ -109,6 +109,30 @@ export default async function NewInvoicePage({
                 </p>
               </ActionForm>
             )}
+
+            <details className="rounded-xl border border-line bg-surface">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-ink">Already invoiced this somewhere else?</summary>
+              <div className="border-t border-line px-4 py-4">
+                <p className="max-w-[65ch] text-sm text-muted">
+                  If this time was billed from another system (Xero, a Word invoice), record that invoice&apos;s number here. The {preview.count} time{" "}
+                  {preview.count === 1 ? "entry" : "entries"} above will be marked as invoiced with that number and drop off &quot;ready to invoice&quot;.
+                  No portal invoice or PDF is created, and the portal&apos;s own numbering isn&apos;t used up.
+                </p>
+                <ActionForm action={recordExternalInvoice} submitLabel="Mark this time as invoiced" pendingLabel="Recording…" quiet className="mt-3 flex flex-wrap items-end gap-3">
+                  <input type="hidden" name="project_id" value={project.id} />
+                  <input type="hidden" name="from" value={from} />
+                  <input type="hidden" name="to" value={to} />
+                  <div>
+                    <label htmlFor="x-no" className="field-label">Their invoice number</label>
+                    <input id="x-no" name="invoice_no" required maxLength={40} className="field" placeholder="e.g. XERO-1042" />
+                  </div>
+                  <div>
+                    <label htmlFor="x-issued" className="field-label">Invoice date</label>
+                    <input id="x-issued" name="issued_on" type="date" defaultValue={today} required className="field" />
+                  </div>
+                </ActionForm>
+              </div>
+            </details>
           </section>
         )
       ) : null}

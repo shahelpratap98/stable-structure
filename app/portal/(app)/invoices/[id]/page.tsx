@@ -28,6 +28,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   if (!loaded) notFound();
   const { invoice, lines, settings } = loaded;
   const isVoid = invoice.status === "void";
+  const external = Boolean(invoice.is_external);
   const incomplete = !settings.gst_number || !settings.bank_details;
 
   return (
@@ -36,14 +37,21 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         <div>
           <Link href="/portal/invoices" className="text-sm font-semibold text-accent-600 hover:underline">← Invoices</Link>
           <h1 className="mt-2 flex flex-wrap items-center gap-3 text-3xl font-semibold">
-            Tax invoice {invoice.invoice_no}
+            {external ? "Invoice" : "Tax invoice"} {invoice.invoice_no}
             <InvoiceStatusChip status={invoice.status} dueOn={invoice.due_on} />
           </h1>
         </div>
-        <DownloadButton href={`/portal/invoices/${invoice.id}/pdf`} busyLabel="Creating PDF…" className="btn btn-primary">Download PDF</DownloadButton>
+        {external ? null : <DownloadButton href={`/portal/invoices/${invoice.id}/pdf`} busyLabel="Creating PDF…" className="btn btn-primary">Download PDF</DownloadButton>}
       </div>
 
-      {incomplete && !isVoid ? (
+      {external ? (
+        <p className="rounded-xl border border-line bg-steel-100 px-4 py-3 text-sm text-steel">
+          <span className="font-semibold">Billed outside the portal.</span> This records that the time below was invoiced from another system as {invoice.invoice_no}, so it
+          no longer shows as ready to invoice. The amounts are the portal&apos;s own calculation and may differ from the real invoice. There is no PDF.
+        </p>
+      ) : null}
+
+      {incomplete && !isVoid && !external ? (
         <p className="rounded-xl border border-warn/30 bg-warn-bg px-4 py-3 text-sm text-warn">
           The invoice header is missing your {[!settings.gst_number && "GST number", !settings.bank_details && "bank details"].filter(Boolean).join(" and ")}.
           {admin ? <> Add them under <Link href="/portal/admin/settings" className="font-semibold underline">Setup → Company &amp; GST</Link> before sending.</> : null}
@@ -112,7 +120,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 </ActionForm>
               ) : null}
             </div>
-            {emailEnabled() ? (
+            {external ? null : emailEnabled() ? (
               <ActionForm action={emailInvoice} submitLabel={`Email PDF to ${invoice.client?.billing_email ?? "client"}`} pendingLabel="Sending…" className="border-t border-line pt-4">
                 <input type="hidden" name="id" value={invoice.id} />
               </ActionForm>

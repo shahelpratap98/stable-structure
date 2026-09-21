@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { PrintButton } from "@/components/print-button";
 import { ReportTableView } from "@/components/report-table";
 import { isApprover, requireProfile } from "@/lib/auth";
 import { findReport, parseReportParams, reportQuery } from "@/lib/report-params";
@@ -61,7 +62,7 @@ export default async function ReportPage({
         {report ? <p className="mt-1 text-muted">{report.subtitle}</p> : null}
       </div>
 
-      <nav aria-label="Reports" className="-mb-px flex gap-1 overflow-x-auto border-b border-line">
+      <nav aria-label="Reports" className="-mb-px flex print:hidden gap-1 overflow-x-auto border-b border-line">
         {tabs.map((t) => (
           <Link
             key={t.slug}
@@ -77,7 +78,7 @@ export default async function ReportPage({
         ))}
       </nav>
 
-      <form action={`/portal/reports/${def.slug}`} className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4">
+      <form action={`/portal/reports/${def.slug}`} className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4 print:hidden">
         <div>
           <label htmlFor="r-from" className="field-label">From</label>
           <input id="r-from" name="from" type="date" defaultValue={p.from} className="field" />
@@ -118,6 +119,9 @@ export default async function ReportPage({
         <span className="flex-1" />
         {hasRows ? (
           <DownloadButton href={`/portal/reports/${def.slug}/export?${reportQuery(p)}`} busyLabel="Building the file…">Export to Excel</DownloadButton>
+        ) : null}
+        {hasRows ? (
+          <PrintButton />
         ) : null}
       </form>
 

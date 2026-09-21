@@ -2,20 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { StatusChip } from "@/components/status-chip";
 import { requireApprover } from "@/lib/auth";
-import { formatDay, formatHours, isIsoDate, todayNZ } from "@/lib/dates";
+import { formatDay, formatHours } from "@/lib/dates";
+import { ENTRY_STATUSES, entryFilterQuery, fetchEntryRows, parseEntryFilters } from "@/lib/entry-filters";
 import { createClient } from "@/lib/supabase/server";
-import type { EntryStatus, EntryView } from "@/lib/types";
-import { FilterSubmit } from "@/components/pending-buttons";
+import { DownloadButton, FilterSubmit } from "@/components/pending-buttons";
+import { PrintButton } from "@/components/print-button";
 
 export const metadata: Metadata = { title: "All entries" };
 
-const STATUSES: EntryStatus[] = ["draft", "submitted", "returned", "approved", "invoiced"];
+const STATUSES = ENTRY_STATUSES;
 const MAX_ROWS = 1000;
 const money = new Intl.NumberFormat("en-NZ", { style: "currency", currency: "NZD" });
-
-type Row = EntryView & { invoice_no: string | null; approved_by_name: string | null; rate_override: number | null };
-
-const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
 
 // The workbook's Timesheet tab: every entry, with the same columns.
 export default async function EntriesPage({
@@ -25,36 +22,17 @@ export default async function EntriesPage({
 }) {
   await requireApprover();
   const params = await searchParams;
-  const today = todayNZ();
-
-  const from = isIsoDate(params.from) ? params.from : today.slice(0, 8) + "01";
-  const to = isIsoDate(params.to) ? params.to : today;
-  const userId = one(params.user);
-  const projectId = one(params.project);
-  const status = STATUSES.includes(one(params.status) as EntryStatus) ? (one(params.status) as EntryStatus) : "";
-  const chargeable = ["yes", "no"].includes(one(params.chargeable)) ? one(params.chargeable) : "";
+  const f = parseEntryFilters((name) => (typeof params[name] === "string" ? (params[name] as string) : null));
+  const { from, to, userId, projectId, status, chargeable } = f;
 
   const supabase = await createClient();
-  let query = supabase
-    .from("v_entries")
-    .select("id, entry_date, user_id, employee, project_no, project, work_type, chargeable, hours, description, status, rate, rate_override, value, approved_by_name, invoice_no")
-    .gte("entry_date", from)
-    .lte("entry_date", to)
-    .order("entry_date", { ascending: false })
-    .order("employee")
-    .limit(MAX_ROWS);
-  if (userId) query = query.eq("user_id", userId);
-  if (projectId) query = query.eq("project_id", projectId);
-  if (status) query = query.eq("status", status);
-  if (chargeable) query = query.eq("chargeable", chargeable === "yes");
-
   const [entriesRes, staffRes, projectsRes] = await Promise.all([
-    query,
+    fetchEntryRows(supabase, f, MAX_ROWS),
     supabase.from("profiles").select("user_id, display_name").order("display_name"),
     supabase.from("projects").select("id, project_no, name").order("project_no", { ascending: false }),
   ]);
 
-  const rows = (entriesRes.data ?? []) as Row[];
+  const rows = entriesRes.rows;
   const totalHours = rows.reduce((s, r) => s + Number(r.hours ?? 0), 0);
   const totalValue = rows.reduce((s, r) => s + Number(r.value ?? 0), 0);
 
@@ -65,10 +43,14 @@ export default async function EntriesPage({
           <h1 className="text-3xl font-semibold">All entries</h1>
           <p className="mt-1 text-muted">Every timesheet line. Open one to correct it or set a rate override.</p>
         </div>
-        <Link href="/portal/entries/new" className="btn btn-primary">+ Add an entry for someone</Link>
+        <div className="flex flex-wrap items-start gap-2 print:hidden">
+          {rows.length > 0 ? <DownloadButton href={`/portal/entries/export?${entryFilterQuery(f)}`} busyLabel="Building the file…">Export to Excel</DownloadButton> : null}
+          {rows.length > 0 ? <PrintButton /> : null}
+          <Link href="/portal/entries/new" className="btn btn-primary">+ Add an entry for someone</Link>
+        </div>
       </div>
 
-      <form action={"/portal/entries"} className="grid gap-3 rounded-xl border border-line bg-surface p-4 sm:grid-cols-3 lg:grid-cols-[repeat(6,minmax(0,1fr))_auto]">
+      <form action={"/portal/entries"} className="grid gap-3 print:hidden rounded-xl border border-line bg-surface p-4 sm:grid-cols-3 lg:grid-cols-[repeat(6,minmax(0,1fr))_auto]">
         <div>
           <label htmlFor="f-from" className="field-label">From</label>
           <input id="f-from" name="from" type="date" defaultValue={from} className="field" />
@@ -120,7 +102,7 @@ export default async function EntriesPage({
       </p>
 
       {entriesRes.error ? (
-        <p role="alert" className="rounded-lg bg-bad-bg px-3 py-2 text-sm text-bad">Couldn&apos;t load entries: {entriesRes.error.message}</p>
+        <p role="alert" className="rounded-lg bg-bad-bg px-3 py-2 text-sm text-bad">Couldn&apos;t load entries: {entriesRes.error}</p>
       ) : rows.length === 0 ? (
         <p className="rounded-xl border border-line bg-surface px-5 py-8 text-center text-muted">No entries match those filters.</p>
       ) : (

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Invoices" };
 const money = new Intl.NumberFormat("en-NZ", { style: "currency", currency: "NZD" });
 
 type Uninvoiced = { project_id: string; project_no: string; project: string; client: string | null; hours: number; amount: number | null; entries: number; first_date: string; last_date: string };
-type InvoiceRow = { id: string; invoice_no: string; issued_on: string; due_on: string; total: number; total_hours: number; status: "draft" | "sent" | "paid" | "void"; project: { project_no: string; name: string } | null; client: { name: string } | null };
+type InvoiceRow = { id: string; invoice_no: string; issued_on: string; due_on: string; total: number; total_hours: number; status: "draft" | "sent" | "paid" | "void"; is_external?: boolean; project: { project_no: string; name: string } | null; client: { name: string } | null };
 
 export default async function InvoicesPage() {
   const profile = await requireApprover();
@@ -21,7 +21,7 @@ export default async function InvoicesPage() {
     supabase.from("v_uninvoiced").select("*").order("amount", { ascending: false, nullsFirst: false }),
     supabase
       .from("invoices")
-      .select("id, invoice_no, issued_on, due_on, total, total_hours, status, project:projects(project_no, name), client:clients(name)")
+      .select("*, project:projects(project_no, name), client:clients(name)")
       .order("created_at", { ascending: false })
       .limit(500),
   ]);
@@ -30,7 +30,7 @@ export default async function InvoicesPage() {
 
   const readyHours = uninvoiced.reduce((s, u) => s + Number(u.hours), 0);
   const readyAmount = uninvoiced.reduce((s, u) => s + Number(u.amount ?? 0), 0);
-  const outstanding = invoices.filter((i) => i.status === "sent").reduce((s, i) => s + Number(i.total), 0);
+  const outstanding = invoices.filter((i) => i.status === "sent" && !i.is_external).reduce((s, i) => s + Number(i.total), 0);
 
   return (
     <div className="flex flex-col gap-8">
@@ -51,7 +51,7 @@ export default async function InvoicesPage() {
         <div className="rounded-xl border border-line bg-surface p-4">
           <dt className="text-sm text-muted">Sent, awaiting payment</dt>
           <dd className="font-display text-2xl font-semibold text-ink tabular-nums">{money.format(outstanding)}</dd>
-          <dd className="text-sm text-muted">{invoices.filter((i) => i.status === "sent").length} invoices (incl. GST)</dd>
+          <dd className="text-sm text-muted">{invoices.filter((i) => i.status === "sent" && !i.is_external).length} portal invoices (incl. GST)</dd>
         </div>
         <div className="rounded-xl border border-line bg-surface p-4">
           <dt className="text-sm text-muted">Drafts not yet sent</dt>
@@ -119,7 +119,7 @@ export default async function InvoicesPage() {
               <tbody className="divide-y divide-line">
                 {invoices.map((i) => (
                   <tr key={i.id}>
-                    <td className="px-4 py-2.5"><Link href={`/portal/invoices/${i.id}`} className="font-semibold text-accent-600 tabular-nums hover:underline">{i.invoice_no}</Link></td>
+                    <td className="px-4 py-2.5"><Link href={`/portal/invoices/${i.id}`} className="font-semibold text-accent-600 tabular-nums hover:underline">{i.invoice_no}</Link>{i.is_external ? <span className="chip ml-2 bg-steel-100 text-steel">Billed elsewhere</span> : null}</td>
                     <td className="px-4 py-2.5">{i.project?.project_no} · {i.project?.name}</td>
                     <td className="px-4 py-2.5">{i.client?.name ?? "—"}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap">{formatDay(i.issued_on, { day: "2-digit", month: "short", year: "2-digit" })}</td>

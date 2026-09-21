@@ -16,6 +16,7 @@ export type InvoiceRecord = {
   gst: number;
   total: number;
   status: "draft" | "sent" | "paid" | "void";
+  is_external?: boolean; // billed outside the portal (column added by migration 0700)
   project: { project_no: string; name: string } | null;
   client: { name: string; billing_email: string | null; address: string | null } | null;
 };
@@ -85,7 +86,7 @@ export async function loadInvoice(supabase: SupabaseClient, id: string) {
   const [{ data: invoice }, { data: entries }, { data: settings }] = await Promise.all([
     supabase
       .from("invoices")
-      .select("id, invoice_no, project_id, period_from, period_to, issued_on, due_on, total_hours, subtotal, gst_rate, gst, total, status, project:projects(project_no, name), client:clients(name, billing_email, address)")
+      .select("*, project:projects(project_no, name), client:clients(name, billing_email, address)")
       .eq("id", id)
       .maybeSingle(),
     supabase.from("v_entries").select(LINE_COLUMNS).eq("invoice_id", id).order("entry_date").limit(5000),

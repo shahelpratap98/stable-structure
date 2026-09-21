@@ -82,3 +82,45 @@ h3 {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap;
   }
 }
+
+/* Printing (the workbook's report tabs had print areas). Menus, filters and
+   buttons carry print:hidden; this handles paper size and the tables. */
+@page {
+  size: A4 landscape;
+  margin: 12mm;
+}
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    font-size: 11px;
+  }
+  /* tables scroll sideways on screen; on paper they must lay out in full */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 10px;
+  }
+  thead {
+    display: table-header-group; /* repeat the header row on every page */
+  }
+  tr,
+  section {
+    break-inside: avoid;
+  }
+  td,
+  th {
+    padding: 3px 6px !important;
+    white-space: normal !important;
+  }
+  .chip {
+    padding: 0 !important;
+    background: none !important;
+  }
+  nextjs-portal {
+    display: none !important;
+  }
+}
