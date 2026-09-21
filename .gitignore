@@ -4,3 +4,15 @@ node_modules/
 
 # Lighthouse raw runs (large); summary.json is kept
 reports/lighthouse/mobile-*.json
+
+# Next.js (staff portal)
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+.vercel
+.env*
+!.env.example
+
+# build/copy-public.mjs fills this from the generated site on every build
+/public/

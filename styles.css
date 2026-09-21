@@ -94,6 +94,12 @@ header.site.scrolled{border-bottom-color:var(--line); box-shadow:var(--shadow-sm
 .nav-links .nl.active{color:var(--ink); font-weight:600}
 .nav-links .nl.active::after{content:""}
 .nav-cta{display:none; align-items:center; gap:10px}
+/* Staff portal link: present at the top, deliberately quieter than the customer links */
+.staff-login{display:none; padding:9px 4px; border-radius:9px; font-size:14px; font-weight:600; color:var(--steel); white-space:nowrap; transition:color .15s, background .15s}
+.staff-login:hover{color:var(--ink); background:var(--surface-2)}
+/* the nine customer links need the room below 1260px; the footer and mobile menu still carry it */
+@media(min-width:1260px){ .staff-login{display:inline-flex} .nav-links .nl{white-space:nowrap} }
+.mobile-menu a.m-link.m-staff{color:var(--steel); font-size:16px}
 .nav-icons{display:none; align-items:center; gap:8px}
 .icon-btn{width:48px;height:48px; display:grid; place-items:center; border-radius:11px; border:1px solid var(--line-2);
   background:var(--surface); color:var(--ink); transition:transform .15s, border-color .15s, background .15s}
