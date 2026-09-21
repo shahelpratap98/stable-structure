@@ -25,7 +25,7 @@ How the two halves share one app:
 
 - Next.js 16 (App Router, `proxy.ts` for the session check and flood protection), TypeScript, Tailwind 4
 - Supabase: Postgres, Auth (invite-only, email + password), row-level security
-- Project ref `tpdctcloihxehqevbzui`
+- Project ref `opfdfyxkwevkyyyaiifv`
 
 ## Run locally
 
