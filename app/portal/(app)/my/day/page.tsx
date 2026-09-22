@@ -23,7 +23,7 @@ export default async function MyDayPage({
   const week = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
 
   const supabase = await createClient();
-  const [projectsRes, workTypesRes, weekRes, settingsRes, holidaysRes] = await Promise.all([
+  const [projectsRes, workTypesRes, weekRes, settingsRes, holidaysRes, leaveRes] = await Promise.all([
     supabase.from("projects").select("id, project_no, name, default_chargeable").eq("status", "active").order("project_no"),
     supabase.from("work_types").select("id, name").eq("is_active", true).order("sort_order"),
     supabase
@@ -35,12 +35,14 @@ export default async function MyDayPage({
       .order("created_at"),
     supabase.from("settings").select("standard_day_hours").maybeSingle(),
     supabase.from("public_holidays").select("day, name").gte("day", week[0]).lte("day", week[6]),
+    supabase.from("leave_requests").select("start_date, end_date, leave_type").eq("user_id", profile.user_id).eq("status", "approved").lte("start_date", week[6]).gte("end_date", week[0]),
   ]);
 
   const projects = (projectsRes.data ?? []) as ProjectOption[];
   const workTypes = (workTypesRes.data ?? []) as WorkTypeOption[];
   const weekEntries = (weekRes.data ?? []) as TimeEntry[];
   const holidays = new Map((holidaysRes.data ?? []).map((h) => [h.day as string, h.name as string]));
+  const onLeave = (d: string) => (leaveRes.data ?? []).find((l) => d >= l.start_date && d <= l.end_date)?.leave_type as string | undefined;
   const standard = Number(profile.standard_day_hours ?? settingsRes.data?.standard_day_hours ?? 8);
 
   const dayEntries = weekEntries.filter((e) => e.entry_date === date);
@@ -60,7 +62,7 @@ export default async function MyDayPage({
         <div>
           <h1 className="text-3xl font-semibold">{formatDay(date, { weekday: "long", day: "numeric", month: "long" })}</h1>
           <p className="mt-1 text-muted">
-            {date === today ? "Today. " : ""}{holidays.has(date) ? `${holidays.get(date)} (public holiday). ` : ""}Enter your time, then submit the day for approval.
+            {date === today ? "Today. " : ""}{holidays.has(date) ? `${holidays.get(date)} (public holiday). ` : onLeave(date) ? `You have approved ${onLeave(date)} leave on this day. ` : ""}Enter your time, then submit the day for approval.
           </p>
         </div>
         <form className="flex items-end gap-2" action={"/portal/my/day"}>
@@ -79,7 +81,7 @@ export default async function MyDayPage({
           const sent = entries.filter((e) => e.status !== "draft").reduce((s, e) => s + Number(e.hours ?? 0), 0);
           const hasDraft = entries.some((e) => e.status === "draft");
           const hasReturned = entries.some((e) => e.status === "returned");
-          const weekend = isWeekend(d) || holidays.has(d);
+          const weekend = isWeekend(d) || holidays.has(d) || Boolean(onLeave(d));
           const past = d <= today;
           let tone = "border-line bg-surface text-muted";
           let note = "";
@@ -88,6 +90,7 @@ export default async function MyDayPage({
           else if (!weekend && past && sent < standard) { tone = "border-warn/30 bg-warn-bg text-warn"; note = `Short ${formatHours(standard - sent)}`; }
           if (!note && hasDraft) note = "Draft";
           if (!note && holidays.has(d)) note = "Holiday";
+          if (!note && onLeave(d)) note = "Leave";
           return (
             <Link
               key={d}

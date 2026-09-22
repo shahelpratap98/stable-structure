@@ -153,6 +153,28 @@ export default async function GuidePage() {
       ),
     },
     {
+      id: "leave",
+      title: "Requesting leave",
+      audience: "everyone",
+      body: (
+        <>
+          <p><Go href="/portal/leave">Leave</Go> is a calendar of who is away. Everyone can see it, so you know before you plan a site visit that a colleague is off that week.</p>
+          <Steps>
+            <li>Click the first day you&apos;ll be away, then the last day (one click for a single day).</li>
+            <li>Choose <Term>Annual leave</Term> or <Term>Sick leave</Term>, add a note if it helps, and choose <Term>Send request</Term>.</li>
+            <li>It shows on the calendar with a dashed edge while it waits. Once an approver approves it, it turns solid and the days come off your balance.</li>
+          </Steps>
+          <Points>
+            <li>Weekends and public holidays are never counted, so a Friday-to-Monday request is two days.</li>
+            <li>Your balance for the leave year is beside the calendar. NZ standard is {`20 days' annual leave and 10 days' sick leave`}; your leave year runs from your start-date anniversary.</li>
+            <li>You can <Term>withdraw</Term> a request while it&apos;s still waiting. Once approved, ask an approver to cancel it.</li>
+            <li>Approved leave days are never marked short in the hours check, and they show as &quot;Leave&quot; on your My day week strip.</li>
+            <li>Other people&apos;s leave shows as &quot;away&quot;: only you and the approvers can see whether a day is annual or sick leave.</li>
+          </Points>
+        </>
+      ),
+    },
+    {
       id: "statuses",
       title: "What each status means",
       audience: "everyone",
@@ -210,6 +232,22 @@ export default async function GuidePage() {
       ),
     },
     {
+      id: "leave-approvals",
+      title: "Approving leave",
+      audience: "approver",
+      body: (
+        <>
+          <p>New requests appear at the top of <Go href="/portal/leave">Leave</Go> (the number beside it in the top bar is how many are waiting). Each shows the dates, working days, the person&apos;s note, and how much of their balance is left; a request that would take them over their entitlement is flagged.</p>
+          <Points>
+            <li><Term>Approve</Term> books it. <Term>Decline</Term> needs a short reason, which the person sees.</li>
+            <li><Term>Team balances</Term> lists everyone&apos;s annual and sick leave taken and remaining for their current leave year.</li>
+            <li>Plans changed? Approved leave can be cancelled from the &quot;Approved leave around this month&quot; list, which puts the days back.</li>
+            <li>Entitlements and start dates are set per person under Setup → Staff; the company defaults under Setup → Company &amp; GST.</li>
+          </Points>
+        </>
+      ),
+    },
+    {
       id: "reports",
       title: "Reports",
       audience: "approver",
@@ -217,7 +255,7 @@ export default async function GuidePage() {
         <>
           <p><Go href="/portal/reports">Reports</Go> has the same six views the workbook had. Each takes a date range. <Term>Export to Excel</Term> downloads what&apos;s on screen and <Term>Print / save as PDF</Term> prints it without the menus (the Client statement makes a tidy PDF to send with an invoice). Drafts are never included.</p>
           <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-[11rem_1fr]">
-            <dt><Term>Hours check</Term></dt><dd>Short, over and full days for everyone or one person, with overtime and totals. For everyone at once, keep the range to two months or less.</dd>
+            <dt><Term>Hours check</Term></dt><dd>Short, over, full and leave days for everyone or one person, with overtime and totals. For everyone at once, keep the range to two months or less.</dd>
             <dt><Term>Employee detail</Term></dt><dd>One person&apos;s entries line by line, with total hours and value.</dd>
             <dt><Term>Project detail</Term></dt><dd>One project or all of them, optionally only chargeable or non-chargeable time, with a summary by employee.</dd>
             <dt><Term>Period summary</Term></dt><dd>One row per project: hours, amount, hours split by work type, non-chargeable hours, work performed, and what is still uninvoiced.</dd>

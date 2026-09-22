@@ -51,6 +51,7 @@ is the same four files concatenated for pasting into the Supabase SQL editor.
 | `0500_public_holidays` | NZ + Auckland public holidays 2025-2028; holiday-aware `hours_check` |
 | `0600_rate_limits` | shared rate-limit counters, callable only by the server |
 | `0700_external_invoices` | `invoices.is_external` + `record_external_invoice` for time billed from another system |
+| `0800_leave` | annual/sick leave requests, `v_leave_calendar` (type hidden from other staff), `leave_balances`, `decide_leave`, leave-aware `hours_check`, entitlement columns |
 
 Roles: `employee` (own time only, never sees rates or values), `approver`
 (all time, rates, approve / return), `admin` (approver + setup + invoices).
@@ -71,7 +72,7 @@ where email = 'gajan@stablestructure.co.nz';
 | Area | Routes |
 |---|---|
 | Sign-in | `/login`, `/reset`, `/auth/confirm` (invite + reset links), `/set-password`, `/account` (change password) |
-| Staff | `/my/day` (enter, save draft, submit; week strip), `/reports/hours-check`, `/reports/employee` (own time only) |
+| Staff | `/my/day` (enter, save draft, submit; week strip), `/leave` (team calendar, request, own balance), `/reports/hours-check`, `/reports/employee` (own time only) |
 | Approvers | `/approvals`, `/entries` (+ `/entries/new`, `/entries/[id]`), all six `/reports/*` with `/export` (xlsx), `/invoices` (read) |
 | Admin | `/invoices/new`, `/invoices/[id]` (+ `/pdf`), `/admin/*`: staff, projects & rates, clients, work types, public holidays, company & GST, audit log |
 

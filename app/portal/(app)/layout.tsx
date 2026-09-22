@@ -13,13 +13,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const approver = isApprover(profile.role);
 
   let pending = 0;
+  let leavePending = 0;
   if (approver) {
     const supabase = await createClient();
-    const { count } = await supabase
-      .from("time_entries")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "submitted");
-    pending = count ?? 0;
+    const [entries, leave] = await Promise.all([
+      supabase.from("time_entries").select("id", { count: "exact", head: true }).eq("status", "submitted"),
+      supabase.from("leave_requests").select("id", { count: "exact", head: true }).eq("status", "requested"),
+    ]);
+    pending = entries.count ?? 0;
+    leavePending = leave.count ?? 0; // 0 until migration 0800 has run
   }
 
   const links = [
@@ -28,6 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ...(approver ? [{ href: "/portal/entries", label: "All entries" }] : []),
     ...(approver ? [{ href: "/portal/invoices", label: "Invoices" }] : []),
     { href: "/portal/reports", label: approver ? "Reports" : "My hours" },
+    { href: "/portal/leave", label: "Leave", badge: leavePending },
     ...(isAdmin(profile.role) ? [{ href: "/portal/admin", label: "Setup" }] : []),
     { href: "/portal/guide", label: "Guide" },
   ];

@@ -19,10 +19,10 @@ export default async function StaffPage() {
   const supabase = await createClient();
   const { data } = await supabase
     .from("profiles")
-    .select("user_id, display_name, email, role, standard_day_hours, is_active")
+    .select("user_id, display_name, email, role, standard_day_hours, is_active, start_date, annual_leave_days, sick_leave_days")
     .order("is_active", { ascending: false })
     .order("display_name");
-  const staff = (data ?? []) as Profile[];
+  const staff = (data ?? []) as (Profile & { start_date?: string | null; annual_leave_days?: number | null; sick_leave_days?: number | null })[];
 
   // Who has actually signed in yet (needs the service key; optional).
   const admin = createAdminClient();
@@ -101,6 +101,21 @@ export default async function StaffPage() {
                         <div>
                           <label htmlFor={`std-${person.user_id}`} className="field-label">Standard day (hours)</label>
                           <input id={`std-${person.user_id}`} name="standard_day_hours" type="number" min={0.25} max={24} step={0.25} defaultValue={person.standard_day_hours ?? ""} placeholder="Company default" className="field" />
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label htmlFor={`start-${person.user_id}`} className="field-label">Start date</label>
+                          <input id={`start-${person.user_id}`} name="start_date" type="date" defaultValue={person.start_date ?? ""} className="field" />
+                          <p className="mt-1 text-xs text-muted">Their leave year runs from this anniversary.</p>
+                        </div>
+                        <div>
+                          <label htmlFor={`al-${person.user_id}`} className="field-label">Annual leave (days/yr)</label>
+                          <input id={`al-${person.user_id}`} name="annual_leave_days" type="number" min={0} max={365} step={0.5} defaultValue={person.annual_leave_days ?? ""} placeholder="Company default" className="field tabular-nums" />
+                        </div>
+                        <div>
+                          <label htmlFor={`sl-${person.user_id}`} className="field-label">Sick leave (days/yr)</label>
+                          <input id={`sl-${person.user_id}`} name="sick_leave_days" type="number" min={0} max={365} step={0.5} defaultValue={person.sick_leave_days ?? ""} placeholder="Company default" className="field tabular-nums" />
                         </div>
                       </div>
                       <label className="flex items-center gap-2 text-sm">
