@@ -255,7 +255,7 @@ export default async function LeavePage({
           </div>
           <p className="text-xs text-muted">&quot;Left&quot; is what remains after everything approved, including leave booked for later; &quot;booked&quot; is this leave year only. Entitlements, start dates and opening balances are set per person under Setup → Staff; company defaults and the sick-leave cap under Setup → Company &amp; GST. A leave year runs from the person&apos;s start-date anniversary (1 January if no start date is set).</p>
 
-          {calendar.some((r) => r.status === "approved" && !r.is_mine) ? (
+          {calendar.some((r) => r.status === "approved") ? (
             <div>
               <h3 className="text-sm font-semibold text-ink">Approved leave around this month</h3>
               <ul className="mt-2 flex flex-wrap gap-2">
