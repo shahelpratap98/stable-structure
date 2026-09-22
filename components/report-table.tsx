@@ -26,6 +26,7 @@ const STATUS_TONE: [RegExp, string][] = [
   [/^OK/, "bg-ok-bg text-ok"],
   [/^Weekend/, "bg-steel-100 text-steel"],
   [/^Public holiday/, "bg-steel-100 text-steel"],
+  [/^On leave/, "bg-accent-100 text-accent-600"],
 ];
 
 export function ReportTableView({ table }: { table: ReportTable }) {

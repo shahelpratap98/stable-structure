@@ -17,12 +17,18 @@ const ROLE_OPTIONS = [
 export default async function StaffPage() {
   const me = await requireAdmin();
   const supabase = await createClient();
-  const { data } = await supabase
+  type StaffRow = Profile & { start_date?: string | null; annual_leave_days?: number | null; sick_leave_days?: number | null; balance_as_of?: string | null; annual_opening_days?: number | null; sick_opening_days?: number | null };
+  const wide = await supabase
     .from("profiles")
-    .select("user_id, display_name, email, role, standard_day_hours, is_active")
+    .select("user_id, display_name, email, role, standard_day_hours, is_active, start_date, annual_leave_days, sick_leave_days, balance_as_of, annual_opening_days, sick_opening_days")
     .order("is_active", { ascending: false })
     .order("display_name");
-  const staff = (data ?? []) as Profile[];
+  // Before migration 0800 the leave columns don't exist; still show the team.
+  const narrow = wide.data
+    ? null
+    : await supabase.from("profiles").select("user_id, display_name, email, role, standard_day_hours, is_active").order("is_active", { ascending: false }).order("display_name");
+  const data = (wide.data ?? narrow?.data ?? []) as StaffRow[];
+  const staff = data;
 
   // Who has actually signed in yet (needs the service key; optional).
   const admin = createAdminClient();
@@ -103,6 +109,39 @@ export default async function StaffPage() {
                           <input id={`std-${person.user_id}`} name="standard_day_hours" type="number" min={0.25} max={24} step={0.25} defaultValue={person.standard_day_hours ?? ""} placeholder="Company default" className="field" />
                         </div>
                       </div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <div>
+                          <label htmlFor={`start-${person.user_id}`} className="field-label">Start date</label>
+                          <input id={`start-${person.user_id}`} name="start_date" type="date" defaultValue={person.start_date ?? ""} className="field" />
+                          <p className="mt-1 text-xs text-muted">Their leave year runs from this anniversary.</p>
+                        </div>
+                        <div>
+                          <label htmlFor={`al-${person.user_id}`} className="field-label">Annual leave (days/yr)</label>
+                          <input id={`al-${person.user_id}`} name="annual_leave_days" type="number" min={0} max={365} step={0.5} defaultValue={person.annual_leave_days ?? ""} placeholder="Company default" className="field tabular-nums" />
+                        </div>
+                        <div>
+                          <label htmlFor={`sl-${person.user_id}`} className="field-label">Sick leave (days/yr)</label>
+                          <input id={`sl-${person.user_id}`} name="sick_leave_days" type="number" min={0} max={365} step={0.5} defaultValue={person.sick_leave_days ?? ""} placeholder="Company default" className="field tabular-nums" />
+                        </div>
+                      </div>
+                      <details className="rounded-lg border border-line bg-surface-2/50 px-3 py-2">
+                        <summary className="cursor-pointer text-sm font-semibold text-ink">Opening leave balances (carried over from the old system)</summary>
+                        <p className="mt-1 text-xs text-muted">Enter what they had on a given date; leave recorded here before that date is ignored, and each anniversary after it adds a year&apos;s entitlement. Leave blank to start from a full entitlement this leave year.</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <label htmlFor={`asof-${person.user_id}`} className="field-label">Correct as of</label>
+                            <input id={`asof-${person.user_id}`} name="balance_as_of" type="date" defaultValue={person.balance_as_of ?? ""} className="field" />
+                          </div>
+                          <div>
+                            <label htmlFor={`ao-${person.user_id}`} className="field-label">Annual leave balance (days)</label>
+                            <input id={`ao-${person.user_id}`} name="annual_opening_days" type="number" min={0} max={1000} step={0.5} defaultValue={person.annual_opening_days ?? ""} className="field tabular-nums" />
+                          </div>
+                          <div>
+                            <label htmlFor={`so-${person.user_id}`} className="field-label">Sick leave balance (days)</label>
+                            <input id={`so-${person.user_id}`} name="sick_opening_days" type="number" min={0} max={1000} step={0.5} defaultValue={person.sick_opening_days ?? ""} className="field tabular-nums" />
+                          </div>
+                        </div>
+                      </details>
                       <label className="flex items-center gap-2 text-sm">
                         <input type="checkbox" name="is_active" defaultChecked={person.is_active} className="size-4 accent-ink" />
                         Active — can sign in. Untick to lock them out; their past time is kept.

@@ -128,6 +128,20 @@ export async function updateStaff(_prev: ActionState, fd: FormData): Promise<Act
   const role = text(fd, "role") as Role;
   const active = checked(fd, "is_active");
   const standard = numberOrNull(fd, "standard_day_hours", "Standard day", 0.25, 24);
+  const annual = numberOrNull(fd, "annual_leave_days", "Annual leave", 0, 365);
+  const sick = numberOrNull(fd, "sick_leave_days", "Sick leave", 0, 365);
+  const startDate = text(fd, "start_date");
+  if (startDate && !isIsoDate(startDate)) return { ok: false, message: "Start date isn't a valid date." };
+  const asOf = text(fd, "balance_as_of");
+  const annualOpening = numberOrNull(fd, "annual_opening_days", "Annual leave balance", 0, 1000);
+  const sickOpening = numberOrNull(fd, "sick_opening_days", "Sick leave balance", 0, 1000);
+  if (typeof annualOpening === "string") return { ok: false, message: annualOpening };
+  if (typeof sickOpening === "string") return { ok: false, message: sickOpening };
+  if (asOf && !isIsoDate(asOf)) return { ok: false, message: "Balance date isn't a valid date." };
+  if ((annualOpening !== null || sickOpening !== null) && !asOf) return { ok: false, message: "Enter the date the opening balances are correct as of." };
+  if (asOf && annualOpening === null && sickOpening === null) return { ok: false, message: "Enter at least one opening balance for that date, or clear the date." };
+  if (typeof annual === "string") return { ok: false, message: annual };
+  if (typeof sick === "string") return { ok: false, message: sick };
   if (!name) return { ok: false, message: "Name can't be blank." };
   if (!ROLES.includes(role)) return { ok: false, message: "Pick a role." };
   if (typeof standard === "string") return { ok: false, message: standard };
@@ -138,7 +152,11 @@ export async function updateStaff(_prev: ActionState, fd: FormData): Promise<Act
   const supabase = await createClient();
   const { error } = await supabase
     .from("profiles")
-    .update({ display_name: name, role, is_active: active, standard_day_hours: standard })
+    .update({
+      display_name: name, role, is_active: active, standard_day_hours: standard, start_date: startDate || null,
+      annual_leave_days: annual, sick_leave_days: sick,
+      balance_as_of: asOf || null, annual_opening_days: asOf ? annualOpening ?? 0 : null, sick_opening_days: asOf ? sickOpening ?? 0 : null,
+    })
     .eq("user_id", userId);
   if (error) return { ok: false, message: friendly(error.message) };
 
@@ -233,7 +251,10 @@ export async function saveSettings(_prev: ActionState, fd: FormData): Promise<Ac
   const standard = numberOrNull(fd, "standard_day_hours", "Standard day", 0.25, 24);
   const nextNo = numberOrNull(fd, "next_invoice_no", "Next invoice number", 1, 9999999);
   const terms = numberOrNull(fd, "payment_terms_days", "Payment terms", 0, 365);
-  for (const v of [gstPercent, standard, nextNo, terms]) {
+  const annual = numberOrNull(fd, "annual_leave_days", "Annual leave", 0, 365);
+  const sick = numberOrNull(fd, "sick_leave_days", "Sick leave", 0, 365);
+  const sickCap = numberOrNull(fd, "sick_leave_cap_days", "Sick leave cap", 0, 365);
+  for (const v of [gstPercent, standard, nextNo, terms, annual, sick, sickCap]) {
     if (typeof v === "string") return { ok: false, message: v };
     if (v === null) return { ok: false, message: "GST, standard day, next invoice number and payment terms are all required." };
   }
@@ -255,6 +276,9 @@ export async function saveSettings(_prev: ActionState, fd: FormData): Promise<Ac
       invoice_prefix: text(fd, "invoice_prefix"),
       next_invoice_no: Math.round(nextNo as number),
       payment_terms_days: Math.round(terms as number),
+      annual_leave_days: annual as number,
+      sick_leave_days: sick as number,
+      sick_leave_cap_days: sickCap as number,
     })
     .eq("id", true);
   if (error) return { ok: false, message: friendly(error.message) };

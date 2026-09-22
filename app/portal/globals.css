@@ -57,6 +57,27 @@ h3 {
   border-radius: 6px;
 }
 
+/* Phones: fingers, not pointers. 44px is the smallest comfortable target. */
+@media (max-width: 639px) {
+  .btn,
+  .field {
+    min-height: 2.75rem;
+  }
+  select.field {
+    padding-right: 2rem;
+  }
+  input[type="date"].field {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+}
+/* iOS zooms into inputs under 16px; keep them at 16px on phones. */
+@media (max-width: 639px) {
+  .field {
+    font-size: 16px;
+  }
+}
+
 @layer components {
   .field {
     @apply w-full rounded-lg border border-line-2 bg-surface px-3 py-2 text-[15px] text-text

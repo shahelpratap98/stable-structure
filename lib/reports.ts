@@ -135,7 +135,7 @@ async function hoursCheck(supabase: SupabaseClient, p: ReportParams): Promise<Re
     return { title, subtitle, tables: [], notice: "For everyone at once, keep the range to two months or less. Pick one employee to look further back." };
   }
 
-  type Day = { user_id: string; employee: string; day: string; is_weekend: boolean; holiday: string | null; hours: number; standard: number; overtime: number; status: string };
+  type Day = { user_id: string; employee: string; day: string; is_weekend: boolean; holiday: string | null; leave?: string | null; hours: number; standard: number; overtime: number; status: string };
   let days: Day[] = [];
   for (let page = 0; page < 10; page++) {
     const { data, error } = await supabase
@@ -147,12 +147,13 @@ async function hoursCheck(supabase: SupabaseClient, p: ReportParams): Promise<Re
   }
   if (p.userId) days = days.filter((d) => d.user_id === p.userId);
 
-  const people = new Map<string, { employee: string; short: number; over: number; full: number; overtime: number; total: number }>();
+  const people = new Map<string, { employee: string; short: number; over: number; full: number; leave: number; overtime: number; total: number }>();
   for (const d of days) {
-    const s = people.get(d.user_id) ?? { employee: d.employee, short: 0, over: 0, full: 0, overtime: 0, total: 0 };
+    const s = people.get(d.user_id) ?? { employee: d.employee, short: 0, over: 0, full: 0, leave: 0, overtime: 0, total: 0 };
     if (d.status.startsWith("SHORT")) s.short++;
     else if (d.status.startsWith("Over")) s.over++;
     else if (d.status.startsWith("OK")) s.full++;
+    else if (d.status.startsWith("On leave")) s.leave++;
     s.overtime += num(d.overtime); // includes any weekend / public-holiday hours
     s.total += num(d.hours);
     people.set(d.user_id, s);
@@ -170,6 +171,7 @@ async function hoursCheck(supabase: SupabaseClient, p: ReportParams): Promise<Re
           { key: "short", label: "Short days", type: "int" },
           { key: "over", label: "Over days", type: "int" },
           { key: "full", label: "Full days", type: "int" },
+          { key: "leave", label: "Leave days", type: "int" },
           { key: "overtime", label: "Overtime hrs", type: "hours" },
           { key: "total", label: "Total hrs", type: "hours" },
         ],
@@ -187,7 +189,7 @@ async function hoursCheck(supabase: SupabaseClient, p: ReportParams): Promise<Re
         ],
         // Empty weekends are noise; public holidays always show so the gap is explained.
         rows: days
-          .filter((d) => !d.is_weekend || d.holiday !== null || num(d.hours) > 0)
+          .filter((d) => !d.is_weekend || d.holiday !== null || d.leave || num(d.hours) > 0)
           .map((d) => ({ employee: d.employee, day: d.day, hours: num(d.hours), standard: num(d.standard), status: d.status })),
       },
     ],

@@ -72,6 +72,23 @@ export default async function SettingsPage() {
             <input id="s-terms" name="payment_terms_days" type="number" min={0} max={365} step={1} defaultValue={s.payment_terms_days} required className="field tabular-nums" />
           </div>
         </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div>
+            <label htmlFor="s-annual" className="field-label">Annual leave (days/yr)</label>
+            <input id="s-annual" name="annual_leave_days" type="number" min={0} max={365} step={0.5} defaultValue={s.annual_leave_days ?? 20} required className="field tabular-nums" />
+          </div>
+          <div>
+            <label htmlFor="s-sick" className="field-label">Sick leave (days/yr)</label>
+            <input id="s-sick" name="sick_leave_days" type="number" min={0} max={365} step={0.5} defaultValue={s.sick_leave_days ?? 10} required className="field tabular-nums" />
+          </div>
+          <div>
+            <label htmlFor="s-sickcap" className="field-label">Sick leave cap (days)</label>
+            <input id="s-sickcap" name="sick_leave_cap_days" type="number" min={0} max={365} step={0.5} defaultValue={s.sick_leave_cap_days ?? 20} required className="field tabular-nums" />
+          </div>
+        </div>
+        <p className="mt-3 text-sm text-muted">
+          NZ minimums: 20 days&apos; annual leave (4 weeks on a 5-day week), 10 days&apos; sick leave carrying over to a maximum of 20. Unused annual leave always carries over. A person&apos;s own entitlement, start date and opening balances are set under Staff.
+        </p>
         <p className="mt-3 text-sm text-muted">
           The next invoice will be numbered <span className="font-semibold text-ink">{nextInvoice}</span>. Days shorter than the standard day are flagged in the hours check.
         </p>
