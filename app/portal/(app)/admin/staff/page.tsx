@@ -17,12 +17,18 @@ const ROLE_OPTIONS = [
 export default async function StaffPage() {
   const me = await requireAdmin();
   const supabase = await createClient();
-  const { data } = await supabase
+  type StaffRow = Profile & { start_date?: string | null; annual_leave_days?: number | null; sick_leave_days?: number | null; balance_as_of?: string | null; annual_opening_days?: number | null; sick_opening_days?: number | null };
+  const wide = await supabase
     .from("profiles")
     .select("user_id, display_name, email, role, standard_day_hours, is_active, start_date, annual_leave_days, sick_leave_days, balance_as_of, annual_opening_days, sick_opening_days")
     .order("is_active", { ascending: false })
     .order("display_name");
-  const staff = (data ?? []) as (Profile & { start_date?: string | null; annual_leave_days?: number | null; sick_leave_days?: number | null; balance_as_of?: string | null; annual_opening_days?: number | null; sick_opening_days?: number | null })[];
+  // Before migration 0800 the leave columns don't exist; still show the team.
+  const narrow = wide.data
+    ? null
+    : await supabase.from("profiles").select("user_id, display_name, email, role, standard_day_hours, is_active").order("is_active", { ascending: false }).order("display_name");
+  const data = (wide.data ?? narrow?.data ?? []) as StaffRow[];
+  const staff = data;
 
   // Who has actually signed in yet (needs the service key; optional).
   const admin = createAdminClient();
