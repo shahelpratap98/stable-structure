@@ -44,7 +44,7 @@ function Balance({ b, who }: { b: LeaveBalance; who?: string }) {
               <dt className={`chip ${LEAVE_TONE[r.type].chip}`}>{LEAVE_LABEL[r.type]}</dt>
               <dd className="mt-1.5 font-display text-2xl font-semibold text-ink tabular-nums">{formatHours(left)}<span className="text-sm font-normal text-muted"> {left === 1 ? "day" : "days"} left</span></dd>
               <dd className="text-xs text-muted tabular-nums">
-                {formatHours(Number(r.ent))}/yr{carried > 0.01 ? ` + ${formatHours(carried)} carried` : carried < -0.01 ? ` − ${formatHours(-carried)} owed` : ""} · {formatHours(Number(r.taken))} taken
+                {formatHours(Number(r.ent))}/yr{carried > 0.01 ? ` + ${formatHours(carried)} carried` : carried < -0.01 ? ` − ${formatHours(-carried)} owed` : ""} · {formatHours(Number(r.taken))} booked
                 {Number(r.pending) > 0 ? ` · ${formatHours(Number(r.pending))} waiting` : ""}
               </dd>
             </div>
@@ -230,9 +230,9 @@ export default async function LeavePage({
                   <th className="px-4 py-2.5 font-semibold">Employee</th>
                   <th className="px-4 py-2.5 font-semibold">Leave year</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Annual left</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">Annual taken</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Annual booked</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Sick left</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">Sick taken</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Sick booked</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Bereavement</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Parental</th>
                 </tr>
@@ -253,7 +253,7 @@ export default async function LeavePage({
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-muted">&quot;Left&quot; includes days carried over from earlier years; &quot;taken&quot; is this leave year only. Entitlements, start dates and opening balances are set per person under Setup → Staff; company defaults and the sick-leave cap under Setup → Company &amp; GST. A leave year runs from the person&apos;s start-date anniversary (1 January if no start date is set).</p>
+          <p className="text-xs text-muted">&quot;Left&quot; is what remains after everything approved, including leave booked for later; &quot;booked&quot; is this leave year only. Entitlements, start dates and opening balances are set per person under Setup → Staff; company defaults and the sick-leave cap under Setup → Company &amp; GST. A leave year runs from the person&apos;s start-date anniversary (1 January if no start date is set).</p>
 
           {calendar.some((r) => r.status === "approved" && !r.is_mine) ? (
             <div>
