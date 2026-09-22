@@ -4,7 +4,7 @@ import { ActionForm } from "@/components/action-form";
 import { LinkPending } from "@/components/pending-buttons";
 import { isApprover, requireProfile } from "@/lib/auth";
 import { formatDay, formatHours, isIsoDate, todayNZ } from "@/lib/dates";
-import { addMonths, LEAVE_LABEL, LEAVE_TONE, monthEnd, monthStart, type LeaveBalance, type LeaveRequest } from "@/lib/leave";
+import { addMonths, HAS_BALANCE, LEAVE_LABEL, LEAVE_TONE, monthEnd, monthStart, type LeaveBalance, type LeaveRequest } from "@/lib/leave";
 import { createClient } from "@/lib/supabase/server";
 import { cancelApprovedLeave, cancelLeave, decideLeave } from "./actions";
 import { LeaveCalendar } from "./leave-calendar";
@@ -12,7 +12,7 @@ import { LeaveCalendar } from "./leave-calendar";
 export const metadata: Metadata = { title: "Leave" };
 
 const nz = (iso: string, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }) => formatDay(iso, opts);
-const range = (a: string, b: string) => (a === b ? nz(a, { weekday: "short", day: "numeric", month: "short" }) : `${nz(a)} – ${nz(b, { day: "numeric", month: "short", year: "numeric" })}`);
+const range = (a: string, b: string, half?: string | null) => (a === b ? nz(a, { weekday: "short", day: "numeric", month: "short" }) + (half ? ` (${half === "am" ? "morning" : "afternoon"})` : "") : `${nz(a)} – ${nz(b, { day: "numeric", month: "short", year: "numeric" })}`);
 const plural = (n: number) => `${formatHours(n)} ${n === 1 ? "day" : "days"}`;
 
 function StatusChip({ status }: { status: LeaveRequest["status"] }) {
@@ -28,8 +28,8 @@ function StatusChip({ status }: { status: LeaveRequest["status"] }) {
 
 function Balance({ b, who }: { b: LeaveBalance; who?: string }) {
   const rows = [
-    { type: "annual" as const, ent: b.annual_entitlement, taken: b.annual_taken, pending: b.annual_pending },
-    { type: "sick" as const, ent: b.sick_entitlement, taken: b.sick_taken, pending: b.sick_pending },
+    { type: "annual" as const, ent: b.annual_entitlement, avail: b.annual_available, taken: b.annual_taken, pending: b.annual_pending },
+    { type: "sick" as const, ent: b.sick_entitlement, avail: b.sick_available, taken: b.sick_taken, pending: b.sick_pending },
   ];
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
@@ -37,16 +37,27 @@ function Balance({ b, who }: { b: LeaveBalance; who?: string }) {
       <p className={`text-xs text-muted ${who ? "mt-0.5" : ""}`}>Leave year {nz(b.leave_year_start)} – {nz(b.leave_year_end, { day: "numeric", month: "short", year: "numeric" })}</p>
       <dl className="mt-3 grid grid-cols-2 gap-3">
         {rows.map((r) => {
-          const left = Number(r.ent) - Number(r.taken);
+          const left = Number(r.avail);
+          const carried = left + Number(r.taken) - Number(r.ent);
           return (
             <div key={r.type}>
               <dt className={`chip ${LEAVE_TONE[r.type].chip}`}>{LEAVE_LABEL[r.type]}</dt>
-              <dd className="mt-1.5 font-display text-2xl font-semibold text-ink tabular-nums">{formatHours(left)}<span className="text-sm font-normal text-muted"> of {formatHours(Number(r.ent))} left</span></dd>
-              <dd className="text-xs text-muted tabular-nums">{formatHours(Number(r.taken))} taken{Number(r.pending) > 0 ? ` · ${formatHours(Number(r.pending))} waiting` : ""}</dd>
+              <dd className="mt-1.5 font-display text-2xl font-semibold text-ink tabular-nums">{formatHours(left)}<span className="text-sm font-normal text-muted"> {left === 1 ? "day" : "days"} left</span></dd>
+              <dd className="text-xs text-muted tabular-nums">
+                {formatHours(Number(r.ent))}/yr{carried > 0.01 ? ` + ${formatHours(carried)} carried` : carried < -0.01 ? ` − ${formatHours(-carried)} owed` : ""} · {formatHours(Number(r.taken))} taken
+                {Number(r.pending) > 0 ? ` · ${formatHours(Number(r.pending))} waiting` : ""}
+              </dd>
             </div>
           );
         })}
       </dl>
+      {Number(b.bereavement_taken) > 0 || Number(b.parental_taken) > 0 ? (
+        <p className="mt-3 text-xs text-muted tabular-nums">
+          This leave year: {Number(b.bereavement_taken) > 0 ? `${formatHours(Number(b.bereavement_taken))} bereavement` : ""}
+          {Number(b.bereavement_taken) > 0 && Number(b.parental_taken) > 0 ? " · " : ""}
+          {Number(b.parental_taken) > 0 ? `${formatHours(Number(b.parental_taken))} parental` : ""}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -69,7 +80,7 @@ export default async function LeavePage({
     supabase.from("v_leave_calendar").select("*").lte("start_date", to).gte("end_date", from).order("start_date"),
     supabase
       .from("leave_requests")
-      .select("id, user_id, leave_type, start_date, end_date, days, note, status, decision_note, decided:profiles!leave_requests_decided_by_fkey(display_name)")
+      .select("id, user_id, leave_type, start_date, end_date, half_day, days, note, status, decision_note, decided:profiles!leave_requests_decided_by_fkey(display_name)")
       .eq("user_id", profile.user_id)
       .order("start_date", { ascending: false })
       .limit(50),
@@ -78,7 +89,7 @@ export default async function LeavePage({
     approver
       ? supabase
           .from("leave_requests")
-          .select("id, user_id, leave_type, start_date, end_date, days, note, status, requester:profiles!leave_requests_user_id_fkey(display_name)")
+          .select("id, user_id, leave_type, start_date, end_date, half_day, days, note, status, requester:profiles!leave_requests_user_id_fkey(display_name)")
           .eq("status", "requested")
           .order("start_date")
       : Promise.resolve({ data: [], error: null }),
@@ -128,12 +139,12 @@ export default async function LeavePage({
               <li key={r.id} className="flex flex-col gap-3 px-4 py-4 lg:flex-row lg:items-start lg:gap-6">
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-ink">{r.employee} <span className={`chip ml-1 ${LEAVE_TONE[r.leave_type ?? "leave"].chip}`}>{r.leave_type ? LEAVE_LABEL[r.leave_type] : "Leave"}</span></p>
-                  <p className="text-sm">{range(r.start_date, r.end_date)} · {plural(Number(r.days))}</p>
+                  <p className="text-sm">{range(r.start_date, r.end_date, r.half_day)} · {plural(Number(r.days))}</p>
                   {r.note ? <p className="mt-1 text-sm text-muted">&quot;{r.note}&quot;</p> : null}
                   {(() => {
                     const b = balances.find((x) => x.user_id === r.user_id);
-                    if (!b) return null;
-                    const left = r.leave_type === "sick" ? Number(b.sick_entitlement) - Number(b.sick_taken) : Number(b.annual_entitlement) - Number(b.annual_taken);
+                    if (!b || !r.leave_type || !HAS_BALANCE[r.leave_type]) return null;
+                    const left = r.leave_type === "sick" ? Number(b.sick_available) : Number(b.annual_available);
                     return Number(r.days) > left ? (
                       <p className="mt-1 text-sm font-semibold text-warn">Exceeds their remaining balance by {formatHours(Number(r.days) - left)} {Number(r.days) - left === 1 ? "day" : "days"}.</p>
                     ) : (
@@ -173,9 +184,9 @@ export default async function LeavePage({
           <div className="rounded-xl border border-line bg-surface p-4 text-sm">
             <p className="font-semibold text-ink">How it works</p>
             <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-4 text-muted">
-              <li>Click the first day, then the last day, then choose the type and send.</li>
+              <li>Click the first day, then the last day, then choose the type and send. A single day can be a half day.</li>
               <li>Weekends and public holidays are never counted.</li>
-              <li>Approved days are never marked short in the hours check.</li>
+              <li>Unused annual leave carries over; sick leave carries over up to a cap. Approved days are never marked short in the hours check.</li>
               <li>You can withdraw a request while it&apos;s still waiting.</li>
             </ul>
           </div>
@@ -191,7 +202,7 @@ export default async function LeavePage({
             {mine.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
                 <span className={`chip ${LEAVE_TONE[r.leave_type ?? "leave"].chip}`}>{r.leave_type ? LEAVE_LABEL[r.leave_type] : "Leave"}</span>
-                <span className="font-semibold text-ink">{range(r.start_date, r.end_date)}</span>
+                <span className="font-semibold text-ink">{range(r.start_date, r.end_date, r.half_day)}</span>
                 <span className="text-sm text-muted tabular-nums">{plural(Number(r.days))}</span>
                 <StatusChip status={r.status} />
                 {r.note ? <span className="text-sm text-muted">&quot;{r.note}&quot;</span> : null}
@@ -222,6 +233,8 @@ export default async function LeavePage({
                   <th className="px-4 py-2.5 text-right font-semibold">Annual taken</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Sick left</th>
                   <th className="px-4 py-2.5 text-right font-semibold">Sick taken</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Bereavement</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Parental</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -229,16 +242,18 @@ export default async function LeavePage({
                   <tr key={b.user_id}>
                     <td className="px-4 py-2.5 font-semibold text-ink">{b.employee}</td>
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted">{nz(b.leave_year_start, { day: "numeric", month: "short", year: "2-digit" })} – {nz(b.leave_year_end, { day: "numeric", month: "short", year: "2-digit" })}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatHours(Number(b.annual_entitlement) - Number(b.annual_taken))} <span className="text-muted">/ {formatHours(Number(b.annual_entitlement))}</span></td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{formatHours(Number(b.annual_available))} <span className="text-muted">({formatHours(Number(b.annual_entitlement))}/yr)</span></td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{formatHours(Number(b.annual_taken))}{Number(b.annual_pending) > 0 ? <span className="text-muted"> (+{formatHours(Number(b.annual_pending))} waiting)</span> : null}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{formatHours(Number(b.sick_entitlement) - Number(b.sick_taken))} <span className="text-muted">/ {formatHours(Number(b.sick_entitlement))}</span></td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{formatHours(Number(b.sick_available))} <span className="text-muted">({formatHours(Number(b.sick_entitlement))}/yr)</span></td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{formatHours(Number(b.sick_taken))}{Number(b.sick_pending) > 0 ? <span className="text-muted"> (+{formatHours(Number(b.sick_pending))} waiting)</span> : null}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{Number(b.bereavement_taken) > 0 ? formatHours(Number(b.bereavement_taken)) : "–"}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{Number(b.parental_taken) > 0 ? formatHours(Number(b.parental_taken)) : "–"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-muted">Entitlements and each person&apos;s start date are set under Setup → Staff; the company defaults under Setup → Company &amp; GST. A leave year runs from the person&apos;s start-date anniversary (1 January if no start date is set).</p>
+          <p className="text-xs text-muted">&quot;Left&quot; includes days carried over from earlier years; &quot;taken&quot; is this leave year only. Entitlements, start dates and opening balances are set per person under Setup → Staff; company defaults and the sick-leave cap under Setup → Company &amp; GST. A leave year runs from the person&apos;s start-date anniversary (1 January if no start date is set).</p>
 
           {calendar.some((r) => r.status === "approved" && !r.is_mine) ? (
             <div>
@@ -248,7 +263,7 @@ export default async function LeavePage({
                   <li key={r.id} className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-sm">
                     <span className="font-semibold text-ink">{r.employee}</span>
                     <span className={`chip ${LEAVE_TONE[r.leave_type ?? "leave"].chip}`}>{r.leave_type ? LEAVE_LABEL[r.leave_type] : "Leave"}</span>
-                    <span className="text-muted">{range(r.start_date, r.end_date)}</span>
+                    <span className="text-muted">{range(r.start_date, r.end_date, r.half_day)}</span>
                     <ActionForm action={cancelApprovedLeave} submitLabel="Cancel" pendingLabel="…" quiet className="[&_button]:px-2 [&_button]:py-1 [&_button]:text-xs">
                       <input type="hidden" name="id" value={r.id} />
                     </ActionForm>

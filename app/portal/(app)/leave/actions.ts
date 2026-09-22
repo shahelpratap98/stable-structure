@@ -5,7 +5,7 @@ import type { ActionState } from "@/components/action-form";
 import { requireApprover, requireProfile } from "@/lib/auth";
 import { isIsoDate } from "@/lib/dates";
 import { emailEnabled, sendEmail } from "@/lib/email";
-import { LEAVE_LABEL, type LeaveType } from "@/lib/leave";
+import { LEAVE_LABEL, LEAVE_TYPES, type HalfDay, type LeaveType } from "@/lib/leave";
 import { rateLimit, waitMessage } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
@@ -27,15 +27,19 @@ export async function requestLeave(_prev: ActionState, fd: FormData): Promise<Ac
   const from = text(fd, "start_date");
   const to = text(fd, "end_date") || from;
   const note = text(fd, "note");
-  if (type !== "annual" && type !== "sick") return { ok: false, message: "Pick annual or sick leave." };
+  const halfRaw = text(fd, "half_day");
+  const half: HalfDay | null = halfRaw === "am" || halfRaw === "pm" ? halfRaw : null;
+  if (!LEAVE_TYPES.includes(type)) return { ok: false, message: "Pick a type of leave." };
   if (!isIsoDate(from) || !isIsoDate(to)) return { ok: false, message: "Pick the first and last day." };
   if (to < from) return { ok: false, message: "The last day is before the first day." };
+  if (half && from !== to) return { ok: false, message: "A half day can only be a single day." };
   if (note.length > 300) return { ok: false, message: "Keep the note under 300 characters." };
 
   const supabase = await createClient();
   const { data: days, error: daysError } = await supabase.rpc("working_days", { p_from: from, p_to: to });
   if (daysError) return { ok: false, message: daysError.message };
   if (!days || Number(days) <= 0) return { ok: false, message: "Those dates contain no working days (weekends and public holidays don't need leave)." };
+  const dayCount = half ? 0.5 : Number(days);
 
   // Overlap with an existing live request for the same person.
   const { data: clash } = await supabase
@@ -50,7 +54,7 @@ export async function requestLeave(_prev: ActionState, fd: FormData): Promise<Ac
 
   const { error } = await supabase
     .from("leave_requests")
-    .insert({ user_id: me.user_id, leave_type: type, start_date: from, end_date: to, days: Number(days), note });
+    .insert({ user_id: me.user_id, leave_type: type, start_date: from, end_date: to, half_day: half, days: dayCount, note });
   if (error) return { ok: false, message: error.message };
 
   // Let approvers know (only when email is set up).
@@ -63,7 +67,7 @@ export async function requestLeave(_prev: ActionState, fd: FormData): Promise<Ac
           subject: `Leave request from ${me.display_name}`,
           paragraphs: [
             `Hello ${a.display_name},`,
-            `${me.display_name} has requested ${LEAVE_LABEL[type].toLowerCase()} from ${nz(from)} to ${nz(to)} (${days} working ${Number(days) === 1 ? "day" : "days"}).${note ? ` Note: "${note}"` : ""}`,
+            `${me.display_name} has requested ${LEAVE_LABEL[type].toLowerCase()} from ${nz(from)} to ${nz(to)} (${dayCount} working ${dayCount === 1 ? "day" : "days"}).${note ? ` Note: "${note}"` : ""}`,
           ],
           button: { label: "Review in the portal", url: `${process.env.NEXT_PUBLIC_APP_URL}/portal/leave` },
         }),
@@ -72,7 +76,7 @@ export async function requestLeave(_prev: ActionState, fd: FormData): Promise<Ac
   }
 
   refresh();
-  return { ok: true, message: `Requested ${days} ${Number(days) === 1 ? "day" : "days"} of ${LEAVE_LABEL[type].toLowerCase()}. It's waiting for approval.` };
+  return { ok: true, message: `Requested ${dayCount} ${dayCount === 1 ? "day" : "days"} of ${LEAVE_LABEL[type].toLowerCase()}. It's waiting for approval.` };
 }
 
 export async function cancelLeave(_prev: ActionState, fd: FormData): Promise<ActionState> {

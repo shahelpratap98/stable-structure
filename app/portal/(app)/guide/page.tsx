@@ -161,12 +161,12 @@ export default async function GuidePage() {
           <p><Go href="/portal/leave">Leave</Go> is a calendar of who is away. Everyone can see it, so you know before you plan a site visit that a colleague is off that week.</p>
           <Steps>
             <li>Click the first day you&apos;ll be away, then the last day (one click for a single day).</li>
-            <li>Choose <Term>Annual leave</Term> or <Term>Sick leave</Term>, add a note if it helps, and choose <Term>Send request</Term>.</li>
+            <li>Choose the type: <Term>Annual</Term>, <Term>Sick</Term>, <Term>Bereavement</Term> or <Term>Parental</Term>. A single day can be a morning or afternoon half day. Add a note if it helps, and choose <Term>Send request</Term>.</li>
             <li>It shows on the calendar with a dashed edge while it waits. Once an approver approves it, it turns solid and the days come off your balance.</li>
           </Steps>
           <Points>
             <li>Weekends and public holidays are never counted, so a Friday-to-Monday request is two days.</li>
-            <li>Your balance for the leave year is beside the calendar. NZ standard is {`20 days' annual leave and 10 days' sick leave`}; your leave year runs from your start-date anniversary.</li>
+            <li>Your balance is beside the calendar. NZ standard is {`20 days' annual leave and 10 days' sick leave`} a year, added on your start-date anniversary. Unused annual leave carries over; sick leave carries over up to a cap of 20 days. Bereavement (3 days per close family bereavement) and parental leave aren&apos;t yearly quotas, so they are simply recorded.</li>
             <li>You can <Term>withdraw</Term> a request while it&apos;s still waiting. Once approved, ask an approver to cancel it.</li>
             <li>Approved leave days are never marked short in the hours check, and they show as &quot;Leave&quot; on your My day week strip.</li>
             <li>Other people&apos;s leave shows as &quot;away&quot;: only you and the approvers can see whether a day is annual or sick leave.</li>
@@ -242,7 +242,7 @@ export default async function GuidePage() {
             <li><Term>Approve</Term> books it. <Term>Decline</Term> needs a short reason, which the person sees.</li>
             <li><Term>Team balances</Term> lists everyone&apos;s annual and sick leave taken and remaining for their current leave year.</li>
             <li>Plans changed? Approved leave can be cancelled from the &quot;Approved leave around this month&quot; list, which puts the days back.</li>
-            <li>Entitlements and start dates are set per person under Setup → Staff; the company defaults under Setup → Company &amp; GST.</li>
+            <li>Entitlements, start dates and <Term>opening balances</Term> (what someone had carried over when the portal started) are set per person under Setup → Staff; the company defaults and the sick-leave cap under Setup → Company &amp; GST.</li>
           </Points>
         </>
       ),

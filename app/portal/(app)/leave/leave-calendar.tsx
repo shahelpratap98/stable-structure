@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { addDays, formatDay, isWeekend } from "@/lib/dates";
-import { LEAVE_LABEL, LEAVE_TONE, monthEnd, workingDays, type LeaveRequest, type LeaveType } from "@/lib/leave";
+import { LEAVE_LABEL, LEAVE_TONE, LEAVE_TYPES, monthEnd, workingDays, type HalfDay, type LeaveRequest, type LeaveType } from "@/lib/leave";
 import { requestLeave } from "./actions";
 
 type Props = {
@@ -21,6 +21,7 @@ export function LeaveCalendar({ month, today, myUserId, entries, holidays }: Pro
   const [start, setStart] = useState<string>("");
   const [end, setEnd] = useState<string>("");
   const [type, setType] = useState<LeaveType>("annual");
+  const [half, setHalf] = useState<"" | HalfDay>("");
 
   const holidayMap = useMemo(() => new Map(holidays.map((h) => [h.day, h.name])), [holidays]);
   const holidaySet = useMemo(() => new Set(holidayMap.keys()), [holidayMap]);
@@ -50,7 +51,9 @@ export function LeaveCalendar({ month, today, myUserId, entries, holidays }: Pro
 
   const selFrom = start;
   const selTo = end || start;
-  const selected = selFrom ? workingDays(selFrom, selTo, holidaySet) : 0;
+  const single = Boolean(selFrom) && selFrom === selTo;
+  const halfActive = single && half !== "";
+  const selected = selFrom ? (halfActive ? 0.5 : workingDays(selFrom, selTo, holidaySet)) : 0;
   const inSelection = (d: string) => selFrom && d >= selFrom && d <= selTo;
 
   return (
@@ -92,7 +95,7 @@ export function LeaveCalendar({ month, today, myUserId, entries, holidays }: Pro
                         title={`${e.employee}: ${e.leave_type ? LEAVE_LABEL[e.leave_type] : "Leave"}${e.status === "requested" ? " (waiting for approval)" : ""}`}
                         className={`truncate rounded border px-1 text-[11px] leading-4 ${tone} ${e.status === "requested" ? "border-dashed opacity-80" : ""} ${mine ? "font-semibold" : ""}`}
                       >
-                        {mine ? "You" : e.employee.split(" ")[0]}
+                        {mine ? "You" : e.employee.split(" ")[0]}{e.half_day ? ` (${e.half_day})` : ""}
                       </span>
                     );
                   })}
@@ -107,6 +110,8 @@ export function LeaveCalendar({ month, today, myUserId, entries, holidays }: Pro
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         <span><span className={`mr-1 inline-block size-3 rounded border align-middle ${LEAVE_TONE.annual.block}`} /> Annual</span>
         <span><span className={`mr-1 inline-block size-3 rounded border align-middle ${LEAVE_TONE.sick.block}`} /> Sick</span>
+        <span><span className={`mr-1 inline-block size-3 rounded border align-middle ${LEAVE_TONE.bereavement.block}`} /> Bereavement</span>
+        <span><span className={`mr-1 inline-block size-3 rounded border align-middle ${LEAVE_TONE.parental.block}`} /> Parental</span>
         <span><span className={`mr-1 inline-block size-3 rounded border align-middle ${LEAVE_TONE.leave.block}`} /> Away (type not shown)</span>
         <span><span className="mr-1 inline-block size-3 rounded border border-dashed border-muted align-middle" /> Waiting for approval</span>
       </div>
@@ -139,11 +144,29 @@ export function LeaveCalendar({ month, today, myUserId, entries, holidays }: Pro
             <div>
               <label htmlFor="lv-type" className="field-label">Type</label>
               <select id="lv-type" name="leave_type" value={type} onChange={(e) => setType(e.target.value as LeaveType)} className="field">
-                <option value="annual">Annual leave</option>
-                <option value="sick">Sick leave</option>
+                {LEAVE_TYPES.map((t) => <option key={t} value={t}>{LEAVE_LABEL[t]}</option>)}
               </select>
             </div>
           </div>
+          {single ? (
+            <div className="sm:w-56">
+              <label htmlFor="lv-half" className="field-label">Half day?</label>
+              <select id="lv-half" name="half_day" value={half} onChange={(e) => setHalf(e.target.value as "" | HalfDay)} className="field">
+                <option value="">No, the whole day</option>
+                <option value="am">Morning only</option>
+                <option value="pm">Afternoon only</option>
+              </select>
+            </div>
+          ) : (
+            <input type="hidden" name="half_day" value="" />
+          )}
+          {type === "bereavement" || type === "parental" ? (
+            <p className="text-sm text-muted">
+              {type === "bereavement"
+                ? "NZ law gives 3 days per bereavement of a close family member (1 day for others), on top of annual and sick leave; it isn't a yearly quota."
+                : "Parental leave is job-protected time off (up to 52 weeks); payment comes from IRD, not the company. Record the dates here so the calendar and hours check know."}
+            </p>
+          ) : null}
           <div>
             <label htmlFor="lv-note" className="field-label">Note (optional)</label>
             <input id="lv-note" name="note" maxLength={300} className="field" placeholder={type === "sick" ? "e.g. Doctor's appointment" : "e.g. Family trip"} />
