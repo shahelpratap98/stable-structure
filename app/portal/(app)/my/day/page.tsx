@@ -65,7 +65,7 @@ export default async function MyDayPage({
             {date === today ? "Today. " : ""}{holidays.has(date) ? `${holidays.get(date)} (public holiday). ` : onLeave(date) ? `You have approved ${onLeave(date)} leave on this day. ` : ""}Enter your time, then submit the day for approval.
           </p>
         </div>
-        <form className="flex items-end gap-2" action={"/portal/my/day"}>
+        <form className="flex w-full items-end gap-2 sm:w-auto" action={"/portal/my/day"}>
           <div>
             <label htmlFor="day-picker" className="field-label">Go to date</label>
             <input id="day-picker" type="date" name="date" defaultValue={date} max={addDays(today, 31)} className="field" />
@@ -110,9 +110,9 @@ export default async function MyDayPage({
         })}
       </nav>
       <div className="-mt-5 flex justify-between text-sm">
-        <Link href={`/portal/my/day?date=${addDays(monday, -7)}`} className="inline-flex items-center gap-1.5 font-semibold text-accent-600 hover:underline">← Previous week <LinkPending /></Link>
+        <Link href={`/portal/my/day?date=${addDays(monday, -7)}`} className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-accent-600 hover:underline sm:min-h-0">← Previous week <LinkPending /></Link>
         {date !== today ? <Link href="/portal/my/day" className="font-semibold text-accent-600 hover:underline">Today</Link> : null}
-        <Link href={`/portal/my/day?date=${addDays(monday, 7)}`} className="inline-flex items-center gap-1.5 font-semibold text-accent-600 hover:underline"><LinkPending /> Next week →</Link>
+        <Link href={`/portal/my/day?date=${addDays(monday, 7)}`} className="inline-flex min-h-11 items-center gap-1.5 font-semibold text-accent-600 hover:underline sm:min-h-0"><LinkPending /> Next week →</Link>
       </div>
 
       {projects.length === 0 ? (

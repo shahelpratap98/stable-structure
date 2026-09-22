@@ -17,7 +17,7 @@ const TABS = [
 export function AdminTabs() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Setup sections" className="-mb-px flex gap-1 overflow-x-auto border-b border-line">
+    <nav aria-label="Setup sections" className="-mb-px flex flex-wrap gap-x-1 border-b border-line">
       {TABS.map((tab) => {
         const active = pathname.startsWith(tab.href);
         return (

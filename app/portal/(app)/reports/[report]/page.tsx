@@ -62,7 +62,7 @@ export default async function ReportPage({
         {report ? <p className="mt-1 text-muted">{report.subtitle}</p> : null}
       </div>
 
-      <nav aria-label="Reports" className="-mb-px flex print:hidden gap-1 overflow-x-auto border-b border-line">
+      <nav aria-label="Reports" className="-mb-px flex flex-wrap print:hidden gap-x-1 border-b border-line">
         {tabs.map((t) => (
           <Link
             key={t.slug}
@@ -79,16 +79,16 @@ export default async function ReportPage({
       </nav>
 
       <form action={`/portal/reports/${def.slug}`} className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4 print:hidden">
-        <div>
+        <div className="min-w-[calc(50%-0.375rem)] flex-1 sm:min-w-0 sm:flex-none">
           <label htmlFor="r-from" className="field-label">From</label>
           <input id="r-from" name="from" type="date" defaultValue={p.from} className="field" />
         </div>
-        <div>
+        <div className="min-w-[calc(50%-0.375rem)] flex-1 sm:min-w-0 sm:flex-none">
           <label htmlFor="r-to" className="field-label">To</label>
           <input id="r-to" name="to" type="date" defaultValue={p.to} className="field" />
         </div>
         {approver && USES_EMPLOYEE.has(def.slug) ? (
-          <div className="min-w-44">
+          <div className="min-w-44 flex-1 sm:flex-none">
             <label htmlFor="r-user" className="field-label">Employee</label>
             <select id="r-user" name="user" defaultValue={p.userId} className="field">
               {def.slug === "hours-check" ? <option value="">Everyone</option> : null}
@@ -97,7 +97,7 @@ export default async function ReportPage({
           </div>
         ) : null}
         {USES_PROJECT.has(def.slug) ? (
-          <div className="min-w-56">
+          <div className="min-w-56 flex-1 sm:flex-none">
             <label htmlFor="r-project" className="field-label">Project</label>
             <select id="r-project" name="project" defaultValue={p.projectId} className="field">
               <option value="">{def.slug === "statement" ? "Choose a project…" : "(All projects)"}</option>

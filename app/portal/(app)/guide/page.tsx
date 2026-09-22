@@ -372,19 +372,26 @@ export default async function GuidePage() {
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-12">
       <nav aria-label="Guide contents" className="lg:sticky lg:top-6 lg:w-60 lg:shrink-0">
-        <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">In this guide</h2>
+        <details className="group rounded-xl border border-line bg-surface lg:contents">
+          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-ink lg:hidden">
+            In this guide <span className="float-right text-muted group-open:hidden">Show</span><span className="float-right hidden text-muted group-open:inline">Hide</span>
+          </summary>
+          <div className="px-4 pb-4 lg:contents">
+        <h2 className="hidden text-xs font-semibold tracking-wide text-muted uppercase lg:block">In this guide</h2>
         {groups.map((g) => (
           <div key={g.audience} className="mt-4">
             {groups.length > 1 ? <p className="mb-1 text-[13px] font-semibold text-ink">{AUDIENCE_LABEL[g.audience]}</p> : null}
             <ul className="flex flex-col border-l border-line">
               {g.items.map((s) => (
                 <li key={s.id}>
-                  <a href={`#${s.id}`} className="-ml-px block border-l border-transparent py-1 pl-3 text-sm text-muted hover:border-ink hover:text-ink">{s.title}</a>
+                  <a href={`#${s.id}`} className="-ml-px block border-l border-transparent py-2 pl-3 text-sm text-muted hover:border-ink hover:text-ink lg:py-1">{s.title}</a>
                 </li>
               ))}
             </ul>
           </div>
         ))}
+          </div>
+        </details>
       </nav>
 
       <div className="min-w-0 flex-1">

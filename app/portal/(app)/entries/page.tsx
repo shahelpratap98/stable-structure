@@ -50,7 +50,7 @@ export default async function EntriesPage({
         </div>
       </div>
 
-      <form action={"/portal/entries"} className="grid gap-3 print:hidden rounded-xl border border-line bg-surface p-4 sm:grid-cols-3 lg:grid-cols-[repeat(6,minmax(0,1fr))_auto]">
+      <form action={"/portal/entries"} className="grid grid-cols-2 gap-3 print:hidden rounded-xl border border-line bg-surface p-4 sm:grid-cols-3 lg:grid-cols-[repeat(6,minmax(0,1fr))_auto] [&>div:nth-child(n+3)]:col-span-2 sm:[&>div:nth-child(n+3)]:col-span-1">
         <div>
           <label htmlFor="f-from" className="field-label">From</label>
           <input id="f-from" name="from" type="date" defaultValue={from} className="field" />

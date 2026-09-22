@@ -121,9 +121,9 @@ export default async function LeavePage({
             Pick the days on the calendar to request annual or sick leave. Everyone can see when people are away; {approver ? "as an approver you also see the type of leave." : "only you and the approvers see which type it is."}
           </p>
         </div>
-        <nav aria-label="Month" className="flex items-center gap-2 text-sm font-semibold">
+        <nav aria-label="Month" className="flex w-full items-center justify-between gap-2 text-sm font-semibold sm:w-auto sm:justify-start">
           <Link href={`/portal/leave?month=${addMonths(month, -1)}`} className="btn btn-quiet">← <LinkPending /></Link>
-          <span className="min-w-36 text-center font-display text-lg text-ink">{nz(month, { month: "long", year: "numeric" })}</span>
+          <span className="min-w-0 flex-1 text-center font-display text-lg text-ink sm:min-w-36 sm:flex-none">{nz(month, { month: "long", year: "numeric" })}</span>
           <Link href={`/portal/leave?month=${addMonths(month, 1)}`} className="btn btn-quiet"><LinkPending /> →</Link>
           {month !== monthStart(today) ? <Link href="/portal/leave" className="text-accent-600 hover:underline">Today</Link> : null}
         </nav>
