@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // One app, two halves:
 //   /portal/*   the staff portal (Next.js routes in app/portal)
@@ -16,7 +18,27 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
 ];
 
-const PAGES = ["services", "guides", "sectors", "projects", "about", "process", "contact", "faq", "testimonials", "privacy"];
+const PAGES = ["services", "guides", "granny-flats", "sectors", "projects", "about", "process", "contact", "faq", "testimonials", "privacy"];
+
+// Content-Security-Policy for the static marketing site only (the portal is a
+// Next.js app with its own inline scripts and is excluded below). Inline
+// scripts are allowed by hash: build/generate.js writes the hashes of the ones
+// it emits, so a change to either script updates the policy on the next build.
+const inlineScriptHashes: string[] = JSON.parse(readFileSync(join(__dirname, "build", "csp-inline-hashes.json"), "utf8"));
+const siteCsp = [
+  "default-src 'self'",
+  `script-src 'self' ${inlineScriptHashes.map((h) => `'${h}'`).join(" ")}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "frame-src https://www.facebook.com https://maps.google.com https://www.google.com",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self' mailto:",
+  "frame-ancestors 'self'",
+  "upgrade-insecure-requests",
+].join("; ");
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -51,6 +73,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/(.*)", headers: securityHeaders },
+      {
+        // static site only: everything except /portal/*
+        source: "/:path((?!portal).*)",
+        headers: [{ key: "Content-Security-Policy", value: siteCsp }],
+      },
       {
         // the portal must never be indexed or framed
         source: "/portal/:path*",
