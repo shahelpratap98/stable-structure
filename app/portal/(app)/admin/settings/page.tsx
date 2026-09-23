@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { ActionForm } from "@/components/action-form";
 import { createClient } from "@/lib/supabase/server";
-import { saveSettings } from "../actions";
+import { saveSettings, sendTestEmail } from "../actions";
+import { emailEnabled } from "@/lib/email";
 
 export const metadata: Metadata = { title: "Company & GST" };
 
@@ -16,6 +17,7 @@ export default async function SettingsPage() {
   const nextInvoice = `${s.invoice_prefix}${String(s.next_invoice_no).padStart(4, "0")}`;
 
   return (
+    <div className="flex flex-col gap-8">
     <ActionForm action={saveSettings} submitLabel="Save settings" className="flex flex-col gap-8">
       <section aria-labelledby="company-heading" className="rounded-xl border border-line bg-surface p-5">
         <h2 id="company-heading" className="text-xl font-semibold">Company details</h2>
@@ -94,5 +96,25 @@ export default async function SettingsPage() {
         </p>
       </section>
     </ActionForm>
+
+    <section aria-labelledby="email-heading" className="rounded-xl border border-line bg-surface p-5">
+      <h2 id="email-heading" className="text-xl font-semibold">Email</h2>
+      {emailEnabled() ? (
+        <>
+          <p className="mt-1 text-sm text-muted">
+            Sending as <span className="font-semibold text-ink">{process.env.EMAIL_FROM}</span>. Invites, sign-in links, returned entries, leave decisions and invoice PDFs go out automatically.
+          </p>
+          <ActionForm action={sendTestEmail} submitLabel="Send a test email" pendingLabel="Sending…" quiet className="mt-4 flex flex-wrap items-end gap-3">
+            <div className="min-w-64">
+              <label htmlFor="test-to" className="field-label">Send to</label>
+              <input id="test-to" name="to" type="email" placeholder="Your own address" className="field" />
+            </div>
+          </ActionForm>
+        </>
+      ) : (
+        <p className="mt-1 text-sm text-muted">Email isn&apos;t switched on. Set <code>RESEND_API_KEY</code> and <code>EMAIL_FROM</code> on the server to enable it.</p>
+      )}
+    </section>
+    </div>
   );
 }
