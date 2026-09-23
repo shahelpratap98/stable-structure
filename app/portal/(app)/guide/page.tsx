@@ -55,12 +55,17 @@ export default async function GuidePage() {
             website, and <Term>stablestructure.co.nz/login</Term> takes you straight there. It works on a phone, tablet or computer, with nothing to install.
           </p>
           <Points>
-            <li><Term>First time:</Term> you&apos;ll be sent a one-time link. Open it, choose a password of at least 12 characters, and you&apos;re in. The link works once and expires after 24 hours; if it has expired, ask an admin for a new one.</li>
-            <li><Term>Forgot your password:</Term> choose &quot;Forgot your password?&quot; on the sign-in page and follow the email link.</li>
+            <li><Term>First time:</Term> you&apos;ll get an email from <Term>admin@stablestructure.co.nz</Term> with a one-time link. Open it, choose a password of at least 12 characters, and you&apos;re in. The link works once and expires after 24 hours; if it has expired, ask an admin for a new one (they can email you another in seconds). Check your spam folder if it doesn&apos;t arrive.</li>
+            <li><Term>Forgot your password:</Term> choose &quot;Forgot your password?&quot; on the sign-in page and follow the email link, or ask an admin to send you a new sign-in link.</li>
             <li><Term>Change your password:</Term> click your name in the top bar to open <Go href="/portal/account">My account</Go>.</li>
             <li><Term>Shared computer:</Term> use <Term>Sign out</Term> in the top bar when you finish.</li>
           </Points>
           <Tip>After 5 wrong passwords the portal pauses sign-in for that account for about 15 minutes. That is there to stop password guessing; just wait, or reset your password.</Tip>
+          <h3 className="mt-5 text-base font-semibold text-ink">On a phone</h3>
+          <p className="mt-2">
+            Everything works the same on a phone, laid out for a thumb. The menu is a bar along the bottom of the screen with the pages you use most; <Term>More</Term> opens the rest, plus My account and Sign out.
+            For quick access, open the portal in your phone&apos;s browser and choose <Term>Add to Home Screen</Term> (Share menu on iPhone, browser menu on Android) and it behaves like an app.
+          </p>
         </>
       ),
     },
@@ -127,7 +132,7 @@ export default async function GuidePage() {
         <>
           <p>If an approver spots a problem, such as the wrong project, they return the entry with a note instead of approving it.</p>
           <Steps>
-            <li>The day turns red in your week strip. Open it.</li>
+            <li>You get an email with the note, and the day turns red in your week strip. Open it.</li>
             <li>The returned entry is editable again, with the approver&apos;s note shown in red at the top of it.</li>
             <li>Fix it, then choose <Term>Submit day for approval</Term> again.</li>
           </Steps>
@@ -162,11 +167,12 @@ export default async function GuidePage() {
           <Steps>
             <li>Click the first day you&apos;ll be away, then the last day (one click for a single day).</li>
             <li>Choose the type: <Term>Annual</Term>, <Term>Sick</Term>, <Term>Bereavement</Term> or <Term>Parental</Term>. A single day can be a morning or afternoon half day. Add a note if it helps, and choose <Term>Send request</Term>.</li>
-            <li>It shows on the calendar with a dashed edge while it waits. Once an approver approves it, it turns solid and the days come off your balance.</li>
+            <li>It shows on the calendar with a dashed edge while it waits. The approvers are emailed, and you&apos;re emailed when they decide. Once approved it turns solid and the days come off your balance.</li>
           </Steps>
           <Points>
             <li>Weekends and public holidays are never counted, so a Friday-to-Monday request is two days.</li>
-            <li>Your balance is beside the calendar. NZ standard is {`20 days' annual leave and 10 days' sick leave`} a year, added on your start-date anniversary. Unused annual leave carries over; sick leave carries over up to a cap of 20 days. Bereavement (3 days per close family bereavement) and parental leave aren&apos;t yearly quotas, so they are simply recorded.</li>
+            <li>Your balance is beside the calendar. The standard allowance is {`20 days' annual leave and 10 days' sick leave`} a year, added on your start-date anniversary, but your own allowance may differ: an admin sets it per person. Unused annual leave carries over; sick leave carries over up to a cap of 20 days. Bereavement (3 days per close family bereavement) and parental leave aren&apos;t yearly quotas, so they are simply recorded.</li>
+            <li>Think your balance is wrong? Ask an admin: they can check your start date, allowance and any opening balance carried over from the old spreadsheet.</li>
             <li>You can <Term>withdraw</Term> a request while it&apos;s still waiting. Once approved, ask an approver to cancel it.</li>
             <li>Approved leave days are never marked short in the hours check, and they show as &quot;Leave&quot; on your My day week strip.</li>
             <li>Other people&apos;s leave shows as &quot;away&quot;: only you and the approvers can see whether a day is annual or sick leave.</li>
@@ -237,12 +243,12 @@ export default async function GuidePage() {
       audience: "approver",
       body: (
         <>
-          <p>New requests appear at the top of <Go href="/portal/leave">Leave</Go> (the number beside it in the top bar is how many are waiting). Each shows the dates, working days, the person&apos;s note, and how much of their balance is left; a request that would take them over their entitlement is flagged.</p>
+          <p>You&apos;re emailed when someone requests leave. New requests appear at the top of <Go href="/portal/leave">Leave</Go> (the number beside it in the top bar is how many are waiting). Each shows the dates, working days, the person&apos;s note, and how much of their balance is left; a request that would take them over their allowance is flagged.</p>
           <Points>
             <li><Term>Approve</Term> books it. <Term>Decline</Term> needs a short reason, which the person sees.</li>
             <li><Term>Team balances</Term> lists everyone&apos;s annual and sick leave taken and remaining for their current leave year.</li>
             <li>Plans changed? Approved leave can be cancelled from the &quot;Approved leave around this month&quot; list, which puts the days back.</li>
-            <li>Entitlements, start dates and <Term>opening balances</Term> (what someone had carried over when the portal started) are set per person under Setup → Staff; the company defaults and the sick-leave cap under Setup → Company &amp; GST.</li>
+            <li>Each person&apos;s allowance, start date and opening balance are set by an admin{admin ? <>: see <a href="#leave-allowances" className="font-semibold text-accent-600 underline-offset-4 hover:underline">Setting leave allowances</a> below</> : " under Setup → Staff"}.</li>
           </Points>
         </>
       ),
@@ -290,7 +296,7 @@ export default async function GuidePage() {
           <Steps>
             <li>Enter their name as it should appear on timesheets, their email, and a role.</li>
             <li>Choose <Term>Create account and get link</Term>.</li>
-            <li>Copy the one-time link and send it to them however suits (text, WhatsApp, email). They open it and choose their own password. It works once and expires after 24 hours.</li>
+            <li>They&apos;re emailed a one-time link from <Term>admin@stablestructure.co.nz</Term>. They open it and choose their own password. It works once and expires after 24 hours. The same link is shown on screen, so you can also pass it on by text or WhatsApp if the email goes astray.</li>
           </Steps>
           <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-[7rem_1fr]">
             <dt><Term>Staff</Term></dt><dd>Enters their own time and sees their own hours. Never sees rates, values, other people&apos;s time or invoices.</dd>
@@ -300,10 +306,35 @@ export default async function GuidePage() {
           <Points>
             <li>Open a person in the list to change their name, role or their own <Term>standard day</Term> (for part-timers; blank uses the company default).</li>
             <li><Term>Someone has left:</Term> untick <Term>Active</Term>. They can no longer sign in, and all their past time stays intact. Accounts are never deleted.</li>
-            <li><Term>Lost invite or locked out:</Term> <Term>Get a new sign-in link</Term> creates a fresh one-time link for them.</li>
+            <li><Term>Lost invite or locked out:</Term> <Term>Get a new sign-in link</Term> emails them a fresh one-time link (and shows it to you).</li>
             <li><span className="chip bg-warn-bg text-warn">Hasn&apos;t signed in yet</span> marks people who haven&apos;t used their invite.</li>
           </Points>
           <Tip>You can&apos;t remove your own admin access or deactivate yourself, so the portal can never be left without an admin.</Tip>
+        </>
+      ),
+    },
+    {
+      id: "leave-allowances",
+      title: "Setting leave allowances",
+      audience: "admin",
+      body: (
+        <>
+          <p>Leave allowances are per person, because not everyone is on the same terms. The <Term>Leave allowances</Term> table at the top of <Go href="/portal/admin/staff">Setup → Staff</Go> shows everyone&apos;s at a glance; <Term>default</Term> means the company-wide figure.</p>
+          <h3 className="mt-4 text-base font-semibold text-ink">Company defaults</h3>
+          <p className="mt-2">Under <Go href="/portal/admin/settings">Setup → Company &amp; GST</Go>: <Term>Annual leave (days/yr)</Term>, <Term>Sick leave (days/yr)</Term> and the <Term>Sick leave cap</Term> (how much unused sick leave can build up). These start at the NZ minimums of 20, 10 and 20 and apply to anyone without their own figure.</p>
+          <h3 className="mt-4 text-base font-semibold text-ink">A person&apos;s own allowance</h3>
+          <Steps>
+            <li>Open their row under Setup → Staff.</li>
+            <li>Enter their <Term>Start date</Term>. Their leave year, and the day each year&apos;s allowance is added, runs from this anniversary. Without it the portal assumes 1 January.</li>
+            <li>Enter <Term>Annual leave (days/yr)</Term> and <Term>Sick leave (days/yr)</Term>. Leave a box blank to use the company default. Part-timers on a 3-day week, for example, would have 12 and 6.</li>
+            <li>Choose <Term>Save changes</Term>.</li>
+          </Steps>
+          <h3 className="mt-4 text-base font-semibold text-ink">Carrying over balances from the old spreadsheet</h3>
+          <p className="mt-2">
+            If someone already had leave built up before the portal started, open <Term>Opening leave balances</Term> in their row: enter the date the figures were correct and the annual and sick days they had on that date.
+            From then on the portal adds their allowance at each anniversary and takes off what they book. Leave blank for anyone starting fresh.
+          </p>
+          <Tip>Changing an allowance takes effect immediately in everyone&apos;s balance, including leave already approved for later dates. The <Go href="/portal/leave">Leave</Go> page&apos;s <Term>Team balances</Term> table is the place to check the result.</Tip>
         </>
       ),
     },
@@ -338,7 +369,7 @@ export default async function GuidePage() {
             <li>Choose <Term>Invoice this</Term> beside a project (or <Term>+ New invoice</Term> and pick the project and period yourself).</li>
             <li>Check the preview. Time is grouped by work type, with the task descriptions underneath, then subtotal, GST and total. Only approved, chargeable, not-yet-invoiced time in the period is included.</li>
             <li>Set the invoice date and choose <Term>Create invoice</Term>. The number is assigned automatically and the entries are locked to it.</li>
-            <li><Term>Download PDF</Term> and send it to the client, then choose <Term>Mark as sent</Term>. When the money arrives, <Term>Mark as paid</Term>.</li>
+            <li>Choose <Term>Email PDF to client</Term> to send it straight from the portal to the client&apos;s billing email (set under Setup → Clients); it&apos;s marked as sent automatically. Or <Term>Download PDF</Term>, send it yourself, and choose <Term>Mark as sent</Term>. When the money arrives, <Term>Mark as paid</Term>.</li>
           </Steps>
           <Points>
             <li>If the preview says some time has <Term>no charge-out rate</Term>, set the rate on the project (or a rate override on those entries) and preview again.</li>
@@ -398,7 +429,7 @@ export default async function GuidePage() {
         <h1 className="text-3xl font-semibold">How to use the portal</h1>
         <p className="mt-2 max-w-[65ch] text-muted">
           You&apos;re signed in as {roleName}, so this guide covers what you can do{approver ? ", from entering your own time through to the tools only your role has" : ""}.
-          Everything here works the same on a phone.
+          Emails from the portal come from admin@stablestructure.co.nz.
         </p>
 
         <div className="mt-8 flex flex-col gap-10">
