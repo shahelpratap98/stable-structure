@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-21';
+const ASSET_VERSION = '2026-09-24';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -364,7 +364,8 @@ const NAV = [
   { key: 'home', label: 'Home', href: '', root: true },
   { key: 'services', label: 'Services', href: 'services.html', dd: true },
   { key: 'sectors', label: 'Sectors', href: 'sectors.html' },
-  { key: 'projects', label: 'Our Projects', href: 'projects.html' },
+  { key: 'projects', label: 'Projects', href: 'projects.html' },
+  { key: 'granny', label: 'Granny Flats', href: 'granny-flats.html' },
   { key: 'about', label: 'About', href: 'about.html' },
   { key: 'process', label: 'Process', href: 'process.html' },
   { key: 'reviews', label: 'Reviews', href: 'testimonials.html' },
@@ -428,6 +429,7 @@ function header(base, active) {
   </details>
   <a class="m-link" href="${base}sectors.html">Sectors</a>
   <a class="m-link" href="${base}projects.html">Our Projects</a>
+  <a class="m-link" href="${base}granny-flats.html">Granny Flats</a>
   <a class="m-link" href="${base}about.html">About</a>
   <a class="m-link" href="${base}process.html">Process</a>
   <a class="m-link" href="${base}testimonials.html">Reviews</a>
@@ -460,6 +462,7 @@ function footer(base) {
         <h2 class="fh">Company</h2>
         <a href="${base}sectors.html">Sectors</a>
         <a href="${base}projects.html">Our projects</a>
+        <a href="${base}granny-flats.html">Granny flats &amp; 3D models</a>
         <a href="${base}about.html">About us</a>
         <a href="${base}process.html">Our process</a>
         <a href="${base}testimonials.html">Reviews</a>
@@ -521,7 +524,7 @@ function ctaBand(base, opts) {
 
 /* ?v= busts the long-lived immutable cache (vercel.json) whenever these change:
    bump ASSET_VERSION on any styles.css / main.js edit. */
-const scripts = (base) => `<script src="${base}main.js?v=${ASSET_VERSION}"></script>\n</body>\n</html>`;
+const scripts = (base, extra) => `${extra ? extra + '\n' : ''}<script src="${base}main.js?v=${ASSET_VERSION}"></script>\n</body>\n</html>`;
 
 function pageHero(base, o) {
   const crumbs = (o.crumbs || []).map((c, i, arr) => {
@@ -698,7 +701,7 @@ function contactBlock(base) {
 /* ---------- Page assembly ---------- */
 const skipLink = () => `<a class="skip-link" href="#main">Skip to main content</a>`;
 
-function layout({ base, active, headO, body, file }) {
+function layout({ base, active, headO, body, file, extraScripts }) {
   return [
     head(headO, base, file),
     skipLink(),
@@ -708,7 +711,7 @@ function layout({ base, active, headO, body, file }) {
     `</main>`,
     callbar(base),
     footer(base),
-    scripts(base),
+    scripts(base, extraScripts),
   ].join('\n');
 }
 
@@ -769,6 +772,17 @@ function statsBlock() {
   </div></div></section>`;
 }
 
+/* Full-image lightbox (main.js). Needs a .proj-grid on the page. */
+const lightboxMarkup = () => `<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Project photo" hidden>
+  <button class="lb-btn lb-close" type="button" aria-label="Close">${si('close', 2.2)}</button>
+  <button class="lb-btn lb-prev" type="button" aria-label="Previous photo">${si('chevr', 2.2)}</button>
+  <figure class="lb-figure">
+    <img class="lb-img" src="" alt="" />
+    <figcaption class="lb-cap"></figcaption>
+  </figure>
+  <button class="lb-btn lb-next" type="button" aria-label="Next photo">${si('chevr', 2.2)}</button>
+</div>`;
+
 function projectsSection(base) {
   const projects = loadProjects();
 
@@ -827,15 +841,7 @@ function projectsSection(base) {
       </div>
       <p class="proj-foot reveal">Follow <a href="${FACEBOOK_URL}" target="_blank" rel="noopener">Stable Structure on Facebook</a> to see new projects as they are finished.</p>
     </div></section>
-<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Project photo" hidden>
-  <button class="lb-btn lb-close" type="button" aria-label="Close">${si('close', 2.2)}</button>
-  <button class="lb-btn lb-prev" type="button" aria-label="Previous photo">${si('chevr', 2.2)}</button>
-  <figure class="lb-figure">
-    <img class="lb-img" src="" alt="" />
-    <figcaption class="lb-cap"></figcaption>
-  </figure>
-  <button class="lb-btn lb-next" type="button" aria-label="Next photo">${si('chevr', 2.2)}</button>
-</div>`;
+${lightboxMarkup()}`;
 }
 
 function projectsVideo() {
@@ -1477,6 +1483,234 @@ pages.push({
   ].join('\n'),
 });
 
+/* ---------- GRANNY FLATS (2026 70 m² exemption) + interactive 3D models ----------
+   Content from the Stable Structure 70m² Granny Flats brochure (assets/). The
+   three GLB models were converted from the practice's IFC files; their stats
+   JSON sits beside them and drives the element counts and dimensions below.
+   three.js is NOT loaded with the page: a tiny inline script injects the
+   viewer bundle only when a model scrolls near the viewport. */
+const GF_DESIGNS = [
+  { n: '01', slug: 'gable-retreat', title: 'Gable Retreat', w: 1200, h: 1097, specs: ['2 bedrooms', '1 bathroom', 'Open-plan kitchen, dining & living', 'Laundry', 'Wraparound deck'] },
+  { n: '02', slug: 'skillion-studio', title: 'Skillion Studio', w: 1200, h: 1125, specs: ['1 bedroom', '1 bathroom', 'Open-plan living', 'Kitchen', 'Covered outdoor living deck'] },
+  { n: '03', slug: 'timber-courtyard', title: 'Timber Courtyard', w: 1200, h: 1097, specs: ['2 bedrooms', '1 bathroom', 'Laundry', 'Study nook', 'Bifold doors to an outdoor deck'] },
+  { n: '04', slug: 'pavilion-gable', title: 'Pavilion Gable', w: 1200, h: 1000, size: '11.6 × 7.0 m', specs: ['2 bedrooms', '1 bathroom', 'Study', 'Living with fireplace', 'Laundry', 'Covered outdoor living'] },
+  { n: '05', slug: 'covered-deck-cottage', title: 'Covered Deck Cottage', w: 1160, h: 1355, specs: ['Bedroom 2.8 × 3.0 m', '1 bathroom', 'Open-plan living 4.8 × 3.9 m', 'Kitchen', 'Full-width covered deck'] },
+  { n: '06', slug: 'three-bedroom-skillion', title: 'Three-Bedroom Skillion', w: 1200, h: 1247, specs: ['3 bedrooms', '1 bathroom', 'Open-plan kitchen & living', 'Laundry', 'Covered outdoor 3.0 × 5.6 m'] },
+  { n: '07', slug: 'linear-modern', title: 'Linear Modern', w: 1200, h: 800, size: '14.5 × 7.0 m', specs: ['2 bedrooms', '1 bathroom', 'Study', 'Open-plan kitchen, dining & living', 'Laundry', 'Stacking doors to outdoor living'] },
+];
+
+const GF_MODELS = [
+  { slug: 'portal-shed-structural', kind: 'Steel portal frame', title: 'Clear-span steel portal frame',
+    desc: 'A clear-span steel portal frame: 410UB53.7 universal-beam columns carry knee-braced SHS trusses, with C15015 cold-formed purlins and girts, fly braces to the rafters and bolted base plates on 600 mm diameter, 2.5 m deep bored pier footings.',
+    lead: 'Piles', leadLabel: 'pier footings' },
+  { slug: 'gable-shed-frame', kind: 'Timber gable frame', title: 'Timber gable frame on piles',
+    desc: 'A conventional timber gable frame on pile foundations: 48 floor piles and 58 footings support the floor joists, with wall girts, rafters and roof purlins framing the building. Door and window openings are modelled so the lintels and trimmers are real.',
+    lead: 'Piles', leadLabel: 'floor piles' },
+  { slug: 'skillion-shed-frame', kind: 'Skillion (mono-pitch) frame', title: 'Skillion mono-pitch frame',
+    desc: 'A mono-pitch skillion frame nearly 30 m long: 24 columns on individual footings, wall girts and roof members, with strap bracing to the roof plane and the walls to resist wind and earthquake loads.',
+    lead: 'Columns', leadLabel: 'columns' },
+];
+
+function gfModelStats(slug) {
+  return JSON.parse(fs.readFileSync(path.join(ROOT, 'assets', 'models', `${slug}.json`), 'utf8'));
+}
+
+const gfNum = (n) => Number(n).toFixed(1).replace(/\.0$/, '');
+
+function gfViewer(base, m, i) {
+  const st = gfModelStats(m.slug);
+  const total = Object.values(st.layers).reduce((a, b) => a + b, 0);
+  const facts = [
+    [`${gfNum(st.size_m.length)} m`, 'long'],
+    [`${gfNum(st.size_m.width)} m`, 'wide'],
+    [String(st.layers[m.lead] || 0), m.leadLabel],
+    [String(total), 'elements modelled'],
+  ];
+  return `<article class="mv reveal" id="mv-${m.slug}" data-model="${base}assets/models/${m.slug}.glb?v=${ASSET_VERSION}" data-counts="${esc(JSON.stringify(st.layers))}" aria-label="Interactive 3D model: ${esc(m.title)}">
+        <div class="mv-head">
+          <div>
+            <span class="mv-kicker">Model 0${i + 1} · ${m.kind}</span>
+            <h3>${m.title}</h3>
+            <p>${m.desc}</p>
+          </div>
+          <ul class="mv-facts">${facts.map(f => `<li><b>${f[0]}</b><span>${f[1]}</span></li>`).join('')}</ul>
+        </div>
+        <div class="mv-stage"><p class="mv-status">Loading 3D model…</p></div>
+        <div class="mv-bar">
+          <div class="mv-tools">
+            <button type="button" class="mv-btn" data-mv-reset>${si('arrow', 2.2)} Reset view</button>
+            <button type="button" class="mv-btn" data-mv-wire aria-pressed="false">Wireframe</button>
+            <button type="button" class="mv-btn" data-mv-full>Fullscreen</button>
+          </div>
+          <p class="mv-dims"></p>
+        </div>
+        <div class="mv-layers" aria-label="Show or hide element types"></div>
+        <p class="mv-hint">Drag to orbit · scroll or pinch to zoom · right-drag or two fingers to pan · untick a layer to hide it</p>
+      </article>`;
+}
+
+function gfDesignCard(base, d) {
+  const img = `${base}assets/granny-flats/${d.slug}.webp`;
+  const small = `${base}assets/granny-flats/${d.slug}-640.webp`;
+  const caption = `Design ${d.n} · ${d.title}${d.size ? ` · ${d.size}` : ''} — ${d.specs.join(' · ')}. Images are indicative; final layouts, sizes and finishes are confirmed at design stage.`;
+  return `<article class="proj-card gf-card reveal" data-images="${esc(JSON.stringify([img]))}" data-caption="${esc(caption)}">
+        <button class="proj-media gf-media" type="button" aria-label="View the ${esc(d.title)} design at full size">
+          <img src="${small}" srcset="${small} 640w, ${img} ${d.w}w" sizes="(min-width:1000px) 380px, (min-width:640px) 50vw, 100vw" width="${d.w}" height="${d.h}" loading="lazy" decoding="async" alt="${esc(d.title)} — 70 m² granny flat concept render by Stable Structure" />
+        </button>
+        <div class="proj-body">
+          <span class="proj-date">Design ${d.n}${d.size ? ` · ${d.size}` : ''}</span>
+          <h3 class="gf-title">${d.title}</h3>
+          <ul class="gf-specs">${d.specs.map(sp => `<li>${sp}</li>`).join('')}</ul>
+        </div>
+      </article>`;
+}
+
+const GF_WA = "Hi Stable Structure, I'd like to talk about a 70m² granny flat on my property.";
+const GF_LASTMOD = '2026-09-24';
+
+function grannyFlatsPage() {
+  const base = '';
+  const tick = (t) => `<li>${si('check', 2.4)}<span>${t}</span></li>`;
+  const perks = [
+    ['users', 'A comfortable second home', 'Independent living for elderly parents, adult children or visiting family.'],
+    ['gem', 'Potential rental income', 'Subject to the property’s planning and other requirements.'],
+    ['pin', 'More from your land', 'Add function and value to an under-used part of your section.'],
+    ['clock', 'Fewer delays', 'Where a project qualifies, skipping the consent process can simplify and speed up construction.'],
+    ['shield', 'Engineer-designed', 'Designed by a chartered structural engineer, so compliance is built in rather than bolted on.'],
+  ];
+  const conditions = [
+    ['Floor area', 'A maximum of 70 m².'],
+    ['Height', 'Within the specified height and ground-clearance limits.'],
+    ['Setbacks', 'Generally at least 2 m from boundaries and other buildings.'],
+    ['Construction', 'Permitted lightweight systems and materials.'],
+    ['Building Code', 'The dwelling must still comply with the NZ Building Code.'],
+    ['Qualified professionals', 'Licensed people carry out or supervise the work where required.'],
+    ['Council notification', 'Required information provided before and after construction.'],
+  ];
+  const compliance = ['Structural stability', 'Foundations', 'Ground conditions', 'Weathertightness', 'Insulation & energy', 'Fire safety', 'Ventilation', 'Natural light', 'Plumbing & sanitary', 'Stormwater', 'Wastewater', 'Electrical work', 'Moisture control', 'Site access'];
+  const checks = ['Site layout, available building area and building position', 'Boundaries, setbacks and existing buildings', 'Foundations and ground conditions', 'Drainage, wastewater and stormwater disposal', 'Access, vehicle parking and services', 'Planning and property-specific restrictions', 'Height and setback requirements', 'Flooding, overland flow and other site constraints', 'Heritage or other overlays where applicable'];
+  const features = ['2-bedroom layouts', 'Open-plan kitchen & living', 'Full bathrooms', 'Laundry', 'Built-in storage', 'Indoor-outdoor living', 'Covered outdoor areas', 'Contemporary finishes'];
+  const steps = [
+    ['01', 'Site assessment', 'We review boundaries, access, services, ground conditions and site constraints before design begins.'],
+    ['02', 'Concept design', 'A layout that suits your site and lifestyle: orientation, light, storage and outdoor connection.'],
+    ['03', 'Detailed plans', 'Documentation to meet the Building Code, the exemption conditions and council notification.'],
+    ['04', 'Construction', 'A quality build with qualified trades, supervised through to handover.'],
+  ];
+  const faqs = [
+    ['Do I still need to tell the council?', 'Yes. The exemption removes the building consent, not the council’s involvement. Required information must be provided to Auckland Council before construction starts and again once it is finished. We prepare that documentation as part of the detailed plans.'],
+    ['Does the exemption cover planning and resource consent?', 'No. It is a building-consent exemption only. Planning rules, resource consent, drainage and other council requirements may still apply depending on your property and location, which is why the site assessment comes first.'],
+    ['Can I rent the granny flat out?', 'Potentially, subject to the property’s planning and other requirements. We check what applies to your site at the assessment stage, so you know before you commit.'],
+    ['What can 70 m² actually fit?', 'Comfortably two bedrooms, an open-plan kitchen and living area, a bathroom, laundry and plenty of storage; Design 06 fits three bedrooms. Smart space planning, natural light and built-in storage keep a compact home feeling generous.'],
+    ['What if my site or design falls outside the exemption?', `Then we take the same design through building consent, with the structural drawings, calculations and <a href="${base}services/building-consent-documentation.html">PS1 documentation</a> we prepare for any residential project. Nothing is wasted.`],
+  ];
+
+  return {
+    file: 'granny-flats.html', base, active: 'granny', lastmod: GF_LASTMOD,
+    headO: { title: '70m² Granny Flats Without Consent | Auckland | Stable Structure', desc: 'Seven engineer-designed 70m² granny flat concepts for Auckland under the 2026 building-consent exemption, plus interactive 3D structural models you can explore in your browser.', pageLabel: 'Granny Flats' },
+    extraScripts: `<script>
+(function(){var els=document.querySelectorAll('.mv[data-model]');if(!els.length)return;var done=false;
+function load(){if(done)return;done=true;var s=document.createElement('script');s.type='module';s.src='${base}assets/vendor/model-viewer.js?v=${ASSET_VERSION}';document.body.appendChild(s);}
+if(!('IntersectionObserver' in window))return load();
+var io=new IntersectionObserver(function(en){if(en.some(function(e){return e.isIntersecting})){load();io.disconnect();}},{rootMargin:'600px'});
+els.forEach(function(el){io.observe(el);});})();
+</script>`,
+    body: [
+      pageHero(base, { eyebrow: 'Granny flats · 2026 exemption', title: '70 m² granny flats <span class="hl">without building consent</span>', sub: 'Seven engineer-designed granny flat concepts for Auckland sections, plus interactive 3D structural models you can spin, zoom and take apart layer by layer. Designed to meet the new consent exemption, and built to comply.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Granny Flats' }], waMsg: GF_WA }),
+
+      `<section class="pad-sm"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">Make more from your property</span><h2 class="section-title">More space. More flexibility. More value from your land.</h2><p class="lead">New Zealand’s 70 m² granny flat exemption opens an opportunity for eligible homeowners to add a standalone minor dwelling without a building consent, provided every exemption requirement is met.</p></div>
+      <div class="gf-perks">
+        ${perks.map(p => `<div class="gf-perk reveal"><span class="fic">${si(p[0])}</span><div><b>${p[1]}</b>${p[2]}</div></div>`).join('\n        ')}
+      </div>
+      <nav class="gf-jump reveal" aria-label="On this page">
+        <a href="#designs">The seven designs</a><a href="#models">Interactive 3D models</a><a href="#exemption">The exemption explained</a><a href="#site">Is it right for your site?</a><a href="#process">From idea to home</a>
+      </nav>
+    </div></section>`,
+
+      `<section id="designs" class="pad" style="background:var(--surface-2)"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">Design collection</span><h2 class="section-title">Seven ways to live well in 70 m²</h2><p class="lead">Each design is a starting point. We tailor layout, orientation, cladding and finishes to your site, budget and lifestyle. Small doesn’t have to mean cramped: well-positioned windows, efficient kitchens and built-in storage make a compact home feel surprisingly generous.</p></div>
+      <div class="gf-chips reveal">${features.map(f => `<span>${f}</span>`).join('')}</div>
+      <div class="proj-grid">
+        ${GF_DESIGNS.map(d => gfDesignCard(base, d)).join('\n        ')}
+      </div>
+      <p class="gf-note reveal">Images are indicative. Final layouts, sizes and finishes are confirmed at design stage. Tap any design to view it full size.</p>
+      ${lightboxMarkup()}
+    </div></section>`,
+
+      `<section id="models" class="pad"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">Interactive 3D</span><h2 class="section-title">See the structure before it is built</h2><p class="lead">Every Stable Structure design starts as a full structural model, so loads, connections and bracing are resolved before anyone picks up a hammer. Explore three of our framing models below, built with the same lightweight timber and steel systems we use for granny flats and sheds. Drag to rotate, zoom in on a connection, and switch element types on and off.</p></div>
+      ${GF_MODELS.map((m, i) => gfViewer(base, m, i)).join('\n      ')}
+      <p class="gf-note reveal">Models are shown for illustration. Member sizes, connections and foundations for your project are designed for your site and confirmed on the drawings.</p>
+    </div></section>`,
+
+      `<section id="exemption" class="pad" style="background:var(--surface-2)"><div class="container">
+      <div class="split">
+        <div class="reveal">
+          <span class="eyebrow">The exemption explained</span>
+          <h2 class="section-title">What does the 70 m² exemption mean?</h2>
+          <p class="lead">From early 2026, eligible homeowners can build a standalone dwelling of up to 70 m² without a building consent, subject to specific conditions. Often called a granny flat or minor dwelling, this pathway is designed to make smaller homes faster and more accessible to build.</p>
+          <div class="feature-list">
+            ${conditions.map(c => `<div class="feature"><span class="fic">${si('check', 2.4)}</span><div><span class="fh4">${c[0]}</span><p>${c[1]}</p></div></div>`).join('\n            ')}
+          </div>
+        </div>
+        <div class="gf-compliance reveal">
+          <h3>“Consent-free” still means compliant</h3>
+          <p>A qualifying granny flat may not need a building consent, but it must still meet the Building Code and other legislation. Your home still needs to be safe, durable, healthy and properly designed, and the Auckland Council notification process still applies.</p>
+          <ul>${compliance.map(c => `<li>${si('check', 2.6)}${c}</li>`).join('')}</ul>
+          <p>Planning or resource-consent considerations may also apply, depending on the property and location. Getting the site checked early helps avoid costly surprises later.</p>
+        </div>
+      </div>
+    </div></section>`,
+
+      `<section id="site" class="pad"><div class="container">
+      <div class="split">
+        <div class="reveal">
+          <span class="eyebrow">Your site, your lifestyle</span>
+          <h2 class="section-title">Is a 70 m² granny flat right for your property?</h2>
+          <p class="lead">Every property is different, and not every site will be suitable. Before you start, we assess your site and identify the things that matter. Getting the design right from the beginning saves time, money and costly changes later.</p>
+          <h3 style="font-size:19px;margin-top:26px">What we check first</h3>
+          <ul class="gf-list">${checks.map(tick).join('')}</ul>
+        </div>
+        <div class="reveal">
+          <h3 style="font-size:19px">Why Auckland homeowners are building them</h3>
+          <div class="feature-list">
+            <div class="feature"><span class="fic">${si('users')}</span><div><span class="fh4">Independent accommodation</span><p>A comfortable home for elderly parents, adult children or visiting family.</p></div></div>
+            <div class="feature"><span class="fic">${si('gem')}</span><div><span class="fh4">Rental income</span><p>Subject to the property’s planning and other requirements.</p></div></div>
+            <div class="feature"><span class="fic">${si('pin')}</span><div><span class="fh4">Better use of your land</span><p>Add function to an under-used part of your section.</p></div></div>
+            <div class="feature"><span class="fic">${si('building')}</span><div><span class="fh4">Changing family needs</span><p>Flexibility as your household changes over the years.</p></div></div>
+            <div class="feature"><span class="fic">${si('clock')}</span><div><span class="fh4">Fewer delays</span><p>Where a project qualifies, skipping the consent process can simplify and speed up construction.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </div></section>`,
+
+      `<section id="process" class="pad process"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">From idea to home</span><h2 class="section-title">Practical design, quality construction and compliance, together</h2><p class="lead">With more than 12 years of experience in custom residential construction, Stable Structure understands small residential projects and minor dwellings, lightweight timber and steel framing, site-specific design, Building Code compliance and Auckland construction conditions. We coordinate the qualified trades and professionals your project needs.</p></div>
+      <div class="steps">
+        ${steps.map((s, i) => `<div class="step reveal">${i < 3 ? '<span class="line"></span>' : ''}<div class="n">${s[0]}</div><h4>${s[1]}</h4><p>${s[2]}</p></div>`).join('\n        ')}
+      </div>
+    </div></section>`,
+
+      `<section class="pad"><div class="container">
+      <div class="section-head center reveal"><span class="eyebrow">Good to know</span><h2 class="section-title">Granny flat questions, answered</h2></div>
+      ${faqBlock(faqs)}
+      <div class="gf-brochure reveal">
+        <div>
+          <span class="mv-kicker">Take it with you</span>
+          <h3>Download the granny flats brochure</h3>
+          <p>All seven designs, the exemption conditions and our process in one PDF you can share with the family.</p>
+        </div>
+        <a class="btn btn-primary btn-lg" href="${base}assets/Stable-Structure-70m2-Granny-Flats-Brochure.pdf" download="Stable-Structure-70m2-Granny-Flats-Brochure.pdf">Download brochure (PDF, 4 MB) ${si('arrow', 2.2)}</a>
+      </div>
+      <p class="gf-disclaimer">This page provides general information only and is not legal or regulatory advice. Eligibility for the building-consent exemption depends on meeting all applicable requirements, and planning, resource-consent, drainage and other council requirements may still apply. Rental use is subject to applicable requirements. Images and models are indicative only.</p>
+    </div></section>`,
+
+      ctaBand(base, { title: 'Ready to unlock the potential of your property?', text: 'Your 70 m² granny flat could be closer than you think. Talk to Stable Structure about your property, your requirements and what may be possible.', waMsg: GF_WA }),
+    ].join('\n'),
+  };
+}
+pages.push(grannyFlatsPage());
+
 /* PRIVACY POLICY (T8: the enquiry form promises privacy; this page backs it up) */
 pages.push({
   file: 'privacy.html', base: '', active: '', lastmod: SPRINT_DATE,
@@ -1538,7 +1772,7 @@ let count = 0;
 [...pages, notFoundPage].forEach((p) => {
   const outPath = path.join(ROOT, p.file);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, layout({ base: p.base, active: p.active, headO: p.headO, body: p.body, file: p.file }), 'utf8');
+  fs.writeFileSync(outPath, layout({ base: p.base, active: p.active, headO: p.headO, body: p.body, file: p.file, extraScripts: p.extraScripts }), 'utf8');
   count++;
   console.log('  ✓', p.file);
 });

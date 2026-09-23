@@ -1,0 +1,18 @@
+{
+  "file": "Portal_Shed_Structural.ifc",
+  "layers": {
+    "Piles": 20,
+    "Slabs": 1,
+    "Columns": 16,
+    "Footings": 4,
+    "Plates": 20,
+    "Beams": 4,
+    "Members": 476
+  },
+  "size_m": {
+    "length": 32.1,
+    "height": 10.36,
+    "width": 18.72
+  },
+  "triangles": 18252
+}

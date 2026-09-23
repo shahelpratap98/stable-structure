@@ -1,0 +1,17 @@
+{
+  "file": "Skillion_Shed_Frame.ifc",
+  "layers": {
+    "Columns": 24,
+    "Footings": 24,
+    "Beams": 2,
+    "Other": 1,
+    "Doors": 2,
+    "Members": 140
+  },
+  "size_m": {
+    "length": 29.99,
+    "height": 6.14,
+    "width": 9.59
+  },
+  "triangles": 2988
+}
