@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -70,6 +71,35 @@ export default async function StaffPage() {
             </div>
           </div>
         </ActionForm>
+      </section>
+
+      <section aria-labelledby="allowance-heading">
+        <h2 id="allowance-heading" className="text-xl font-semibold">Leave allowances</h2>
+        <p className="mt-1 text-sm text-muted">
+          Each person&apos;s yearly entitlement. Blank means the company default from <Link href="/portal/admin/settings" className="font-semibold text-accent-600 hover:underline">Company &amp; GST</Link>. To change someone&apos;s, open their row below.
+        </p>
+        <div className="mt-3 overflow-x-auto rounded-xl border border-line bg-surface">
+          <table className="w-full min-w-[520px] text-left text-sm">
+            <thead className="border-b border-line text-xs tracking-wide text-muted uppercase">
+              <tr>
+                <th className="px-4 py-2.5 font-semibold">Employee</th>
+                <th className="px-4 py-2.5 font-semibold">Start date</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Annual (days/yr)</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Sick (days/yr)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {staff.filter((s) => s.is_active).map((s) => (
+                <tr key={s.user_id}>
+                  <td className="px-4 py-2 font-semibold text-ink">{s.display_name}</td>
+                  <td className="px-4 py-2 text-muted">{s.start_date ? s.start_date.split("-").reverse().join("/") : <span className="text-warn">Not set</span>}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{s.annual_leave_days ?? <span className="text-muted">default</span>}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{s.sick_leave_days ?? <span className="text-muted">default</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section aria-labelledby="staff-heading">
