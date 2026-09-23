@@ -113,12 +113,51 @@ export async function staffSignInLink(_prev: ActionState, fd: FormData): Promise
 
   const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email });
   if (error || !data.properties?.hashed_token) return { ok: false, message: error?.message ?? "Couldn't create a link." };
+  const link = signInLink(data.properties.hashed_token, "recovery");
+
+  let emailed = false;
+  let emailError = "";
+  if (emailEnabled()) {
+    const sent = await sendEmail({
+      to: email,
+      subject: "Your Stable Structure portal sign-in link",
+      paragraphs: [
+        "Hello,",
+        "Here is a one-time link to sign in to the Stable Structure staff portal and choose a new password. It works once and expires in 24 hours.",
+      ],
+      button: { label: "Sign in and choose a password", url: link },
+    });
+    emailed = sent.ok;
+    emailError = sent.error ?? "";
+  }
 
   return {
     ok: true,
-    message: "Send them this link to choose a new password. It works once and expires in 24 hours.",
-    link: signInLink(data.properties.hashed_token, "recovery"),
+    message: emailed
+      ? `Emailed to ${email}. The same link is below in case it doesn't arrive.`
+      : emailError
+        ? `The email didn't send (${emailError}). Send them this link instead; it works once and expires in 24 hours.`
+        : "Send them this link to choose a new password. It works once and expires in 24 hours.",
+    link,
   };
+}
+
+// Setup -> Company & GST: proves the email service is wired up.
+export async function sendTestEmail(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  const me = await requireAdmin();
+  const limit = await rateLimit("emails", me.user_id);
+  if (!limit.ok) return { ok: false, message: "Too many emails sent. " + waitMessage(limit.retryAfter) };
+  if (!emailEnabled()) return { ok: false, message: "Email isn't switched on: RESEND_API_KEY and EMAIL_FROM need to be set on the server." };
+
+  const to = text(fd, "to") || me.email;
+  const sent = await sendEmail({
+    to,
+    subject: "Test email from the Stable Structure portal",
+    paragraphs: [`Hello ${me.display_name},`, "If you can read this, the portal's email is working.", `Sent from ${process.env.EMAIL_FROM}.`],
+  });
+  return sent.ok
+    ? { ok: true, message: `Sent to ${to}. Check the inbox and the spam folder.` }
+    : { ok: false, message: `Not sent: ${sent.error}. The server log has the full response from Resend.` };
 }
 
 export async function updateStaff(_prev: ActionState, fd: FormData): Promise<ActionState> {

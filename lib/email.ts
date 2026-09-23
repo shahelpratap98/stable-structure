@@ -44,7 +44,13 @@ ${opts.button ? `<p><a href="${escapeHtml(opts.button.url)}" style="display:inli
     if (!res.ok) {
       const body = await res.text();
       console.error("[email]", res.status, body);
-      return { ok: false, error: `The email service refused it (${res.status}).` };
+      let reason = "";
+      try {
+        reason = (JSON.parse(body) as { message?: string }).message ?? "";
+      } catch {
+        reason = body.slice(0, 200);
+      }
+      return { ok: false, error: `the email service refused it (${res.status}${reason ? `: ${reason}` : ""})` };
     }
     return { ok: true };
   } catch (e) {
