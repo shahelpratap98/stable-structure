@@ -100,7 +100,7 @@
     var close = function () {
       lb.classList.remove('open');
       document.body.style.overflow = '';
-      window.setTimeout(function () { lb.hidden = true; lbImg.src = ''; }, 200);
+      window.setTimeout(function () { lb.hidden = true; lbImg.removeAttribute('src'); }, 200);
       if (lastFocus && lastFocus.focus) lastFocus.focus();
     };
 

@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-24';
+const ASSET_VERSION = '2026-09-24.2';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -262,6 +262,7 @@ const TOP_LABELS = {
   'services.html': 'Services', 'sectors.html': 'Sectors', 'projects.html': 'Our Projects',
   'about.html': 'About', 'process.html': 'Process', 'testimonials.html': 'Reviews',
   'faq.html': 'FAQ', 'contact.html': 'Contact', 'privacy.html': 'Privacy Policy',
+  'granny-flats.html': 'Granny Flats', 'guides.html': 'Guides',
 };
 function crumbTrail(file, pageTitle) {
   if (!file || file === 'index.html' || file === '404.html') return null;
@@ -294,6 +295,7 @@ function ldFor(o, file, pageUrl) {
   }
   const trail = o.noindex ? null : crumbTrail(file, o.serviceName || o.pageLabel || '');
   if (trail) graph.push(breadcrumbNode(trail));
+  if (o.extraLd) graph.push(...o.extraLd);
   if (o.serviceType) {
     graph.push({
       '@type': 'Service',
@@ -333,7 +335,7 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <meta property="og:type" content="website" />
 <meta property="og:locale" content="en_NZ" />
 <meta property="og:site_name" content="Stable Structure Limited" />
-<meta property="og:image" content="${SITE_URL}assets/og-image.jpg" />
+<meta property="og:image" content="${SITE_URL}${o.ogImage || 'assets/og-image.jpg'}" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -777,7 +779,7 @@ const lightboxMarkup = () => `<div class="lightbox" id="lightbox" role="dialog" 
   <button class="lb-btn lb-close" type="button" aria-label="Close">${si('close', 2.2)}</button>
   <button class="lb-btn lb-prev" type="button" aria-label="Previous photo">${si('chevr', 2.2)}</button>
   <figure class="lb-figure">
-    <img class="lb-img" src="" alt="" />
+    <img class="lb-img" alt="" />
     <figcaption class="lb-cap"></figcaption>
   </figure>
   <button class="lb-btn lb-next" type="button" aria-label="Next photo">${si('chevr', 2.2)}</button>
@@ -1483,7 +1485,7 @@ pages.push({
   ].join('\n'),
 });
 
-/* ---------- GRANNY FLATS (2026 70 m² exemption) + interactive 3D models ----------
+/* ---------- GRANNY FLATS (2026 70m² exemption) + interactive 3D models ----------
    Content from the Stable Structure 70m² Granny Flats brochure (assets/). The
    three GLB models were converted from the practice's IFC files; their stats
    JSON sits beside them and drives the element counts and dimensions below.
@@ -1555,7 +1557,7 @@ function gfDesignCard(base, d) {
   const caption = `Design ${d.n} · ${d.title}${d.size ? ` · ${d.size}` : ''} — ${d.specs.join(' · ')}. Images are indicative; final layouts, sizes and finishes are confirmed at design stage.`;
   return `<article class="proj-card gf-card reveal" data-images="${esc(JSON.stringify([img]))}" data-caption="${esc(caption)}">
         <button class="proj-media gf-media" type="button" aria-label="View the ${esc(d.title)} design at full size">
-          <img src="${small}" srcset="${small} 640w, ${img} ${d.w}w" sizes="(min-width:1000px) 380px, (min-width:640px) 50vw, 100vw" width="${d.w}" height="${d.h}" loading="lazy" decoding="async" alt="${esc(d.title)} — 70 m² granny flat concept render by Stable Structure" />
+          <img src="${small}" srcset="${small} 640w, ${img} ${d.w}w" sizes="(min-width:1000px) 380px, (min-width:640px) 50vw, 100vw" width="${d.w}" height="${d.h}" loading="lazy" decoding="async" alt="${esc(d.title)} — 70m² granny flat concept render by Stable Structure" />
         </button>
         <div class="proj-body">
           <span class="proj-date">Design ${d.n}${d.size ? ` · ${d.size}` : ''}</span>
@@ -1567,6 +1569,45 @@ function gfDesignCard(base, d) {
 
 const GF_WA = "Hi Stable Structure, I'd like to talk about a 70m² granny flat on my property.";
 const GF_LASTMOD = '2026-09-24';
+const gfDate = (iso) => new Date(iso + 'T12:00:00+12:00').toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Pacific/Auckland' });
+
+/* Page-level structured data for the granny flats page: WebSite + WebPage +
+   Service (with the seven designs as an offer catalogue) + ImageGallery.
+   Merged into the same @graph as the organisation so every @id resolves. */
+function gfLd() {
+  const url = `${SITE_URL}granny-flats.html`;
+  const img = (d) => `${SITE_URL}assets/granny-flats/${d.slug}.webp`;
+  return [
+    { '@type': 'WebSite', '@id': `${SITE_URL}#website`, url: SITE_URL, name: 'Stable Structure Limited', publisher: { '@id': ORG_ID } },
+    {
+      '@type': 'WebPage', '@id': `${url}#webpage`, url,
+      name: '70m² Granny Flat Designs Auckland | No Consent Needed',
+      description: 'Seven engineer-designed 70m² granny flat concepts for Auckland under the 2026 consent exemption, with interactive 3D structural models.',
+      inLanguage: 'en-NZ', datePublished: '2026-09-24', dateModified: GF_LASTMOD,
+      isPartOf: { '@id': `${SITE_URL}#website` }, publisher: { '@id': ORG_ID },
+      about: { '@id': `${url}#service` },
+      primaryImageOfPage: { '@id': img(GF_DESIGNS[3]) },
+      hasPart: { '@id': `${url}#designs` },
+      reviewedBy: { '@type': 'Person', name: 'Gajanthan Vethanathan', jobTitle: 'Director, Chartered Professional Engineer (CPEng)' },
+    },
+    {
+      '@type': 'Service', '@id': `${url}#service`,
+      name: '70m² granny flat design and structural engineering',
+      serviceType: 'Minor dwelling design, structural engineering and council notification documentation',
+      description: 'Engineer-designed 70m² granny flat concepts for Auckland sections that meet the building-consent exemption, with structural design, PIM and council notification documentation, and construction coordination.',
+      provider: { '@id': ORG_ID }, areaServed: { '@type': 'City', name: 'Auckland' }, url,
+      hasOfferCatalog: {
+        '@type': 'OfferCatalog', name: 'Granny flat design collection',
+        itemListElement: GF_DESIGNS.map(d => ({ '@type': 'Offer', itemOffered: { '@type': 'Product', name: d.title, description: `${d.specs.join(', ')}${d.size ? `, ${d.size}` : ''}`, image: img(d) } })),
+      },
+    },
+    {
+      '@type': 'ImageGallery', '@id': `${url}#designs`, name: 'Seven 70m² granny flat design concepts',
+      isPartOf: { '@id': `${url}#webpage` },
+      hasPart: GF_DESIGNS.map(d => ({ '@type': 'ImageObject', '@id': img(d), contentUrl: img(d), caption: `${d.title} — 70m² granny flat concept${d.size ? `, ${d.size}` : ''}`, width: d.w, height: d.h, creditText: 'Stable Structure Limited', creator: { '@id': ORG_ID } })),
+    },
+  ];
+}
 
 function grannyFlatsPage() {
   const base = '';
@@ -1578,15 +1619,21 @@ function grannyFlatsPage() {
     ['clock', 'Fewer delays', 'Where a project qualifies, skipping the consent process can simplify and speed up construction.'],
     ['shield', 'Engineer-designed', 'Designed by a chartered structural engineer, so compliance is built in rather than bolted on.'],
   ];
+  /* Conditions verified 24 Sep 2026 against MBIE's building design conditions
+     checklist (building.govt.nz, Dec 2025) and Auckland Council's granny flats
+     exemption page. The exemption became law on 15 January 2026. */
   const conditions = [
-    ['Floor area', 'A maximum of 70 m².'],
-    ['Height', 'Within the specified height and ground-clearance limits.'],
-    ['Setbacks', 'Generally at least 2 m from boundaries and other buildings.'],
-    ['Construction', 'Permitted lightweight systems and materials.'],
-    ['Building Code', 'The dwelling must still comply with the NZ Building Code.'],
-    ['Qualified professionals', 'Licensed people carry out or supervise the work where required.'],
-    ['Council notification', 'Required information provided before and after construction.'],
+    ['New, single-storey and standalone', 'A new detached, self-contained dwelling for one household, with no mezzanine or loft.'],
+    ['Floor area', 'A maximum of 70m².'],
+    ['Height', 'Floor level no more than 1 m above the supporting ground, and the building no more than 4 m high above floor level.'],
+    ['Setbacks', 'At least 2 m from other residential buildings and from legal boundaries, and not built across a boundary.'],
+    ['Construction', 'Light timber or steel framing, with roof cladding up to 20 kg/m² and wall cladding up to 220 kg/m².'],
+    ['Building Code', 'Must still comply with the NZ Building Code, using the standard compliance pathways for water supply, stormwater and drainage.'],
+    ['Licensed professionals', 'Design and construction carried out or supervised by licensed building practitioners, with Records of Work for restricted building work.'],
+    ['PIM and council notification', 'A Project Information Memorandum (PIM) from Auckland Council before work starts (allow 20 working days), then notification with final plans, Records of Work and certificates once complete.'],
   ];
+  const MBIE_URL = 'https://www.building.govt.nz/projects-and-consents/planning-a-successful-build/scope-and-design/check-if-you-need-consents/building-work-that-doesnt-need-a-building-consent/granny-flats-exemption-guidance-and-resources';
+  const AKL_URL = 'https://www.aucklandcouncil.govt.nz/en/building-and-consents/consent-exemptions/granny-flats-building-consent-exemption.html';
   const compliance = ['Structural stability', 'Foundations', 'Ground conditions', 'Weathertightness', 'Insulation & energy', 'Fire safety', 'Ventilation', 'Natural light', 'Plumbing & sanitary', 'Stormwater', 'Wastewater', 'Electrical work', 'Moisture control', 'Site access'];
   const checks = ['Site layout, available building area and building position', 'Boundaries, setbacks and existing buildings', 'Foundations and ground conditions', 'Drainage, wastewater and stormwater disposal', 'Access, vehicle parking and services', 'Planning and property-specific restrictions', 'Height and setback requirements', 'Flooding, overland flow and other site constraints', 'Heritage or other overlays where applicable'];
   const features = ['2-bedroom layouts', 'Open-plan kitchen & living', 'Full bathrooms', 'Laundry', 'Built-in storage', 'Indoor-outdoor living', 'Covered outdoor areas', 'Contemporary finishes'];
@@ -1597,16 +1644,16 @@ function grannyFlatsPage() {
     ['04', 'Construction', 'A quality build with qualified trades, supervised through to handover.'],
   ];
   const faqs = [
-    ['Do I still need to tell the council?', 'Yes. The exemption removes the building consent, not the council’s involvement. Required information must be provided to Auckland Council before construction starts and again once it is finished. We prepare that documentation as part of the detailed plans.'],
+    ['Do I still need to tell the council?', 'Yes. The exemption removes the building consent, not the council’s involvement. You must apply for a Project Information Memorandum (PIM) from Auckland Council before work starts (the council allows 20 working days, and it may carry a development contribution), and notify the council with final plans, Records of Work and certificates once the build is finished. We prepare that documentation as part of the detailed plans.'],
     ['Does the exemption cover planning and resource consent?', 'No. It is a building-consent exemption only. Planning rules, resource consent, drainage and other council requirements may still apply depending on your property and location, which is why the site assessment comes first.'],
     ['Can I rent the granny flat out?', 'Potentially, subject to the property’s planning and other requirements. We check what applies to your site at the assessment stage, so you know before you commit.'],
-    ['What can 70 m² actually fit?', 'Comfortably two bedrooms, an open-plan kitchen and living area, a bathroom, laundry and plenty of storage; Design 06 fits three bedrooms. Smart space planning, natural light and built-in storage keep a compact home feeling generous.'],
+    ['What can 70m² actually fit?', 'Comfortably two bedrooms, an open-plan kitchen and living area, a bathroom, laundry and plenty of storage; Design 06 fits three bedrooms. Smart space planning, natural light and built-in storage keep a compact home feeling generous.'],
     ['What if my site or design falls outside the exemption?', `Then we take the same design through building consent, with the structural drawings, calculations and <a href="${base}services/building-consent-documentation.html">PS1 documentation</a> we prepare for any residential project. Nothing is wasted.`],
   ];
 
   return {
     file: 'granny-flats.html', base, active: 'granny', lastmod: GF_LASTMOD,
-    headO: { title: '70m² Granny Flats Without Consent | Auckland | Stable Structure', desc: 'Seven engineer-designed 70m² granny flat concepts for Auckland under the 2026 building-consent exemption, plus interactive 3D structural models you can explore in your browser.', pageLabel: 'Granny Flats' },
+    headO: { title: '70m² Granny Flat Designs Auckland | No Consent Needed', desc: 'Seven engineer-designed 70m² granny flat concepts for Auckland under the 2026 consent exemption. Explore 3D structural models and get a free quote.', pageLabel: 'Granny Flats', ogImage: 'assets/granny-flats/og-granny-flats.jpg', extraLd: gfLd() },
     extraScripts: `<script>
 (function(){var els=document.querySelectorAll('.mv[data-model]');if(!els.length)return;var done=false;
 function load(){if(done)return;done=true;var s=document.createElement('script');s.type='module';s.src='${base}assets/vendor/model-viewer.js?v=${ASSET_VERSION}';document.body.appendChild(s);}
@@ -1615,10 +1662,10 @@ var io=new IntersectionObserver(function(en){if(en.some(function(e){return e.isI
 els.forEach(function(el){io.observe(el);});})();
 </script>`,
     body: [
-      pageHero(base, { eyebrow: 'Granny flats · 2026 exemption', title: '70 m² granny flats <span class="hl">without building consent</span>', sub: 'Seven engineer-designed granny flat concepts for Auckland sections, plus interactive 3D structural models you can spin, zoom and take apart layer by layer. Designed to meet the new consent exemption, and built to comply.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Granny Flats' }], waMsg: GF_WA }),
+      pageHero(base, { eyebrow: 'Granny flats · 2026 exemption', title: '70m² granny flats <span class="hl">without building consent</span>', sub: 'Seven engineer-designed granny flat concepts for Auckland sections, plus interactive 3D structural models you can spin, zoom and take apart layer by layer. Designed to meet the new consent exemption, and built to comply.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Granny Flats' }], waMsg: GF_WA }),
 
       `<section class="pad-sm"><div class="container">
-      <div class="section-head center reveal"><span class="eyebrow">Make more from your property</span><h2 class="section-title">More space. More flexibility. More value from your land.</h2><p class="lead">New Zealand’s 70 m² granny flat exemption opens an opportunity for eligible homeowners to add a standalone minor dwelling without a building consent, provided every exemption requirement is met.</p></div>
+      <div class="section-head center reveal"><span class="eyebrow">Make more from your property</span><h2 class="section-title">More space. More flexibility. More value from your land.</h2><p class="lead">New Zealand’s 70m² granny flat exemption opens an opportunity for eligible homeowners to add a standalone minor dwelling without a building consent, provided every exemption requirement is met.</p></div>
       <div class="gf-perks">
         ${perks.map(p => `<div class="gf-perk reveal"><span class="fic">${si(p[0])}</span><div><b>${p[1]}</b>${p[2]}</div></div>`).join('\n        ')}
       </div>
@@ -1628,7 +1675,7 @@ els.forEach(function(el){io.observe(el);});})();
     </div></section>`,
 
       `<section id="designs" class="pad" style="background:var(--surface-2)"><div class="container">
-      <div class="section-head center reveal"><span class="eyebrow">Design collection</span><h2 class="section-title">Seven ways to live well in 70 m²</h2><p class="lead">Each design is a starting point. We tailor layout, orientation, cladding and finishes to your site, budget and lifestyle. Small doesn’t have to mean cramped: well-positioned windows, efficient kitchens and built-in storage make a compact home feel surprisingly generous.</p></div>
+      <div class="section-head center reveal"><span class="eyebrow">Design collection</span><h2 class="section-title">Seven ways to live well in 70m²</h2><p class="lead">Each design is a starting point. We tailor layout, orientation, cladding and finishes to your site, budget and lifestyle. Small doesn’t have to mean cramped: well-positioned windows, efficient kitchens and built-in storage make a compact home feel surprisingly generous.</p></div>
       <div class="gf-chips reveal">${features.map(f => `<span>${f}</span>`).join('')}</div>
       <div class="proj-grid">
         ${GF_DESIGNS.map(d => gfDesignCard(base, d)).join('\n        ')}
@@ -1647,11 +1694,13 @@ els.forEach(function(el){io.observe(el);});})();
       <div class="split">
         <div class="reveal">
           <span class="eyebrow">The exemption explained</span>
-          <h2 class="section-title">What does the 70 m² exemption mean?</h2>
-          <p class="lead">From early 2026, eligible homeowners can build a standalone dwelling of up to 70 m² without a building consent, subject to specific conditions. Often called a granny flat or minor dwelling, this pathway is designed to make smaller homes faster and more accessible to build.</p>
+          <h2 class="section-title">What does the 70m² exemption mean?</h2>
+          <p class="lead">Since 15 January 2026, eligible homeowners can build a new single-storey standalone dwelling of up to 70m² without a building consent, provided every condition of the exemption is met. Often called a granny flat or minor dwelling, this pathway is designed to make smaller homes faster and more accessible to build.</p>
+          <p class="gf-reviewed">${si('shield', 2)}<span>Reviewed by <a href="${base}about.html">Gajanthan Vethanathan</a>, Chartered Professional Engineer (CPEng #1030007) · Page updated ${gfDate(GF_LASTMOD)}</span></p>
           <div class="feature-list">
             ${conditions.map(c => `<div class="feature"><span class="fic">${si('check', 2.4)}</span><div><span class="fh4">${c[0]}</span><p>${c[1]}</p></div></div>`).join('\n            ')}
           </div>
+          <p class="gf-sources">Sources: <a href="${MBIE_URL}" target="_blank" rel="noopener">MBIE granny flats exemption guidance</a> and <a href="${AKL_URL}" target="_blank" rel="noopener">Auckland Council: granny flats building consent exemption</a>. The conditions are summarised here; check the current official guidance before relying on them.</p>
         </div>
         <div class="gf-compliance reveal">
           <h3>“Consent-free” still means compliant</h3>
@@ -1666,7 +1715,7 @@ els.forEach(function(el){io.observe(el);});})();
       <div class="split">
         <div class="reveal">
           <span class="eyebrow">Your site, your lifestyle</span>
-          <h2 class="section-title">Is a 70 m² granny flat right for your property?</h2>
+          <h2 class="section-title">Is a 70m² granny flat right for your property?</h2>
           <p class="lead">Every property is different, and not every site will be suitable. Before you start, we assess your site and identify the things that matter. Getting the design right from the beginning saves time, money and costly changes later.</p>
           <h3 style="font-size:19px;margin-top:26px">What we check first</h3>
           <ul class="gf-list">${checks.map(tick).join('')}</ul>
@@ -1705,7 +1754,7 @@ els.forEach(function(el){io.observe(el);});})();
       <p class="gf-disclaimer">This page provides general information only and is not legal or regulatory advice. Eligibility for the building-consent exemption depends on meeting all applicable requirements, and planning, resource-consent, drainage and other council requirements may still apply. Rental use is subject to applicable requirements. Images and models are indicative only.</p>
     </div></section>`,
 
-      ctaBand(base, { title: 'Ready to unlock the potential of your property?', text: 'Your 70 m² granny flat could be closer than you think. Talk to Stable Structure about your property, your requirements and what may be possible.', waMsg: GF_WA }),
+      ctaBand(base, { title: 'Ready to unlock the potential of your property?', text: 'Your 70m² granny flat could be closer than you think. Talk to Stable Structure about your property, your requirements and what may be possible.', waMsg: GF_WA }),
     ].join('\n'),
   };
 }
