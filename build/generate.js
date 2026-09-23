@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-24.2';
+const ASSET_VERSION = '2026-09-24.3';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -642,7 +642,7 @@ const FAQS = [
 function faqBlock(list) {
   return `<div class="faq">
       ${list.map((f, i) => `<details class="reveal"${i === 0 ? ' open' : ''}>
-        <summary>${f[0]}<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">${I.plus}</svg></summary>
+        <summary><h3 class="faq-q">${f[0]}</h3><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">${I.plus}</svg></summary>
         <div class="ans">${f[1]}</div>
       </details>`).join('\n      ')}
     </div>`;
@@ -1242,11 +1242,16 @@ pages.push({
 
 /* SERVICES overview */
 pages.push({
-  file: 'services.html', base: '', active: 'services',
+  file: 'services.html', base: '', active: 'services', lastmod: '2026-09-24',
   headO: { title: 'Structural &amp; Civil Engineering Services | Stable Structure', desc: 'Explore Stable Structure’s engineering services: structural design, civil design, building consent documentation, site inspections, construction supervision, retaining walls, pools, decks and more.' },
   body: [
     pageHero('', { eyebrow: 'Our services', title: 'Structural &amp; civil engineering, end to end', sub: 'From foundations to final sign-off, we cover every stage of your project. Choose a service to see how we can help.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Services' }] }),
-    `<section class="pad"><div class="container">${servicesGrid('')}</div></section>`,
+    `<section class="pad"><div class="container">${servicesGrid('')}
+      <div class="callout reveal" style="margin-top:36px">
+        <div><b>Planning a 70m² granny flat?</b><p>Since 15 January 2026 a small standalone dwelling can be built without a building consent. See our <a href="granny-flats.html">consent-exempt 70m² granny flat designs</a> and explore the 3D structural models behind them.</p></div>
+        <a class="btn btn-primary" href="granny-flats.html">Granny flat designs ${si('arrow', 2.2)}</a>
+      </div>
+    </div></section>`,
     `<section class="pad-sm" style="background:var(--surface-2)"><div class="container">
       <div class="section-head center reveal"><span class="eyebrow">Helpful guides</span><h2 class="section-title">Straight answers from our engineers</h2></div>
       <div class="guide-links reveal" style="max-width:640px;margin-inline:auto">
@@ -1392,6 +1397,10 @@ SERVICES.forEach((s) => {
     `<section class="pad"><div class="container"><div class="svc-layout">
       <div class="prose reveal">
         ${prose}
+        ${s.slug === 'carports-sheds-portals' ? `<div class="callout">
+          <div><b>Thinking bigger than a shed?</b><p>The same light timber and steel framing is what we use for <a href="${base}granny-flats.html">70m² granny flat designs that need no building consent</a>. Seven concepts, with interactive 3D structural models.</p></div>
+          <a class="btn btn-primary" href="${base}granny-flats.html">See the granny flat designs ${si('arrow', 2.2)}</a>
+        </div>` : ''}
       </div>
       <aside class="svc-aside reveal">
         <div class="aside-card">
@@ -1562,7 +1571,7 @@ function gfDesignCard(base, d) {
         <div class="proj-body">
           <span class="proj-date">Design ${d.n}${d.size ? ` · ${d.size}` : ''}</span>
           <h3 class="gf-title">${d.title}</h3>
-          <ul class="gf-specs">${d.specs.map(sp => `<li>${sp}</li>`).join('')}</ul>
+          <ul class="gf-specs">${d.area ? `<li class="gf-area">${d.area} m² floor area</li>` : ''}${d.specs.map(sp => `<li>${sp}</li>`).join('')}</ul>
         </div>
       </article>`;
 }
@@ -1662,7 +1671,7 @@ var io=new IntersectionObserver(function(en){if(en.some(function(e){return e.isI
 els.forEach(function(el){io.observe(el);});})();
 </script>`,
     body: [
-      pageHero(base, { eyebrow: 'Granny flats · 2026 exemption', title: '70m² granny flats <span class="hl">without building consent</span>', sub: 'Seven engineer-designed granny flat concepts for Auckland sections, plus interactive 3D structural models you can spin, zoom and take apart layer by layer. Designed to meet the new consent exemption, and built to comply.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Granny Flats' }], waMsg: GF_WA }),
+      pageHero(base, { eyebrow: 'Granny flats · 2026 exemption', title: '70m² granny flats <span class="hl">without building consent</span>', sub: 'Seven engineer-designed granny flat concepts for Auckland sections, plus interactive 3D structural models you can spin, zoom and take apart layer by layer. Designed in Botany to meet the 2026 consent exemption, and built to comply.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Granny Flats' }], waMsg: GF_WA }),
 
       `<section class="pad-sm"><div class="container">
       <div class="section-head center reveal"><span class="eyebrow">Make more from your property</span><h2 class="section-title">More space. More flexibility. More value from your land.</h2><p class="lead">New Zealand’s 70m² granny flat exemption opens an opportunity for eligible homeowners to add a standalone minor dwelling without a building consent, provided every exemption requirement is met.</p></div>
@@ -1681,6 +1690,10 @@ els.forEach(function(el){io.observe(el);});})();
         ${GF_DESIGNS.map(d => gfDesignCard(base, d)).join('\n        ')}
       </div>
       <p class="gf-note reveal">Images are indicative. Final layouts, sizes and finishes are confirmed at design stage. Tap any design to view it full size.</p>
+      <div class="callout reveal" style="max-width:820px;margin:32px auto 0">
+        <div><b>Already have plans?</b><p>If your designer has drawn your granny flat, we provide the structural design, PS1 and council documentation to build it, whether it qualifies for the exemption or needs a consent.</p></div>
+        <a class="btn btn-primary" href="${base}services/building-consent-documentation.html">Building consent documentation ${si('arrow', 2.2)}</a>
+      </div>
       ${lightboxMarkup()}
     </div></section>`,
 
@@ -1695,8 +1708,9 @@ els.forEach(function(el){io.observe(el);});})();
         <div class="reveal">
           <span class="eyebrow">The exemption explained</span>
           <h2 class="section-title">What does the 70m² exemption mean?</h2>
-          <p class="lead">Since 15 January 2026, eligible homeowners can build a new single-storey standalone dwelling of up to 70m² without a building consent, provided every condition of the exemption is met. Often called a granny flat or minor dwelling, this pathway is designed to make smaller homes faster and more accessible to build.</p>
+          <p class="lead">Since 15 January 2026, eligible homeowners can build a new single-storey standalone dwelling of up to 70m² without a building consent, provided every condition of the exemption is met. Often called a granny flat, minor dwelling or self-contained unit, this pathway is designed to make smaller homes faster and more accessible to build.</p>
           <p class="gf-reviewed">${si('shield', 2)}<span>Reviewed by <a href="${base}about.html">Gajanthan Vethanathan</a>, Chartered Professional Engineer (CPEng #1030007) · Page updated ${gfDate(GF_LASTMOD)}</span></p>
+          <p class="gf-summary">In short: the exemption covers a new, single-storey, standalone and self-contained dwelling of no more than 70m² floor area, built for one household. The floor can sit no more than 1 m above the supporting ground and the building can rise no more than 4 m above floor level. It must be at least 2 m from every legal boundary and from any other residential building, and it must be light-framed in timber or steel with lightweight cladding. Every part of the build must still meet the New Zealand Building Code, the work must be carried out or supervised by licensed building practitioners, and the owner must obtain a Project Information Memorandum from Auckland Council before starting and notify the council with final plans, Records of Work and certificates on completion. Planning rules and resource consent are separate and may still apply.</p>
           <div class="feature-list">
             ${conditions.map(c => `<div class="feature"><span class="fic">${si('check', 2.4)}</span><div><span class="fh4">${c[0]}</span><p>${c[1]}</p></div></div>`).join('\n            ')}
           </div>
@@ -1716,7 +1730,7 @@ els.forEach(function(el){io.observe(el);});})();
         <div class="reveal">
           <span class="eyebrow">Your site, your lifestyle</span>
           <h2 class="section-title">Is a 70m² granny flat right for your property?</h2>
-          <p class="lead">Every property is different, and not every site will be suitable. Before you start, we assess your site and identify the things that matter. Getting the design right from the beginning saves time, money and costly changes later.</p>
+          <p class="lead">Every property is different, and not every site will be suitable. Before you start, we assess your site and identify the things that matter. Getting the design right from the beginning saves time, money and costly changes later. We assess sections right across Auckland, from Botany, Howick and Flat Bush near our office to the rest of the region.</p>
           <h3 style="font-size:19px;margin-top:26px">What we check first</h3>
           <ul class="gf-list">${checks.map(tick).join('')}</ul>
         </div>
@@ -1734,7 +1748,7 @@ els.forEach(function(el){io.observe(el);});})();
     </div></section>`,
 
       `<section id="process" class="pad process"><div class="container">
-      <div class="section-head center reveal"><span class="eyebrow">From idea to home</span><h2 class="section-title">Practical design, quality construction and compliance, together</h2><p class="lead">With more than 12 years of experience in custom residential construction, Stable Structure understands small residential projects and minor dwellings, lightweight timber and steel framing, site-specific design, Building Code compliance and Auckland construction conditions. We coordinate the qualified trades and professionals your project needs.</p></div>
+      <div class="section-head center reveal"><span class="eyebrow">From idea to home</span><h2 class="section-title">Practical design, quality construction and compliance, together</h2><p class="lead">With more than 12 years of experience in custom residential construction, Stable Structure understands small residential projects and minor dwellings, lightweight timber and steel framing, site-specific design, Building Code compliance and Auckland construction conditions. We coordinate the qualified trades and professionals your project needs. Meet the team on our <a href="${base}about.html">About page</a>, see <a href="${base}projects.html">recent projects</a>, or read our <a href="${base}testimonials.html">client reviews</a>.</p></div>
       <div class="steps">
         ${steps.map((s, i) => `<div class="step reveal">${i < 3 ? '<span class="line"></span>' : ''}<div class="n">${s[0]}</div><h4>${s[1]}</h4><p>${s[2]}</p></div>`).join('\n        ')}
       </div>
@@ -1825,6 +1839,23 @@ let count = 0;
   count++;
   console.log('  ✓', p.file);
 });
+
+/* ---------- CSP inline-script hashes ----------
+   The site has two inline scripts (the html.js flag and the 3D-viewer loader).
+   next.config.ts allows them by hash instead of 'unsafe-inline', so record the
+   hashes here from the HTML actually written. Runs before `next build`. */
+{
+  const crypto = require('crypto');
+  const hashes = new Set();
+  [...pages, notFoundPage].forEach((p) => {
+    const html = fs.readFileSync(path.join(ROOT, p.file), 'utf8');
+    for (const m of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+      hashes.add('sha256-' + crypto.createHash('sha256').update(m[1], 'utf8').digest('base64'));
+    }
+  });
+  fs.writeFileSync(path.join(ROOT, 'build', 'csp-inline-hashes.json'), JSON.stringify([...hashes], null, 2) + '\n', 'utf8');
+  console.log('  ✓', 'build/csp-inline-hashes.json', `(${hashes.size} inline scripts)`);
+}
 
 /* ---------- sitemap.xml (indexable pages only; excludes 404) ----------
    lastmod discipline: every entry defaults to SPRINT_DATE because the
