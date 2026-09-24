@@ -902,7 +902,7 @@ function teamSection(base) {
       actions: '',
     },
     {
-      photo: 'kemaruban.jpg', name: 'Kemaruban Rajaratnam', role: 'Project Coordinator / Graduate Structural Engineer',
+      photo: 'kemaruban.jpg', name: 'Kemaruban Rajaratnam', role: 'Project Coordinator',
       cred: 'BSc (Eng)',
       bio: [
         `Kemaruban brings over three years of experience delivering structural engineering solutions for New Zealand projects. He specialises in residential developments, producing practical, buildable and code-compliant designs that balance safety, cost efficiency and client requirements.`,
