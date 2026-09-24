@@ -3,11 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/components/action-form";
-import { requireApprover } from "@/lib/auth";
+import { requireAdmin, requireApprover } from "@/lib/auth";
 import { isIsoDate } from "@/lib/dates";
 import { createClient } from "@/lib/supabase/server";
 
 const text = (fd: FormData, name: string) => String(fd.get(name) ?? "").trim();
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_BULK = 1000;
+const CHUNK = 100; // keeps each request URL short
 
 function refresh() {
   revalidatePath("/portal/entries");
@@ -86,4 +89,42 @@ export async function deleteEntry(_prev: ActionState, fd: FormData): Promise<Act
 
   refresh();
   redirect("/portal/entries");
+}
+
+// Admin bulk delete from All entries. Invoiced entries are never touched
+// (the database refuses them too): the invoice has to be voided first.
+// Every deleted row is recorded in full in the audit log.
+export async function deleteEntries(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  await requireAdmin();
+
+  const ids = [...new Set(fd.getAll("ids").map((v) => String(v)))].filter((id) => UUID.test(id));
+  if (ids.length === 0) return { ok: false, message: "Tick at least one entry to delete." };
+  if (ids.length > MAX_BULK) return { ok: false, message: `You can delete up to ${MAX_BULK} entries at a time. Narrow the filter and try again.` };
+  if (fd.get("confirm") !== "on") return { ok: false, message: "Tick the box to confirm the deletion." };
+  if (Number(text(fd, "expected")) !== ids.length) return { ok: false, message: "The selection changed while you were confirming. Check the ticked entries and try again." };
+
+  const supabase = await createClient();
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data, error } = await supabase
+      .from("time_entries")
+      .delete()
+      .in("id", ids.slice(i, i + CHUNK))
+      .neq("status", "invoiced")
+      .select("id");
+    if (error) {
+      refresh();
+      return { ok: false, message: `Deleted ${deleted} before an error stopped it: ${error.message}` };
+    }
+    deleted += data?.length ?? 0;
+  }
+
+  refresh();
+  const skipped = ids.length - deleted;
+  const noun = (n: number) => (n === 1 ? "entry" : "entries");
+  if (deleted === 0) return { ok: false, message: `Nothing was deleted. ${skipped === 1 ? "That entry is" : "Those entries are"} on an invoice or already gone.` };
+  return {
+    ok: true,
+    message: `Deleted ${deleted} ${noun(deleted)}.${skipped ? ` ${skipped} ${noun(skipped)} couldn't be deleted because ${skipped === 1 ? "it is" : "they are"} on an invoice or already gone.` : ""}`,
+  };
 }
