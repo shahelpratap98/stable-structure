@@ -227,7 +227,7 @@ export default async function GuidePage() {
         <>
           <p><Go href="/portal/entries">All entries</Go> is the full timesheet: every line from everyone, including drafts. Filter by date range, employee, project, status or chargeable; the totals above the table follow the filter. <Term>Export to Excel</Term> downloads the filtered list in the old workbook&apos;s Timesheet layout.</p>
           <Points>
-            <li><Term>Edit</Term> opens an entry so you can correct the date, project, work type, chargeable flag, hours or description.</li>
+            <li><Term>Edit</Term>, at the right-hand end of each row, opens an entry so you can correct the date, project, work type, chargeable flag, hours or description. It stays in view when the table scrolls sideways; invoiced entries show <Term>View</Term> instead.</li>
             <li><Term>Rate override</Term> charges that one entry at a different hourly rate from the project&apos;s. Leave it blank to use the project rate. Overridden rates show a <Term>*</Term> in the table.</li>
             <li><Term>+ Add an entry for someone</Term> is for when a person can&apos;t enter their own time. It goes into the Approvals queue like any other.</li>
             <li><Term>Delete</Term> at the bottom of an entry&apos;s Edit page removes it for good, after you tick the confirmation box.</li>
@@ -376,7 +376,7 @@ export default async function GuidePage() {
             <li>If the preview says some time has <Term>no charge-out rate</Term>, set the rate on the project (or a rate override on those entries) and preview again.</li>
             <li>A sent invoice past its due date shows as <span className="chip bg-warn-bg text-warn">Overdue</span>.</li>
             <li><Term>Invoiced it from Xero or another system instead?</Term> Preview the project and period as usual, then open <Term>Already invoiced this somewhere else?</Term>, enter that invoice&apos;s number and choose <Term>Mark this time as invoiced</Term>. The time drops off &quot;ready to invoice&quot; and shows as <span className="chip bg-steel-100 text-steel">Billed elsewhere</span> in the list. It doesn&apos;t use up a portal invoice number.</li>
-            <li><Term>Made a mistake?</Term> <Term>Void</Term> the invoice. Its entries go back to Approved so they can be corrected and billed again. The voided number is never reused, which keeps your numbering clean for your accountant.</li>
+            <li><Term>Made a mistake?</Term> <Term>Void</Term> the invoice. Its entries go back to Approved so they can be corrected and billed again, or deleted from All entries if they shouldn&apos;t be there at all. The voided number is never reused, which keeps your numbering clean for your accountant.</li>
           </Points>
           <Tip>Fill in your GST number and bank details under <Go href="/portal/admin/settings">Company &amp; GST</Go> before sending your first invoice. The invoice page warns you while they&apos;re missing.</Tip>
         </>
