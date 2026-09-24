@@ -892,7 +892,7 @@ function teamSection(base) {
       actions: '',
     },
     {
-      photo: 'damitha.jpg', name: 'Damitha Disanthi', role: 'Structural Draughtsperson',
+      photo: 'damitha.jpg', name: 'Damitha Disanthi', role: 'Architectural Designer',
       cred: 'B.Arch.(Hons) · AIA · RIBA · MSc in Project Management',
       bio: [
         `Damitha brings over ten years of experience across architecture, project management and technical documentation. She holds a Bachelor of Architecture (Honours) from the University of Moratuwa, Sri Lanka.`,
@@ -1289,7 +1289,7 @@ pages.push({
 
 /* ABOUT / WHY US */
 pages.push({
-  file: 'about.html', base: '', active: 'about',
+  file: 'about.html', base: '', active: 'about', lastmod: '2026-09-24',
   headO: { title: 'About Our Engineers | Stable Structure, Auckland', desc: 'Stable Structure Limited is a Kiwi-owned structural and civil engineering consultancy in Botany, Auckland, simplifying complex engineering with practical, compliant solutions.' },
   body: [
     pageHero('', { eyebrow: 'About us', title: 'Engineering you can <span class="hl">build on</span>', sub: 'A Kiwi-owned structural and civil engineering consultancy built on technical expertise, practical solutions and exceptional client service.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'About' }] }),
