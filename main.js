@@ -67,7 +67,8 @@
   // Multi-photo posts are browsable with the arrows or left/right keys.
   var lb = document.getElementById('lightbox');
   var grid = document.querySelector('.proj-grid');
-  if (lb && grid) {
+  var openShot = null;
+  if (lb) {
     var lbImg = lb.querySelector('.lb-img');
     var lbCap = lb.querySelector('.lb-cap');
     var shots = [];
@@ -104,7 +105,8 @@
       if (lastFocus && lastFocus.focus) lastFocus.focus();
     };
 
-    grid.addEventListener('click', function (e) {
+    openShot = open;
+    if (grid) grid.addEventListener('click', function (e) {
       var media = e.target.closest ? e.target.closest('.proj-media') : null;
       if (!media) return;
       var card = media.closest('.proj-card');
@@ -125,6 +127,88 @@
       else if (e.key === 'ArrowRight') show(idx + 1);
       else if (e.key === 'ArrowLeft') show(idx - 1);
     });
+  }
+
+  // Accordion gallery (granny flats designs). Port of React Bits'
+  // AccordionGallery: the open panel grows, the others tilt away, go grey and
+  // drift. Hover (on a mouse), focus or tap opens a panel; clicking the open
+  // panel shows it in the lightbox. Arrow keys move between panels.
+  var ag = document.getElementById('gf-gallery');
+  if (ag) {
+    var panels = [].slice.call(ag.querySelectorAll('.ag-panel'));
+    var details = [].slice.call(document.querySelectorAll('.gf-detail'));
+    var active = parseInt(ag.getAttribute('data-default'), 10) || 0;
+    var RATIO = 0.52, TILT = 8, PARALLAX = 0.5, GAP = 10;
+    var canHover = window.matchMedia('(hover: hover) and (pointer: fine)');
+    var narrow = window.matchMedia('(max-width: 640px)');
+
+    var layout = function () {
+      var n = panels.length;
+      var vertical = narrow.matches;
+      var grow = n > 1 ? (RATIO * (n - 1)) / (1 - RATIO) : 1;
+      var total = vertical ? ag.clientHeight : ag.clientWidth;
+      var size = Math.max(140, Math.max(total - GAP * (n - 1), 120) * RATIO * 1.22);
+      ag.style.setProperty('--ag-media-size', size + 'px');
+      panels.forEach(function (p, i) {
+        var on = i === active;
+        var rot = vertical ? 0 : on ? 0 : i < active ? TILT : -TILT;
+        var drift = Math.max(-1.5, Math.min(1.5, active - i));
+        var shift = on ? 0 : drift * PARALLAX * size * 0.06;
+        p.style.flexGrow = on ? grow : 1;
+        p.style.transform = rot ? 'rotateY(' + rot + 'deg)' : '';
+        p.classList.toggle('ag-panel--active', on);
+        p.setAttribute('aria-current', on ? 'true' : 'false');
+        var media = p.querySelector('.ag-media');
+        if (media) media.style.transform = 'translate(-50%, -50%) translate' + (vertical ? 'Y' : 'X') + '(' + shift + 'px)';
+      });
+      details.forEach(function (d, i) { d.classList.toggle('is-active', i === active); });
+    };
+    // While panels are resizing they slide under a still cursor, and the
+    // browser reports that as hovering a different panel. Hover is ignored
+    // until the transition has finished so the gallery can't chase itself.
+    var settledAt = 0;
+    var activate = function (i) {
+      if (i === active) return;
+      active = i;
+      settledAt = Date.now() + 650;
+      layout();
+    };
+
+    // A mouse or touch press also focuses the button, just before its click.
+    // Focus from a pointer is ignored so the first click opens the panel and
+    // only a second click on the open panel shows the lightbox.
+    var pressing = false;
+    panels.forEach(function (p, i) {
+      p.addEventListener('pointerdown', function () { pressing = true; });
+      p.addEventListener('mouseenter', function () { if (canHover.matches && Date.now() > settledAt) activate(i); });
+      p.addEventListener('mousemove', function () { if (canHover.matches && i !== active && Date.now() > settledAt) activate(i); });
+      p.addEventListener('focus', function () { if (!pressing) activate(i); });
+      p.addEventListener('click', function () {
+        pressing = false;
+        if (i !== active) return activate(i);
+        if (openShot) openShot(p);
+      });
+      p.addEventListener('keydown', function (e) {
+        var next = null;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % panels.length;
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + panels.length) % panels.length;
+        if (next === null) return;
+        e.preventDefault();
+        activate(next);
+        panels[next].focus();
+      });
+    });
+    [].slice.call(document.querySelectorAll('.gf-full')).forEach(function (b) {
+      b.addEventListener('click', function () {
+        var p = panels[parseInt(b.getAttribute('data-index'), 10)];
+        if (p && openShot) openShot(p);
+      });
+    });
+
+    ag.classList.add('ag--ready');
+    layout();
+    if ('ResizeObserver' in window) new ResizeObserver(layout).observe(ag);
+    else window.addEventListener('resize', layout);
   }
 
   // Border glow — pointer-reactive edge glow on .border-glow-card

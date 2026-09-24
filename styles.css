@@ -720,7 +720,6 @@ html.js .reveal.in{opacity:1; transform:none}
 .gf-jump a:hover{background:var(--accent-100); border-color:var(--accent)}
 .gf-chips{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:-22px auto 40px; max-width:760px}
 .gf-chips span{font-size:13px; font-weight:600; color:var(--steel); background:var(--surface); border:1px solid var(--line); padding:6px 13px; border-radius:100px}
-.gf-media img{aspect-ratio:5/4}
 .gf-title{font-size:21px; margin-top:8px}
 .gf-specs{list-style:none; margin:12px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:6px}
 .gf-specs li{font-size:12.5px; font-weight:600; color:var(--steel); background:var(--steel-100); padding:4px 10px; border-radius:100px}
@@ -788,4 +787,55 @@ html.js .reveal.in{opacity:1; transform:none}
   .mv-stage{min-height:260px; aspect-ratio:4/3}
   .gf-compliance{padding:24px 20px}
   .gf-compliance ul{grid-template-columns:1fr}
+}
+
+/* ===== Accordion gallery (granny flats designs) ===== */
+.ag{--ag-accent:var(--accent); --ag-overlay:#081726; --ag-gap:10px; --ag-radius:16px; --ag-media-size:720px;
+  --ag-ease:cubic-bezier(.215,.61,.355,1); --ag-dur:.6s;
+  display:flex; flex-direction:row; gap:var(--ag-gap); width:100%; height:560px; perspective:1400px; perspective-origin:50% 50%}
+.ag-panel{position:relative; flex:1 1 0; min-width:0; min-height:0; padding:0; border:0; overflow:hidden; cursor:pointer;
+  border-radius:var(--ag-radius); background:var(--ink); color:inherit; font:inherit; text-align:left;
+  transform-style:preserve-3d; transform-origin:center center; box-shadow:0 10px 30px -18px rgba(8,23,38,.8);
+  transition:flex-grow var(--ag-dur) var(--ag-ease), transform var(--ag-dur) var(--ag-ease);
+  -webkit-tap-highlight-color:transparent}
+.ag-panel--active{cursor:zoom-in}
+.ag-panel:focus-visible{outline:none; box-shadow:0 0 0 3px var(--ag-accent), 0 10px 30px -18px rgba(8,23,38,.8)}
+.ag-frame{position:absolute; inset:0; overflow:hidden; border-radius:inherit}
+.ag-media{position:absolute; top:50%; left:50%; width:var(--ag-media-size); height:100%; transform:translate(-50%,-50%);
+  filter:grayscale(1); transition:transform var(--ag-dur) var(--ag-ease), filter var(--ag-dur) var(--ag-ease)}
+.ag-panel--active .ag-media{filter:grayscale(0)}
+.ag-media img{width:100%; height:100%; object-fit:cover; object-position:center 30%; display:block; user-select:none; -webkit-user-drag:none}
+.ag-overlay{position:absolute; inset:0; pointer-events:none;
+  background:linear-gradient(180deg, transparent 50%, rgba(8,23,38,.82) 100%), rgba(8,23,38,.35);
+  transition:background var(--ag-dur) var(--ag-ease)}
+.ag-panel--active .ag-overlay{background:linear-gradient(180deg, transparent 55%, rgba(8,23,38,.78) 100%), rgba(8,23,38,0)}
+.ag-label{position:absolute; left:20px; right:20px; bottom:20px; display:flex; align-items:center; gap:12px; pointer-events:none; z-index:2}
+.ag-bar{flex:none; width:3px; height:34px; border-radius:3px; background:var(--ag-accent); box-shadow:0 0 12px rgba(29,169,227,.6);
+  opacity:0; transform:translateX(-14px); transition:opacity .36s var(--ag-ease), transform .36s var(--ag-ease)}
+.ag-text{color:#fff; font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:clamp(17px,1.6vw,23px); line-height:1.15;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 2px 14px rgba(0,0,0,.55);
+  opacity:0; transform:translateX(-14px); transition:opacity .36s var(--ag-ease), transform .36s var(--ag-ease)}
+.ag-text small{display:block; font-family:"Inter",sans-serif; font-size:11.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-100); margin-bottom:3px}
+.ag-panel--active .ag-bar{opacity:1; transform:none; transition-duration:var(--ag-dur)}
+.ag-panel--active .ag-text{opacity:1; transform:none; transition-duration:var(--ag-dur); transition-delay:.06s}
+/* before main.js runs (or without JS) the default panel is simply wider */
+.ag:not(.ag--ready) .ag-panel--active{flex-grow:6.5}
+.gf-details{margin-top:22px}
+.gf-detail{display:flex; gap:20px; align-items:flex-end; justify-content:space-between; flex-wrap:wrap;
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:20px 22px}
+html.js .gf-detail:not(.is-active){display:none}
+html:not(.js) .gf-details{display:grid; gap:12px}
+@media(max-width:640px){
+  .ag{flex-direction:column; height:720px; perspective:none}
+  .ag-panel{transform:none !important}
+  .ag-media{width:100%; height:var(--ag-media-size)}
+  .ag-label{left:16px; right:16px; bottom:14px}
+  .ag-text{font-size:17px}
+  /* closed strips are short on a phone: keep their names readable */
+  .ag-panel:not(.ag-panel--active) .ag-label{top:0; bottom:0}
+  .ag-panel:not(.ag-panel--active) .ag-text{opacity:.92; transform:none; font-size:14.5px}
+  .ag-panel:not(.ag-panel--active) .ag-text small{display:inline; margin:0 8px 0 0; font-size:10.5px}
+}
+@media (prefers-reduced-motion:reduce){
+  .ag-panel,.ag-media,.ag-overlay,.ag-bar,.ag-text{transition-duration:0s !important; transition-delay:0s !important}
 }
