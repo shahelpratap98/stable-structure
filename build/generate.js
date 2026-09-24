@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-24.3';
+const ASSET_VERSION = '2026-09-24.4';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {

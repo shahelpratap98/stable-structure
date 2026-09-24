@@ -86,14 +86,14 @@ header.site{position:sticky; top:0; z-index:100; height:var(--nav-h); display:fl
   border-bottom:1px solid transparent; transition:border-color .25s, box-shadow .25s, background .25s}
 header.site.scrolled{border-bottom-color:var(--line); box-shadow:var(--shadow-sm)}
 .nav{display:flex; align-items:center; justify-content:space-between; width:100%; gap:20px}
-.brand{display:inline-flex; align-items:center}
+.brand{display:inline-flex; align-items:center; flex:none}
 .brand .logo{height:62px; width:auto; display:block; border-radius:8px}
 .nav-links{display:none; align-items:center; gap:2px}
-.nav-links .nl{padding:9px 12px; border-radius:9px; font-size:15px; font-weight:500; color:var(--muted); transition:color .15s, background .15s; display:inline-flex; align-items:center; gap:5px}
+.nav-links .nl{padding:9px 10px; border-radius:9px; font-size:15px; font-weight:500; color:var(--muted); transition:color .15s, background .15s; display:inline-flex; align-items:center; gap:5px}
 .nav-links .nl:hover{color:var(--ink); background:var(--surface-2)}
 .nav-links .nl.active{color:var(--ink); font-weight:600}
 .nav-links .nl.active::after{content:""}
-.nav-cta{display:none; align-items:center; gap:10px}
+.nav-cta{display:none; align-items:center; gap:10px; flex:none}
 /* Staff portal link: present at the top, deliberately quieter than the customer links */
 .staff-login{display:none; padding:9px 4px; border-radius:9px; font-size:14px; font-weight:600; color:var(--steel); white-space:nowrap; transition:color .15s, background .15s}
 .staff-login:hover{color:var(--ink); background:var(--surface-2)}
@@ -728,7 +728,8 @@ html.js .reveal.in{opacity:1; transform:none}
 .gf-list{list-style:none; margin:14px 0 0; padding:0; display:grid; gap:10px}
 .gf-list li{display:flex; gap:11px; align-items:flex-start; font-size:15.5px; color:var(--text)}
 .gf-list li svg{width:20px;height:20px;color:var(--accent-600);flex:none;margin-top:3px}
-.gf-compliance{background:var(--ink); color:#fff; border-radius:var(--radius); padding:30px 28px; align-self:stretch}
+.gf-compliance{background:var(--ink); color:#fff; border-radius:var(--radius); padding:30px 28px; align-self:start}
+@media(min-width:960px){ .gf-compliance{position:sticky; top:calc(var(--nav-h) + 24px)} }
 .gf-compliance h3{color:#fff; font-size:22px}
 .gf-compliance p{color:#AEBECE; font-size:15px; margin-top:12px}
 .gf-compliance ul{list-style:none; margin:20px 0 4px; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:9px 14px}
