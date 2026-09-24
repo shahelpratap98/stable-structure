@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-24.4';
+const ASSET_VERSION = '2026-09-24.8';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -1560,20 +1560,41 @@ function gfViewer(base, m, i) {
       </article>`;
 }
 
-function gfDesignCard(base, d) {
-  const img = `${base}assets/granny-flats/${d.slug}.webp`;
-  const small = `${base}assets/granny-flats/${d.slug}-640.webp`;
-  const caption = `Design ${d.n} · ${d.title}${d.size ? ` · ${d.size}` : ''} — ${d.specs.join(' · ')}. Images are indicative; final layouts, sizes and finishes are confirmed at design stage.`;
-  return `<article class="proj-card gf-card reveal" data-images="${esc(JSON.stringify([img]))}" data-caption="${esc(caption)}">
-        <button class="proj-media gf-media" type="button" aria-label="View the ${esc(d.title)} design at full size">
-          <img src="${small}" srcset="${small} 640w, ${img} ${d.w}w" sizes="(min-width:1000px) 380px, (min-width:640px) 50vw, 100vw" width="${d.w}" height="${d.h}" loading="lazy" decoding="async" alt="${esc(d.title)} — 70m² granny flat concept render by Stable Structure" />
-        </button>
-        <div class="proj-body">
-          <span class="proj-date">Design ${d.n}${d.size ? ` · ${d.size}` : ''}</span>
-          <h3 class="gf-title">${d.title}</h3>
-          <ul class="gf-specs">${d.area ? `<li class="gf-area">${d.area} m² floor area</li>` : ''}${d.specs.map(sp => `<li>${sp}</li>`).join('')}</ul>
-        </div>
-      </article>`;
+/* Accordion gallery for the seven designs (a vanilla port of React Bits'
+   AccordionGallery: expanding panels, 3D tilt, greyscale on collapsed panels,
+   caption reveal). main.js drives it; clicking the open panel shows the full
+   image in the lightbox. Each design's details sit below and follow the open
+   panel. Without JS the default panel stays open and every detail shows. */
+const GF_DEFAULT = 3; // Pavilion Gable, the middle of seven
+
+function gfCaption(d) {
+  return `Design ${d.n} · ${d.title}${d.size ? ` · ${d.size}` : ''} — ${d.specs.join(' · ')}. Images are indicative; final layouts, sizes and finishes are confirmed at design stage.`;
+}
+
+function gfAccordion(base) {
+  const panels = GF_DESIGNS.map((d, i) => {
+    const img = `${base}assets/granny-flats/${d.slug}.webp`;
+    const small = `${base}assets/granny-flats/${d.slug}-640.webp`;
+    const on = i === GF_DEFAULT;
+    return `<button type="button" class="ag-panel${on ? ' ag-panel--active' : ''}" data-index="${i}" aria-current="${on}" aria-controls="gf-detail-${d.slug}" aria-label="Design ${d.n}, ${esc(d.title)}" data-images="${esc(JSON.stringify([img]))}" data-caption="${esc(gfCaption(d))}">
+          <span class="ag-frame"><span class="ag-media"><img src="${small}" srcset="${small} 640w, ${img} ${d.w}w" sizes="(max-width:640px) 100vw, 760px" width="${d.w}" height="${d.h}" loading="lazy" decoding="async" alt="${esc(d.title)} — 70m² granny flat concept render by Stable Structure" draggable="false" /></span><span class="ag-overlay" aria-hidden="true"></span></span>
+          <span class="ag-label" aria-hidden="true"><span class="ag-bar"></span><span class="ag-text"><small>Design ${d.n}</small>${d.title}</span></span>
+        </button>`;
+  }).join('\n        ');
+  const details = GF_DESIGNS.map((d, i) => `<div class="gf-detail${i === GF_DEFAULT ? ' is-active' : ''}" id="gf-detail-${d.slug}">
+          <div>
+            <span class="proj-date">Design ${d.n}${d.size ? ` · ${d.size}` : ''}</span>
+            <h3 class="gf-title">${d.title}</h3>
+            <ul class="gf-specs">${d.area ? `<li class="gf-area">${d.area} m² floor area</li>` : ''}${d.specs.map(sp => `<li>${sp}</li>`).join('')}</ul>
+          </div>
+          <button type="button" class="btn btn-ghost gf-full" data-index="${i}">View full size</button>
+        </div>`).join('\n        ');
+  return `<div class="ag reveal" id="gf-gallery" data-default="${GF_DEFAULT}" aria-label="Seven granny flat designs. Choose one to see it larger.">
+        ${panels}
+      </div>
+      <div class="gf-details reveal" aria-live="polite">
+        ${details}
+      </div>`;
 }
 
 const GF_WA = "Hi Stable Structure, I'd like to talk about a 70m² granny flat on my property.";
@@ -1686,10 +1707,8 @@ els.forEach(function(el){io.observe(el);});})();
       `<section id="designs" class="pad" style="background:var(--surface-2)"><div class="container">
       <div class="section-head center reveal"><span class="eyebrow">Design collection</span><h2 class="section-title">Seven ways to live well in 70m²</h2><p class="lead">Each design is a starting point. We tailor layout, orientation, cladding and finishes to your site, budget and lifestyle. Small doesn’t have to mean cramped: well-positioned windows, efficient kitchens and built-in storage make a compact home feel surprisingly generous.</p></div>
       <div class="gf-chips reveal">${features.map(f => `<span>${f}</span>`).join('')}</div>
-      <div class="proj-grid">
-        ${GF_DESIGNS.map(d => gfDesignCard(base, d)).join('\n        ')}
-      </div>
-      <p class="gf-note reveal">Images are indicative. Final layouts, sizes and finishes are confirmed at design stage. Tap any design to view it full size.</p>
+      ${gfAccordion(base)}
+      <p class="gf-note reveal">Images are indicative. Final layouts, sizes and finishes are confirmed at design stage. Hover or tap a design to open it, then tap it again to see it full size.</p>
       <div class="callout reveal" style="max-width:820px;margin:32px auto 0">
         <div><b>Already have plans?</b><p>If your designer has drawn your granny flat, we provide the structural design, PS1 and council documentation to build it, whether it qualifies for the exemption or needs a consent.</p></div>
         <a class="btn btn-primary" href="${base}services/building-consent-documentation.html">Building consent documentation ${si('arrow', 2.2)}</a>
