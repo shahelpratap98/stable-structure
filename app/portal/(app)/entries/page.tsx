@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StatusChip } from "@/components/status-chip";
-import { requireApprover } from "@/lib/auth";
+import { isAdmin, requireApprover } from "@/lib/auth";
 import { formatDay, formatHours } from "@/lib/dates";
 import { ENTRY_STATUSES, entryFilterQuery, fetchEntryRows, parseEntryFilters } from "@/lib/entry-filters";
 import { createClient } from "@/lib/supabase/server";
 import { DownloadButton, FilterSubmit } from "@/components/pending-buttons";
 import { PrintButton } from "@/components/print-button";
+import { BULK_FORM_ID, BulkDeleteBar, SelectAllEntries } from "./bulk-delete";
 
 export const metadata: Metadata = { title: "All entries" };
 
@@ -20,7 +21,8 @@ export default async function EntriesPage({
 }: {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
-  await requireApprover();
+  const profile = await requireApprover();
+  const admin = isAdmin(profile.role);
   const params = await searchParams;
   const f = parseEntryFilters((name) => (typeof params[name] === "string" ? (params[name] as string) : null));
   const { from, to, userId, projectId, status, chargeable } = f;
@@ -41,7 +43,7 @@ export default async function EntriesPage({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">All entries</h1>
-          <p className="mt-1 text-muted">Every timesheet line. Open one to correct it or set a rate override.</p>
+          <p className="mt-1 text-muted">Every timesheet line. Open one to correct it or set a rate override.{admin ? " Tick entries to delete them." : ""}</p>
         </div>
         <div className="flex flex-wrap items-start gap-2 print:hidden">
           {rows.length > 0 ? <DownloadButton href={`/portal/entries/export?${entryFilterQuery(f)}`} busyLabel="Building the file…">Export to Excel</DownloadButton> : null}
@@ -106,10 +108,13 @@ export default async function EntriesPage({
       ) : rows.length === 0 ? (
         <p className="rounded-xl border border-line bg-surface px-5 py-8 text-center text-muted">No entries match those filters.</p>
       ) : (
-        <div className="relative overflow-x-auto rounded-xl border border-line bg-surface">
+        <>
+        {admin ? <BulkDeleteBar /> : null}
+        <div id="entries-table" className="relative overflow-x-auto rounded-xl border border-line bg-surface">
           <table className="w-full min-w-[1100px] text-left text-sm">
             <thead className="border-b border-line text-xs tracking-wide text-muted uppercase">
               <tr>
+                {admin ? <th className="w-10 py-2.5 pr-1 pl-3 print:hidden"><SelectAllEntries /></th> : null}
                 <th className="px-3 py-2.5 font-semibold">Date</th>
                 <th className="px-3 py-2.5 font-semibold">Employee</th>
                 <th className="px-3 py-2.5 font-semibold">Project</th>
@@ -121,12 +126,26 @@ export default async function EntriesPage({
                 <th className="px-3 py-2.5 font-semibold">Status</th>
                 <th className="px-3 py-2.5 font-semibold">Approved by</th>
                 <th className="px-3 py-2.5 font-semibold">Invoice</th>
-                <th className="px-3 py-2.5"><span className="sr-only">Open</span></th>
+                <th className="sticky right-0 bg-surface px-3 py-2.5 shadow-[-8px_0_8px_-8px_rgba(12,30,51,.15)]"><span className="sr-only">Open</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {rows.map((r) => (
                 <tr key={r.id} className="align-top">
+                  {admin ? (
+                    <td className="py-2 pr-1 pl-3 print:hidden">
+                      <input
+                        type="checkbox"
+                        name="ids"
+                        value={r.id}
+                        form={BULK_FORM_ID}
+                        disabled={r.status === "invoiced"}
+                        title={r.status === "invoiced" ? `On invoice ${r.invoice_no}. Void the invoice to delete it.` : undefined}
+                        aria-label={`Select ${r.employee}, ${formatDay(r.entry_date, { day: "numeric", month: "short" })}, ${r.description || "no description"}`}
+                        className="mt-0.5 size-4 accent-ink disabled:opacity-30"
+                      />
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2 whitespace-nowrap">{formatDay(r.entry_date, { day: "2-digit", month: "short", year: "2-digit" })}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.employee}</td>
                   <td className="px-3 py-2 font-semibold text-ink">{r.project_no ? `${r.project_no} · ${r.project}` : <span className="chip bg-warn-bg text-warn">No project</span>}</td>
@@ -142,7 +161,7 @@ export default async function EntriesPage({
                   <td className="px-3 py-2"><StatusChip status={r.status} /></td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.approved_by_name ?? "—"}</td>
                   <td className="px-3 py-2 whitespace-nowrap tabular-nums">{r.invoice_no ?? "—"}</td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="sticky right-0 bg-surface px-3 py-2 text-right shadow-[-8px_0_8px_-8px_rgba(12,30,51,.15)]">
                     <Link href={`/portal/entries/${r.id}`} className="font-semibold text-accent-600 hover:underline">
                       {r.status === "invoiced" ? "View" : "Edit"}
                     </Link>
@@ -152,6 +171,7 @@ export default async function EntriesPage({
             </tbody>
           </table>
         </div>
+        </>
       )}
       <p className="text-xs text-muted">* rate override on this entry instead of the project rate.</p>
     </div>

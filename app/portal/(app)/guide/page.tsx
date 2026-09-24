@@ -230,8 +230,9 @@ export default async function GuidePage() {
             <li><Term>Edit</Term> opens an entry so you can correct the date, project, work type, chargeable flag, hours or description.</li>
             <li><Term>Rate override</Term> charges that one entry at a different hourly rate from the project&apos;s. Leave it blank to use the project rate. Overridden rates show a <Term>*</Term> in the table.</li>
             <li><Term>+ Add an entry for someone</Term> is for when a person can&apos;t enter their own time. It goes into the Approvals queue like any other.</li>
-            <li><Term>Delete</Term> removes an entry for good, after you tick the confirmation box.</li>
-            <li>Entries that are <span className="chip bg-steel-100 text-steel">Invoiced</span> are locked. The invoice has to be voided before they can change.</li>
+            <li><Term>Delete</Term> at the bottom of an entry&apos;s Edit page removes it for good, after you tick the confirmation box.</li>
+            {admin ? <li><Term>Deleting several at once</Term> (admins): tick the box at the start of each row, or the box in the heading to tick everything the filter shows. A red bar appears above the table; tick <Term>Yes, permanently delete</Term> and choose <Term>Delete</Term>. Filter first (for example by employee or dates) so you only see what you mean to remove.</li> : null}
+            <li>Entries that are <span className="chip bg-steel-100 text-steel">Invoiced</span> are locked and can&apos;t be ticked for deletion. The invoice has to be voided before they can change or be deleted.</li>
           </Points>
           <Tip>Every edit, override and deletion is recorded with your name and the before and after values{admin ? <> in the <Go href="/portal/admin/audit">audit log</Go></> : " in the audit log"}.</Tip>
         </>
