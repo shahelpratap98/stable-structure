@@ -124,6 +124,19 @@ Optional: set `CRON_SECRET` in Vercel to restrict the endpoint to Vercel's cron.
 This is a workaround, not a backup. Delete the `crons` entry after moving to
 Supabase Pro.
 
+## Backups
+
+The free Supabase plan has no backups, so a separate **private** repository,
+`shahelpratap98/stable-structure-backups`, takes one every night at 2 am NZ
+time. It dumps roles, schema and all data (staff logins included), encrypts it
+with AES-256 and keeps every night for 60 days plus the 1st of each month.
+A weekly job restores the newest backup into a throwaway database and checks
+every table's row count. Restore steps are in that repository's `RESTORE.md`.
+
+Never put a backup, or anything from one, in this repository: it is public.
+If the database moves to another project, update `SUPABASE_DB_URL` in the
+backups repository's `backups` environment.
+
 ## Deploying (existing Vercel project)
 
 No new project and no settings to change: `vercel.json` on this branch tells
