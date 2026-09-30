@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-24.8';
+const ASSET_VERSION = '2026-09-30.2';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -141,7 +141,7 @@ const SERVICES = [
     ideal: ['Complex or high-value builds', 'Owners who want oversight', 'Structurally challenging projects', 'End-to-end engineering support'] },
   { slug: 'retaining-walls', title: 'Retaining Walls', icon: 'retaining', tags: ['Timber', 'Block', 'Concrete'],
     short: 'Engineered timber, block and concrete retaining wall design that manages loads, drainage and slope safely and economically.',
-    sub: 'Engineered retaining walls in timber, block or concrete — designed to hold, drain and last on any slope.',
+    sub: 'Retaining wall design by chartered structural engineers in Botany, East Auckland: timber, block and concrete walls, driveway and boundary walls, drainage, PS1 and consent.',
     intro: ['A retaining wall does hard, invisible work — holding back soil, water and load for decades. We design retaining walls that are strong where it counts and economical where it can be, matched to your site conditions, slope and materials.',
       'From a low garden wall to a tall surcharged structure near a boundary or driveway, we handle the engineering and the consent documentation.'],
     includes: ['Timber pole and sleeper walls', 'Concrete block and masonry walls', 'Reinforced concrete walls', 'Drainage and subsoil design', 'Geotechnical coordination', 'Consent documentation'],
@@ -634,7 +634,7 @@ function otherReviews() {
 const FAQS = [
   ['Do you provide PS1 documentation for building consent?', 'Yes. We prepare detailed structural and civil drawings, calculations and Producer Statements (PS1) so your building consent application is complete and consent-ready.'],
   ['Which areas of New Zealand do you cover?', 'We are based in Botany, Auckland and provide structural and civil engineering services for residential, commercial and industrial projects throughout New Zealand.'],
-  ['Do I need a structural engineer for a deck or retaining wall?', 'Often, yes. A retaining wall needs engineering design and building consent once it retains more than 1.5 metres of ground, or at any height if it carries a surcharge such as a driveway, building or sloping ground above it. Decks generally need engineering once they are more than 1.5 metres off the ground, or where they are cantilevered. Our <a href="guides/retaining-wall-consent-nz.html">guide to retaining wall consent</a> covers the rules in full, and if you are unsure, give us a call and we will tell you straight.'],
+  ['Do I need a structural engineer for a deck or retaining wall?', 'Often, yes. A retaining wall needs engineering design and building consent once it retains more than 1.5 metres of ground, or at any height if it carries a surcharge such as a driveway, building or sloping ground above it. Decks generally need engineering once they are more than 1.5 metres off the ground, or where they are cantilevered. Our <a href="guides/retaining-wall-consent-nz.html">guide to retaining wall consent</a> covers the rules in full, and our <a href="services/retaining-walls.html">retaining wall engineering</a> page explains how we design them. If you are unsure, give us a call and we will tell you straight.'],
   ['How much does structural engineering cost?', 'It depends on the size and complexity of your project. We provide a clear, upfront quote before any work begins — get in touch with your plans or a description and we will give you a free, no-obligation estimate.'],
   ['How soon can you start?', 'We pride ourselves on responsive turnaround. Timeframes vary with workload and project scope, so call or send an enquiry and we will confirm our current availability for you.'],
   ['Can you work from my architect or designer’s plans?', 'Absolutely. We regularly collaborate with architects, designers and builders, providing the structural and civil engineering to bring their plans to life and through consent.'],
@@ -973,10 +973,10 @@ const UPDATED_DISPLAY = 'Updated 13 August 2026';
    The register has no per-person permalink, so we link its search page. */
 const CPENG_REGISTER_URL = 'https://members.engineeringnz.org/s/cpeng-register';
 const CPENG_NUMBER = '1030007';
-const byline = (base) => `<div class="byline reveal">
+const byline = (base, updated) => `<div class="byline reveal">
   <span class="bv">GV</span>
   <span>Reviewed by <b>${OWNER}</b>, <a href="${CPENG_REGISTER_URL}" target="_blank" rel="noopener" title="Verify on the CPEng register">CPEng #${CPENG_NUMBER}</a> · <a href="${base}about.html">Director, Stable Structure</a></span>
-  <span class="upd">${UPDATED_DISPLAY}</span>
+  <span class="upd">${updated || UPDATED_DISPLAY}</span>
 </div>`;
 
 const miniFaq = (qas) => `<div class="mini-faq">
@@ -1035,21 +1035,98 @@ const ARTICLES = {
     <h2>Why owners and designers use us for consent documentation</h2>
     <p>Consent documentation is where an engineering consultancy either saves you weeks or costs you weeks. Ours is prepared by the same chartered engineer who signs the PS1, which is exactly the accountability council wants to see, and exactly what gets your project to site sooner.</p>`,
 
-  /* ---- Retaining Walls — GSC: pos 45.2, "concrete/engineered retaining walls", "nzs 3604" ---- */
+  /* ---- Retaining Walls — GSC 30 Sep 2026 (60 days): 98 queries, 755 impressions, 1 click; closest to page 1:
+     "engineered retaining walls" 13.9, "structural retaining wall" 10.6, "structural engineer retaining wall" 16.1,
+     "driveway retaining wall cost" 18.7, "retaining walls east auckland" 21.3 ---- */
   'retaining-walls': (base) => `
-    <p style="font-size:17px">An engineered retaining wall holds back soil, water and load for decades without complaint. We design timber pole, concrete block and reinforced concrete retaining walls across East Auckland and New Zealand-wide, and prepare the calculations and consent documentation that councils require.</p>
-    ${byline(base)}
+    <p style="font-size:17px">An engineered retaining wall holds back soil, water and load for decades without complaint. We are retaining wall engineers based in Botany: we design timber pole, concrete block and reinforced concrete retaining walls across East Auckland and New Zealand-wide, and prepare the drawings, calculations and PS1 that councils require.</p>
+    <p>Most Auckland retaining wall builders bring in a structural engineer for any wall over 1.5 metres or holding up a driveway. We are that engineer, and homeowners, landscapers and builders engage us directly.</p>
+    ${byline(base, 'Updated 30 September 2026')}
+    <figure class="rw-fig">
+      <div class="rw-scroll"><svg viewBox="0 0 680 380" role="img" aria-labelledby="rw-fig-t rw-fig-d" xmlns="http://www.w3.org/2000/svg">
+        <title id="rw-fig-t">Cross-section of an engineered timber pole retaining wall</title>
+        <desc id="rw-fig-d">A driveway on the high side pushes load onto the retained soil. Timber poles are embedded below the lower ground. Behind the wall, drainage metal wrapped in filter cloth leads water down to a perforated subsoil drain that carries it away to an outlet.</desc>
+        <defs>
+          <pattern id="rw-soil" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M0 10 L10 0" class="rw-hatch"/></pattern>
+          <pattern id="rw-metal" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="2" class="rw-stone"/><circle cx="9" cy="8" r="2.2" class="rw-stone"/></pattern>
+          <marker id="rw-arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="rw-arrowhead"/></marker>
+          <marker id="rw-arrow-red" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="rw-arrowhead-red"/></marker>
+        </defs>
+        <!-- retained soil (high side) and lower ground -->
+        <path d="M20 118 H300 V360 H20 Z" fill="url(#rw-soil)" class="rw-soil"/>
+        <path d="M340 258 H660 V360 H340 Z" fill="url(#rw-soil)" class="rw-soil"/>
+        <path d="M300 118 H340 V360 H300 Z" fill="url(#rw-soil)" class="rw-soil"/>
+        <!-- surcharge: driveway slab + vehicle load arrows -->
+        <rect x="40" y="104" width="220" height="14" rx="2" class="rw-slab"/>
+        <g class="rw-load">
+          <line x1="80" y1="52" x2="80" y2="98" marker-end="url(#rw-arrow)"/>
+          <line x1="150" y1="52" x2="150" y2="98" marker-end="url(#rw-arrow)"/>
+          <line x1="220" y1="52" x2="220" y2="98" marker-end="url(#rw-arrow)"/>
+        </g>
+        <text x="150" y="40" class="rw-label" text-anchor="middle">Driveway or building above = surcharge</text>
+        <!-- drainage metal and filter cloth behind the wall -->
+        <rect x="302" y="128" width="30" height="126" fill="url(#rw-metal)" class="rw-metal"/>
+        <path d="M300 128 V256 H334" class="rw-cloth"/>
+        <!-- subsoil drain -->
+        <circle cx="317" cy="246" r="9" class="rw-pipe"/>
+        <circle cx="317" cy="246" r="3" class="rw-pipe-hole"/>
+        <!-- timber pole wall + lagging, embedded below lower ground -->
+        <rect x="334" y="112" width="16" height="226" rx="3" class="rw-pole"/>
+        <line x1="334" y1="140" x2="350" y2="140" class="rw-lag"/><line x1="334" y1="170" x2="350" y2="170" class="rw-lag"/>
+        <line x1="334" y1="200" x2="350" y2="200" class="rw-lag"/><line x1="334" y1="230" x2="350" y2="230" class="rw-lag"/>
+        <!-- soil pressure arrows -->
+        <g class="rw-press">
+          <line x1="236" y1="160" x2="292" y2="160" marker-end="url(#rw-arrow-red)"/>
+          <line x1="226" y1="200" x2="292" y2="200" marker-end="url(#rw-arrow-red)"/>
+          <line x1="216" y1="240" x2="292" y2="240" marker-end="url(#rw-arrow-red)"/>
+        </g>
+        <text x="120" y="205" class="rw-label" text-anchor="middle">Soil and water</text>
+        <text x="120" y="223" class="rw-label" text-anchor="middle">push on the wall</text>
+        <!-- dimensions -->
+        <g class="rw-dim">
+          <line x1="382" y1="118" x2="382" y2="256" marker-start="url(#rw-arrow)" marker-end="url(#rw-arrow)"/>
+          <line x1="382" y1="262" x2="382" y2="336" marker-start="url(#rw-arrow)" marker-end="url(#rw-arrow)"/>
+        </g>
+        <text x="396" y="182" class="rw-label">Retained height</text>
+        <text x="396" y="200" class="rw-note">over 1.5 m, or any surcharge,</text>
+        <text x="396" y="216" class="rw-note">needs engineering and consent</text>
+        <text x="396" y="296" class="rw-label">Embedment</text>
+        <text x="396" y="314" class="rw-note">poles set deep enough to resist the push</text>
+        <!-- leader labels for drainage -->
+        <g class="rw-leader"><polyline points="300,132 420,46 470,46"/><polyline points="318,160 430,72 470,72"/><polyline points="326,246 440,98 470,98"/></g>
+        <text x="476" y="50" class="rw-label">Filter cloth</text>
+        <text x="476" y="76" class="rw-label">Drainage metal</text>
+        <text x="476" y="102" class="rw-label">Subsoil drain</text>
+        <text x="476" y="119" class="rw-note">falls to an outlet, so water</text>
+        <text x="476" y="134" class="rw-note">never builds up behind the wall</text>
+        <text x="600" y="282" class="rw-note" text-anchor="middle">Lower ground</text>
+      </svg></div>
+      <p class="rw-hint">Swipe the diagram sideways to see all of it.</p>
+      <figcaption>How an engineered timber pole retaining wall works. Illustrative, not to scale: every wall is sized for its own height, surcharge and ground.</figcaption>
+    </figure>
     <h2>When does a retaining wall need an engineer?</h2>
     <p>Under the Building Act, a retaining wall retaining up to 1.5 metres with no extra load behind it (no surcharge) is generally exempt from building consent. Engineering enters the picture when the wall retains <b>more than 1.5 metres</b>, or carries a <b>surcharge</b>: a driveway, building, pool or sloping ground above the wall. Those walls need specific engineering design and consent, and councils will not accept them without calculations and a PS1. Walls near boundaries, on soft ground, or supporting vehicle loads deserve engineering even when they are technically exempt, because they are the ones that fail expensively.</p>
     ${guideLink(base, 'guides/retaining-wall-consent-nz.html', 'Guide: When does a retaining wall need consent in NZ?')}
     <h2>Timber, block or concrete: which wall is right?</h2>
     <p><b>Timber pole walls</b> are the workhorse of Auckland sections: economical up to around 2 to 3 metres, quick to build, and well suited to sloped landscaping. <b>Concrete block (masonry) walls</b> suit tighter urban sites and tie in neatly with buildings and boundary walls. <b>Reinforced concrete walls</b> carry the biggest loads in the least thickness, which makes them the pick for driveways, basements and heavily surcharged boundaries. We design all three, and we will tell you honestly which one your site actually needs rather than defaulting to the most expensive option.</p>
-    <h2>How much does retaining wall engineering cost?</h2>
-    <p>The engineering fee tracks the wall, not the section price: height, surcharge, ground conditions (and whether a geotechnical report is needed), total wall length and site access are what move it. The wall itself is priced by your contractor, and a well-engineered design usually pays for itself by trimming over-conservative sizing from the build. Send us a photo, a rough height and what sits above the wall and we will give you a <b>fixed quote before we start</b>, so there are no surprises at either end.</p>
+    <h2>Driveway retaining walls</h2>
+    <p>A wall holding up a driveway is the classic surcharged wall: every car and delivery van on the drive pushes on it, so it needs specific engineering and building consent at any height. The design allows for vehicle loads behind the wall, keeps the posts or footing clear of the driveway's own structure, and, where people could fall 1 metre or more, includes the barrier the Building Code requires along the edge. Timber pole walls suit many residential drives; tall or heavily loaded driveway walls usually move to reinforced concrete or concrete block. We size them for the vehicles that will actually use the drive, not a worst case that doubles your build cost.</p>
+    <h2>How much does an engineered retaining wall cost?</h2>
+    <p>The total has two parts: the <b>engineering</b> (design, drawings, calculations, PS1 and inspections during construction) and the <b>build</b>, priced by your contractor. Engineering is usually the smaller share, and a well-engineered design often pays for itself by trimming over-conservative sizing from the build. What moves both numbers:</p>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span><b>Height.</b> Taller walls need deeper embedment, bigger members or a switch to concrete.</span></li>
+      <li>${si('check', 2.2)}<span><b>Surcharge.</b> A driveway, building, pool or slope above the wall adds load, so a driveway wall costs more than a garden wall of the same height.</span></li>
+      <li>${si('check', 2.2)}<span><b>Ground.</b> Soft, filled or wet ground, and whether a geotechnical report is needed.</span></li>
+      <li>${si('check', 2.2)}<span><b>Length, access and material.</b> Machine access, a tight boundary and the wall type all change the build price.</span></li>
+      <li>${si('check', 2.2)}<span><b>Drainage outlet.</b> Where the water can go decides how much drainage work is involved.</span></li>
+    </ul>
+    <p>Send us a photo, a rough height and what sits above the wall and we will give you a <b>fixed engineering quote in writing before we start</b>. Your contractor can then price the build from our drawings, so the builder quotes you compare are like for like.</p>
     <h2>Drainage: the part that actually keeps walls standing</h2>
     <p>Most retaining wall failures in Auckland are water failures, not soil failures. Every wall we design includes subsoil drainage: drainage metal, a properly falled novacoil drain and an outlet that daylights somewhere sensible. It is unglamorous, invisible after backfill, and the reason our walls stay straight through an Auckland winter.</p>
     <h2>What about the ground itself?</h2>
     <p>A retaining wall is only as good as what it stands in. For most residential walls we design from conservative published soil parameters appropriate to your area, which keeps costs down. Taller walls, soft or filled ground, and walls supporting buildings justify a geotechnical investigation, and we will tell you up front when that is genuinely needed rather than discovering it mid-project. Where a geotech report exists we design directly to its parameters, which usually sharpens the design and saves construction cost.</p>
+    <h2>The standards behind the design</h2>
+    <p>Retaining walls sit outside NZS 3604, the standard for light timber-framed buildings, so any wall that needs consent is specifically designed by an engineer to meet Building Code clause B1 (Structure). In practice that means loads, including earthquake loads, to the AS/NZS 1170 loading standards, and each material to its own standard: NZS 3603 for timber, NZS 4230 for concrete masonry and NZS 3101 for reinforced concrete. The PS1 we issue is the engineer's formal statement that the wall complies.</p>
     <h2>How the design process runs</h2>
     <p>First we look at your site: photos, plans and levels are often enough to scope and quote. Then we design the wall and its drainage, produce the drawings and calculations, and issue the PS1 for consent where one is required. During construction we inspect the critical stages, typically pole embedment or footing steel and the drainage before backfill, and close out with the PS4 your council needs. One engineer, one thread of responsibility, from first sketch to sign-off.</p>
     <h2>Common questions</h2>
@@ -1058,9 +1135,14 @@ const ARTICLES = {
       ['Do you handle the building consent too?', 'Yes. We prepare the drawings, calculations and PS1, and can manage the consent application and any council RFIs end to end.'],
       ['Can you design walls outside Auckland?', 'Yes. We design retaining walls throughout New Zealand and prepare documentation for any council, with site-specific loads and ground assumptions for your region.'],
       ['What about existing walls that are leaning?', 'We inspect and assess existing retaining walls, report on their condition, and design remediation or replacement where needed.'],
+      ['Does NZS 3604 cover retaining walls?', 'No. NZS 3604 covers light timber-framed buildings, not retaining walls. A wall that needs consent is specifically designed by an engineer to the Building Code, using the loading standards and the material standard for timber, masonry or concrete.'],
+      ['Can you work with my retaining wall builder or landscaper?', 'Yes, and many of our walls come to us that way. We design the wall, your builder or landscaper builds it, and we inspect the critical stages and issue the PS4 at the end.'],
+      ['How much does an engineer charge to design a retaining wall?', 'It depends on the height, what sits above the wall, the ground and the length. Send a photo, a rough height and what is above it, and we will give you a fixed quote in writing before any work starts.'],
     ])}
     <h2>Fences, pools and boundaries on top of walls</h2>
     <p>Two details catch people out. A fence or barrier fixed to the top of a retaining wall adds wind and impact load the wall must be designed for, so tell your engineer about it before the design is done, not after the fence goes up. And where a wall sits on or near a boundary, the design must respect both properties: footing positions, drainage discharge and construction access all need answers your neighbour can live with. We deal with both situations weekly and design for them from the start.</p>
+    <h2>Retaining walls in East Auckland</h2>
+    <p>We are based in Botany, so Howick, Pakuranga, Flat Bush, Dannemora, Beachlands, Manukau and the surrounding suburbs are on our doorstep: site visits are quick and we know the local ground. Much of Auckland sits on clay soils that swell in winter and shrink in summer, which is exactly why drainage and embedment matter so much here. We design walls for homeowners directly, and for the landscapers and retaining wall builders who need an engineer they can call.</p>
     <h2>Built on slopes, priced for real budgets</h2>
     <p>Auckland is a city of slopes, and almost every section eventually needs ground held back. Our walls are engineered to carry exactly the loads your site imposes, with drainage that keeps them working and documentation that goes through council first time.</p>`,
 
@@ -1206,7 +1288,7 @@ const GUIDES = [
       ['How tall can a retaining wall go?', 'With proper engineering, effectively as tall as your project needs: taller walls simply move into reinforced concrete, tiebacks or terraced designs with geotech input.'],
     ])}
     <h2>Get a straight answer on your wall</h2>
-    <p>Send us a photo, a rough height and what sits above the wall, and we will tell you whether it needs consent, what design makes sense, and a fixed price for the engineering. Details on our <a href="${base}services/retaining-walls.html">retaining wall design service</a>.</p>`,
+    <p>Send us a photo, a rough height and what sits above the wall, and we will tell you whether it needs consent, what design makes sense, and a fixed price for the engineering. Details on our <a href="${base}services/retaining-walls.html">engineered retaining wall design in Auckland</a>.</p>`,
   },
 ];
 
@@ -1367,10 +1449,22 @@ const SERVICE_TITLES = {
   'building-consent-documentation': 'PS1 &amp; Building Consent Docs, Auckland | Stable Structure',
   'site-inspections': 'Site Inspections &amp; PS4, Auckland | Stable Structure',
   'construction-supervision': 'Construction Supervision, Auckland | Stable Structure',
-  'retaining-walls': 'Retaining Wall Design &amp; PS1, Auckland | Stable Structure',
+  'retaining-walls': 'Engineered Retaining Wall Design Auckland | Stable Structure',
   'swimming-pools': 'Swimming Pool Structural Design, Auckland | Stable Structure',
   'decks-outdoor-living': 'Deck Engineering, Auckland | Stable Structure',
   'carports-sheds-portals': 'Portal Frame &amp; Shed Design NZ | Stable Structure',
+};
+
+/* Per-service overrides where search data showed the generic title/description
+   weren't matching what people search for. */
+const SERVICE_H1 = {
+  'retaining-walls': 'Engineered <span class="hl">retaining walls</span>, Auckland',
+};
+const SERVICE_DESCS = {
+  'retaining-walls': 'Retaining wall engineers in Botany, East Auckland. Engineered timber, block and concrete walls, driveway walls, drainage, PS1 and consent. Fixed quotes.',
+};
+const SERVICE_LASTMOD = {
+  'retaining-walls': '2026-09-30',
 };
 
 SERVICES.forEach((s) => {
@@ -1390,7 +1484,7 @@ SERVICES.forEach((s) => {
         <p style="font-size:17px">${CLOSES[s.slug] || s.short}</p>`;
   const body = [
     pageHero(base, {
-      eyebrow: 'Service', title: s.title, sub: s.sub,
+      eyebrow: 'Service', title: SERVICE_H1[s.slug] || s.title, sub: s.sub,
       crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Services', href: 'services.html' }, { label: s.title }],
       waMsg: `Hi Stable Structure, I'd like to enquire about ${s.title}.`,
     }),
@@ -1421,10 +1515,10 @@ SERVICES.forEach((s) => {
     ctaBand(base, { title: `Ready to start your ${s.title.toLowerCase()} project?`, waMsg: `Hi Stable Structure, I'd like to enquire about ${s.title}.` }),
   ].join('\n');
   pages.push({
-    file: svcPath(s), base, active: 'services', lastmod: SPRINT_DATE,
+    file: svcPath(s), base, active: 'services', lastmod: SERVICE_LASTMOD[s.slug] || SPRINT_DATE,
     headO: {
       title: SERVICE_TITLES[s.slug] || `${s.title} | Stable Structure Limited`,
-      desc: s.short,
+      desc: SERVICE_DESCS[s.slug] || s.short,
       serviceType: SERVICE_TYPE[s.slug],
       serviceName: s.title,
     },

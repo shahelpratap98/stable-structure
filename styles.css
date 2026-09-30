@@ -450,6 +450,8 @@ section{scroll-margin-top:calc(var(--nav-h) + 12px)}
 .prose ul.ticks li{display:flex; gap:12px; align-items:flex-start; color:var(--text); font-size:16px}
 .prose ul.ticks li svg{width:22px;height:22px;color:var(--accent-600);flex:none;margin-top:1px}
 .svc-layout{display:grid; grid-template-columns:1fr; gap:44px}
+/* grid items default to min-width:auto and would grow to their widest child (e.g. a scrolling diagram) */
+.svc-layout > *{min-width:0}
 @media(min-width:960px){ .svc-layout{grid-template-columns:1fr 340px; gap:56px; align-items:start} }
 .svc-aside{position:sticky; top:calc(var(--nav-h) + 20px); display:grid; gap:18px}
 .aside-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:24px; box-shadow:var(--shadow-sm)}
@@ -839,3 +841,32 @@ html:not(.js) .gf-details{display:grid; gap:12px}
 @media (prefers-reduced-motion:reduce){
   .ag-panel,.ag-media,.ag-overlay,.ag-bar,.ag-text{transition-duration:0s !important; transition-delay:0s !important}
 }
+
+/* Retaining wall cross-section diagram (services/retaining-walls) */
+.prose .rw-fig{max-width:100%; margin:30px 0 8px; padding:18px 18px 14px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius)}
+.rw-fig svg{display:block; width:100%; height:auto; max-width:100%}
+/* on phones the diagram keeps a readable size and scrolls sideways in its own box */
+.rw-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+.rw-hint{display:none; margin:8px 0 0; font-size:13px; font-weight:600; color:var(--accent-600)}
+@media(max-width:640px){ .rw-fig svg{min-width:560px; max-width:none} .rw-fig{padding:14px} .rw-hint{display:block} }
+.rw-fig figcaption{margin-top:10px; font-size:14px; color:var(--muted); line-height:1.5}
+.rw-soil{stroke:none}
+.rw-hatch{stroke:#C9B79A; stroke-width:1.2}
+.rw-metal{stroke:#8E9AA6; stroke-width:1}
+.rw-stone{fill:#9AA6B2}
+.rw-cloth{fill:none; stroke:var(--accent-600); stroke-width:2; stroke-dasharray:5 4}
+.rw-pipe{fill:#fff; stroke:var(--accent-600); stroke-width:2.5}
+.rw-pipe-hole{fill:var(--accent-600)}
+.rw-pole{fill:#8A6A45; stroke:#5E4526; stroke-width:1.5}
+.rw-lag{stroke:#5E4526; stroke-width:1.5}
+.rw-slab{fill:#B7BEC6; stroke:#7C8895; stroke-width:1}
+.rw-load line{stroke:var(--ink); stroke-width:2.2}
+.rw-press line{stroke:#B0452F; stroke-width:2.2}
+.rw-dim line{stroke:var(--muted-2); stroke-width:1.4}
+.rw-leader polyline{fill:none; stroke:var(--muted-2); stroke-width:1}
+.rw-arrowhead{fill:#5B6B7C}
+.rw-load{color:var(--ink)} .rw-press{color:#B0452F} .rw-dim{color:var(--muted-2)}
+.rw-arrowhead-red{fill:#B0452F}
+.rw-label{font:600 14px "Inter",sans-serif; fill:var(--ink)}
+.rw-label,.rw-note{paint-order:stroke; stroke:var(--surface); stroke-width:4px; stroke-linejoin:round}
+.rw-note{font:400 12.5px "Inter",sans-serif; fill:var(--muted)}
