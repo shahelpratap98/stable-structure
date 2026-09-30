@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-30.2';
+const ASSET_VERSION = '2026-09-30.3';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -1027,7 +1027,7 @@ const ARTICLES = {
     <p>A processing engineer at council is looking for three things: a complete load path (every load has a named route to the ground), referenced design standards with calculations that match the drawings, and details a builder can actually construct. Packages fail on mismatches: a beam on the drawing that never appears in the calculations, a bracing schedule that disagrees with the plan, a detail copied from a different job. Because our drawings and calculations are produced together by the same engineer, those mismatches do not happen, and that is the single biggest reason our applications move through without RFIs.</p>
     <h2>Common questions</h2>
     ${miniFaq([
-      ['Is a PS1 a guarantee of the build?', 'No. A PS1 covers the design. Verification that the build matches the design is a PS4, issued after construction monitoring. Many projects need both, and we provide both.'],
+      ['Is a PS1 a guarantee of the build?', 'No. A PS1 covers the design. Verification that the build matches the design is a PS4, issued after <a href="construction-supervision.html">construction monitoring</a>. Many projects need both, and we provide both.'],
       ['Can you work from my draughtsperson’s plans?', 'Yes. We regularly provide the engineering and PS1 to sit behind plans from architects, designers and draughtspeople. We slot into your existing team.'],
       ['My consent got an RFI. Can you help?', 'Yes. We prepare the engineering response and liaise with council, whether or not we produced the original design.'],
       ['Do minor renovations need a PS1?', 'Only where there is specific engineering design, such as removing a load-bearing wall or adding a steel beam. If your project stays fully within NZS 3604, a PS1 may not be needed. Send us your plans and we will tell you straight.'],
@@ -1146,11 +1146,24 @@ const ARTICLES = {
     <h2>Built on slopes, priced for real budgets</h2>
     <p>Auckland is a city of slopes, and almost every section eventually needs ground held back. Our walls are engineered to carry exactly the loads your site imposes, with drainage that keeps them working and documentation that goes through council first time.</p>`,
 
-  /* ---- Construction Supervision — GSC: pos 35.3, biggest impression pool, "south auckland" ---- */
+  /* ---- Construction Supervision — GSC 30 Sep 2026 (60 days): 30 queries, 443 impressions, 0 clicks.
+     Searchers say "construction monitoring" + CM levels: cm3 11.5, "building construction supervision south
+     auckland" 15.9, "construction supervision" 15.4, "monitoring levels" 21.9, cm2 29.5, "monitoring services" 33.3 ---- */
   'construction-supervision': (base) => `
-    <p style="font-size:17px">Construction supervision (often called construction monitoring) is ongoing engineering oversight of the structural work on your build: an engineer who visits site at the moments that matter, solves problems before they become defects, and issues the completion documentation your council requires. We provide construction supervision across South and East Auckland, and for projects throughout New Zealand.</p>
-    ${byline(base)}
-    <h2>What does an engineer actually do during supervision?</h2>
+    <p style="font-size:17px">Construction monitoring, also called construction supervision, is an engineer's independent check that the structural work on your build matches the consented design: planned site visits at the stages that matter, fast answers for your builder, and the PS4 your council needs before it issues Code Compliance. We provide construction monitoring across South and East Auckland, and for projects throughout New Zealand.</p>
+    <p>If your building consent names a monitoring level such as <b>CM2</b> or <b>CM3</b>, this page explains what that means, what the engineer checks, and how it fits your build.</p>
+    ${byline(base, 'Updated 30 September 2026')}
+    <figure class="cm-holds" aria-labelledby="cm-holds-cap">
+      <figcaption id="cm-holds-cap">Typical hold points on a house build</figcaption>
+      <ol>
+        <li><b>Foundation excavation</b><span>Bearing confirmed before footings are poured</span></li>
+        <li><b>Reinforcing steel</b><span>Footing and slab steel checked before the concrete pour</span></li>
+        <li><b>Structural framing</b><span>Beams, bracing and connections checked before linings</span></li>
+        <li><b>Retaining drainage</b><span>Drains and metal checked before backfill</span></li>
+        <li><b>PS4 issued</b><span>Construction review statement for your Code Compliance Certificate</span></li>
+      </ol>
+    </figure>
+    <h2>What does an engineer do during construction monitoring?</h2>
     <ul class="ticks">
       <li>${si('check', 2.2)}<span>Inspects critical structural stages before they are covered up: foundations, reinforcing, framing, connections</span></li>
       <li>${si('check', 2.2)}<span>Answers builder queries fast so the site never waits on engineering</span></li>
@@ -1159,18 +1172,38 @@ const ARTICLES = {
       <li>${si('check', 2.2)}<span>Issues the PS4 (Construction Review) council needs before Code Compliance</span></li>
     </ul>
     <h2>Is construction monitoring required on my project?</h2>
-    <p>If your consent involved specific engineering design, the consent conditions almost always require engineering construction monitoring, and council will withhold the Code Compliance Certificate until a PS4 is issued. In New Zealand this is formalised as construction monitoring service levels <b>CM1 to CM5</b>: CM1 is occasional review of a simple element, CM5 is near-continuous oversight of complex structures. Residential projects typically sit at CM2 or CM3, meaning inspections at defined critical stages. Your consent documents state the required level; if you are unsure, send them to us and we will tell you exactly what is needed.</p>
-    <h2>What does construction supervision cost?</h2>
+    <p>If your consent involved specific engineering design, the consent conditions almost always require engineering construction monitoring, and council will withhold the Code Compliance Certificate until a PS4 is issued. The design engineer sets the level of monitoring the project needs, and it is recorded with the consent documentation. If you are unsure what yours requires, send us your consent documents and we will tell you exactly what is needed.</p>
+    <h2>Construction monitoring levels CM1 to CM5</h2>
+    <p>New Zealand engineers describe how closely a build is monitored using five levels, defined in Engineering New Zealand's <a href="https://www.engineeringnz.org/documents/112/Construction_Monitoring_Services.pdf" target="_blank" rel="noopener">Construction Monitoring Services</a> guideline. The higher the level, the more of the work the engineer sees for themselves.</p>
+    <div class="cm-table-wrap">
+      <table class="cm-table">
+        <caption>Construction monitoring levels (summarised from Engineering New Zealand)</caption>
+        <thead><tr><th scope="col">Level</th><th scope="col">What the engineer reviews</th><th scope="col">Suits</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">CM1</th><td>The results of another party's quality checks, with site visits at an agreed frequency.</td><td>A secondary service, for example when someone else is providing the main monitoring.</td></tr>
+          <tr><th scope="row">CM2</th><td>A sample of each important work procedure, material and component, and a representative sample of completed work before it is covered.</td><td>Smaller, routine projects with an experienced, competent builder.</td></tr>
+          <tr><th scope="row">CM3</th><td>Random samples of important work procedures, to an extent agreed with the client, and the important completed work before it is covered.</td><td>Medium-sized, routine projects with an experienced builder.</td></tr>
+          <tr><th scope="row">CM4</th><td>Regular samples of work procedures, materials and components, and the majority of completed work.</td><td>Projects that need a lower than normal risk of non-compliance.</td></tr>
+          <tr><th scope="row">CM5</th><td>Engineering staff on site to review the work constantly.</td><td>Major, critical, innovative or complex projects.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The level is chosen by scoring four things: the size of the project, how complex the construction is, how experienced the builder is, and how serious the consequences would be if something were built wrong.</p>
+    <h2>CM2 or CM3: which does a house need?</h2>
+    <p>Most homes, extensions and residential structures in Auckland are monitored at <b>CM2</b> or <b>CM3</b>. CM2 suits smaller, routine work by an experienced builder: the engineer reviews a sample of each important stage and relies on the builder carrying the same standard through the rest. CM3 suits a medium-sized routine project and involves more of the important work being checked before it is covered. In practice both mean a planned set of site visits at the hold points agreed at the start, a written report after each one, and a PS4 at the end.</p>
+    <h2>What does construction monitoring cost?</h2>
     <p>Monitoring is priced per site visit or as a fixed package for the whole build, agreed up front: most single-dwelling projects need three to six visits plus the PS4, and the required CM level in your consent sets the visit count more than anything else. Send us your consent conditions and we will quote the full monitoring scope as one fixed number. The honest comparison is not against zero: it is against the cost of rebuilding covered-up work that failed a council inspection, which is always more.</p>
-    <h2>Supervision in South and East Auckland</h2>
-    <p>Being based in Botany means South Auckland and East Auckland sites (Flat Bush, Howick, Pakuranga, Manukau and surrounds) get genuinely responsive coverage: an engineer who can be on site quickly when the concrete truck is booked for tomorrow morning. For projects further afield we plan monitoring visits around the construction programme, and we supervise builds nationwide.</p>
+    <h2>Construction supervision in South and East Auckland</h2>
+    <p>Being based in Botany means building sites in South Auckland and East Auckland (Flat Bush, Howick, Pakuranga, Manukau, Papatoetoe, Takanini and surrounds) get genuinely responsive coverage: an engineer who can be on site quickly when the concrete truck is booked for tomorrow morning. For projects further afield we plan monitoring visits around the construction programme, and we supervise builds nationwide.</p>
     <h2>How monitoring fits your build programme</h2>
     <p>At engagement we agree the hold points with you and your builder: the stages that must not proceed until they are inspected. Typical residential hold points are foundation excavation, footing reinforcement before pour, subfloor or slab steel, structural framing before lining, and retaining drainage before backfill. Your builder gives us a day or two of notice as each stage approaches; we inspect, report the same day, and the build carries straight on. Done this way, monitoring costs the programme nothing: the inspections slot into gaps that exist anyway between trades.</p>
     <h2>When something on site is not right</h2>
     <p>It happens on most builds: reinforcing in the wrong place, a substituted beam, ground that does not match the borelog. What matters is what happens next. We document the issue, design the fix (often on the spot), and confirm it at the next visit, keeping a clear paper trail so the PS4 at the end is honest and defensible. Builders tend to like working with us for exactly this reason: problems get solved in hours, not buried in emails.</p>
     <h2>Common questions</h2>
     ${miniFaq([
-      ['What is the difference between supervision and a one-off inspection?', 'A one-off inspection answers a single question. Supervision is a planned series of stage inspections across the build, ending in a PS4. Council conditions usually require the latter for engineered designs.'],
+      ['What is the difference between monitoring and a one-off inspection?', 'A one-off inspection answers a single question. Construction monitoring is a planned series of stage inspections across the build, ending in a PS4. Council conditions usually require the latter for engineered designs. For single visits, see our <a href="site-inspections.html">site inspections</a>.'],
+      ['What is CM2 construction monitoring?', 'CM2 is the level where the engineer reviews a sample of each important work procedure, material and component, and a representative sample of completed work before it is covered. It suits smaller, routine projects with an experienced builder, which covers many houses and extensions.'],
+      ['Who decides the construction monitoring level?', 'The design engineer, based on the size and complexity of the project, the builder, and the consequences of anything going wrong. It is recorded with the consent documentation, and the engineer who monitors the build issues the PS4 at the end.'],
       ['Can you supervise a design by another engineer?', 'Yes, subject to reviewing the design first. We regularly pick up monitoring for projects where the original designer is unavailable.'],
       ['Who books the inspections?', 'Your builder calls us at the agreed hold points, typically a day or two ahead. We fit site visits around concrete pours and council inspections so the programme never slips on our account.'],
       ['Do you issue the PS4 at the end?', 'Yes. Once the monitored work is complete and any items closed out, we issue the PS4 council needs for your Code Compliance Certificate.'],
@@ -1195,7 +1228,7 @@ const ARTICLES = {
     <h2>What is a PS4 construction review?</h2>
     <p>A PS4 (Producer Statement, Construction Review) is the engineer's formal statement that the structural work has been built in accordance with the consented design. Council requires it before issuing your Code Compliance Certificate whenever the project involved specific engineering design. A PS4 can only responsibly be issued by an engineer who actually inspected the critical stages, which is why booking inspections early matters: an engineer cannot review work that is already buried.</p>
     <h2>What does a site inspection cost?</h2>
-    <p>A single inspection with a written report is priced by location and scope, quoted fixed when you book, with PS4 documentation priced within a monitoring package rather than per visit. For projects outside Auckland we quote travel transparently, and for construction monitoring across a whole build our <a href="construction-supervision.html">construction supervision service</a> is usually the better-value structure.</p>
+    <p>A single inspection with a written report is priced by location and scope, quoted fixed when you book, with PS4 documentation priced within a monitoring package rather than per visit. For projects outside Auckland we quote travel transparently, and for construction monitoring across a whole build our <a href="construction-supervision.html">construction monitoring service (CM2 and CM3)</a> is usually the better-value structure.</p>
     <h2>How an inspection visit works</h2>
     <p>Your builder (or you) books the inspection a day or two ahead, telling us the stage and what is being covered up. On site, the engineer checks the work against the consented drawings: dimensions, materials, reinforcing placement and cover, fixings and connections, drainage falls. Anything that does not match is identified immediately and a fix agreed, usually while everyone is still standing next to it. You receive a written report the same day recording what was inspected, what was found and what, if anything, must change before the stage proceeds.</p>
     <h2>What the written report gives you</h2>
@@ -1448,7 +1481,7 @@ const SERVICE_TITLES = {
   'civil-design': 'Civil Engineering Design, Auckland | Stable Structure',
   'building-consent-documentation': 'PS1 &amp; Building Consent Docs, Auckland | Stable Structure',
   'site-inspections': 'Site Inspections &amp; PS4, Auckland | Stable Structure',
-  'construction-supervision': 'Construction Supervision, Auckland | Stable Structure',
+  'construction-supervision': 'Construction Monitoring &amp; Supervision Auckland | CM1–CM5, PS4',
   'retaining-walls': 'Engineered Retaining Wall Design Auckland | Stable Structure',
   'swimming-pools': 'Swimming Pool Structural Design, Auckland | Stable Structure',
   'decks-outdoor-living': 'Deck Engineering, Auckland | Stable Structure',
@@ -1458,12 +1491,15 @@ const SERVICE_TITLES = {
 /* Per-service overrides where search data showed the generic title/description
    weren't matching what people search for. */
 const SERVICE_H1 = {
+  'construction-supervision': 'Construction <span class="hl">monitoring</span> &amp; supervision, Auckland',
   'retaining-walls': 'Engineered <span class="hl">retaining walls</span>, Auckland',
 };
 const SERVICE_DESCS = {
+  'construction-supervision': 'Construction monitoring (CM1 to CM5) and site supervision in South and East Auckland: stage inspections, written site reports and the PS4 council needs.',
   'retaining-walls': 'Retaining wall engineers in Botany, East Auckland. Engineered timber, block and concrete walls, driveway walls, drainage, PS1 and consent. Fixed quotes.',
 };
 const SERVICE_LASTMOD = {
+  'construction-supervision': '2026-09-30',
   'retaining-walls': '2026-09-30',
 };
 

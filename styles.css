@@ -870,3 +870,29 @@ html:not(.js) .gf-details{display:grid; gap:12px}
 .rw-label{font:600 14px "Inter",sans-serif; fill:var(--ink)}
 .rw-label,.rw-note{paint-order:stroke; stroke:var(--surface); stroke-width:4px; stroke-linejoin:round}
 .rw-note{font:400 12.5px "Inter",sans-serif; fill:var(--muted)}
+
+/* Construction monitoring: hold-point strip and CM levels table */
+.prose .cm-holds{margin:28px 0 8px; padding:18px 20px 20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius)}
+.cm-holds figcaption{font:600 12.5px/1 "Inter",sans-serif; letter-spacing:.12em; text-transform:uppercase; color:var(--accent-600); margin-bottom:16px}
+.cm-holds ol{list-style:none; margin:0; padding:0; display:grid; gap:14px; counter-reset:hold}
+.cm-holds li{counter-increment:hold; display:grid; grid-template-columns:32px 1fr; column-gap:12px; row-gap:2px; align-items:start}
+.cm-holds li::before{content:counter(hold); grid-row:span 2; width:32px; height:32px; border-radius:50%; display:grid; place-items:center;
+  font:700 14px "Space Grotesk",sans-serif; background:var(--accent-100); color:var(--accent-600)}
+.cm-holds li:last-child::before{content:"✓"; background:var(--ink); color:#fff}
+.cm-holds b{font-family:"Space Grotesk",sans-serif; font-size:16px; color:var(--ink)}
+.cm-holds span{font-size:14.5px; color:var(--muted); line-height:1.45}
+@media(min-width:900px){
+  .cm-holds ol{grid-template-columns:repeat(5,1fr); gap:10px; position:relative}
+  .cm-holds ol::before{content:""; position:absolute; top:16px; left:10%; right:10%; height:2px; background:var(--line-2)}
+  .cm-holds li{grid-template-columns:1fr; justify-items:start; row-gap:8px; position:relative}
+  .cm-holds li::before{grid-row:auto}
+  .cm-holds span{font-size:13.5px}
+}
+.cm-table-wrap{overflow-x:auto; margin:18px 0 8px; border:1px solid var(--line); border-radius:12px}
+.cm-table{width:100%; min-width:560px; border-collapse:collapse; font-size:14.5px; line-height:1.5; background:var(--surface)}
+.cm-table caption{caption-side:bottom; text-align:left; padding:10px 14px; font-size:13px; color:var(--muted-2)}
+.cm-table th,.cm-table td{padding:12px 14px; text-align:left; vertical-align:top; border-bottom:1px solid var(--line)}
+.cm-table thead th{font:600 12.5px "Inter",sans-serif; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); background:var(--surface-2)}
+.cm-table tbody th{font:700 15px "Space Grotesk",sans-serif; color:var(--accent-600); white-space:nowrap}
+.cm-table td{color:var(--text)}
+.cm-table tbody tr:last-child th,.cm-table tbody tr:last-child td{border-bottom:0}
