@@ -896,3 +896,5 @@ html:not(.js) .gf-details{display:grid; gap:12px}
 .cm-table tbody th{font:700 15px "Space Grotesk",sans-serif; color:var(--accent-600); white-space:nowrap}
 .cm-table td{color:var(--text)}
 .cm-table tbody tr:last-child th,.cm-table tbody tr:last-child td{border-bottom:0}
+.ps-table tbody th{white-space:normal; min-width:120px}
+.prose h2[id]{scroll-margin-top:calc(var(--nav-h) + 16px)}
