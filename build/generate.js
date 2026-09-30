@@ -56,7 +56,7 @@ const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 const SPRINT_DATE = '2026-08-13';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-30.3';
+const ASSET_VERSION = '2026-09-30.4';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -1213,10 +1213,12 @@ const ARTICLES = {
     <h2>The engineer on your side of the fence</h2>
     <p>A build is a thousand small decisions made quickly. Supervision means those decisions get made with an engineer in the loop, your documentation arrives complete at the end, and nobody is arguing with council about covered-up work a year later.</p>`,
 
-  /* ---- Site Inspections (stretch 4th) — GSC: pos 38.0, "structural inspection", "ps4" ---- */
+  /* ---- Site Inspections — GSC 30 Sep 2026 (60 days): 35 queries, 340 impressions, 0 clicks. PS4 cluster:
+     "what is a ps4 in construction" 7.0, "ps4 in construction" 4.2, "ps4 construction" 9.5, "ps4 building" 11,
+     "ps4 construction review nz" 37.2 (50 impr); "concrete inspection services" 14.6. ("structural inspection" is mostly UK noise.) ---- */
   'site-inspections': (base) => `
-    <p style="font-size:17px">A structural site inspection is an engineer's independent check of structural work at a critical stage: before the concrete pour, before the framing is lined, before anything is buried or covered. We carry out inspections across Auckland and New Zealand-wide, with written reports and PS4 documentation councils accept.</p>
-    ${byline(base)}
+    <p style="font-size:17px">A structural site inspection is an engineer's independent check of structural work at a critical stage: before the concrete pour, before the framing is lined, before anything is buried or covered. We carry out inspections across Auckland and New Zealand-wide, leave a written record on site after every visit, and issue the PS4 construction review your council needs for Code Compliance.</p>
+    ${byline(base, 'Updated 30 September 2026')}
     <h2>Which stages need a structural inspection?</h2>
     <ul class="ticks">
       <li>${si('check', 2.2)}<span>Foundation excavations: confirming bearing before footings are poured</span></li>
@@ -1225,14 +1227,36 @@ const ARTICLES = {
       <li>${si('check', 2.2)}<span>Retaining wall construction and drainage before backfill</span></li>
       <li>${si('check', 2.2)}<span>Remedial and pre-purchase structural assessments</span></li>
     </ul>
-    <h2>What is a PS4 construction review?</h2>
-    <p>A PS4 (Producer Statement, Construction Review) is the engineer's formal statement that the structural work has been built in accordance with the consented design. Council requires it before issuing your Code Compliance Certificate whenever the project involved specific engineering design. A PS4 can only responsibly be issued by an engineer who actually inspected the critical stages, which is why booking inspections early matters: an engineer cannot review work that is already buried.</p>
+    <h2 id="ps4">What is a PS4 in construction?</h2>
+    <p>A <b>PS4 (Producer Statement, Construction Review)</b> is the formal statement from the design professional who reviewed the builder's work, confirming that the building work was carried out in accordance with the consented plans and the New Zealand Building Code. Council relies on it before issuing your Code Compliance Certificate whenever the consent called for engineering involvement in construction, such as foundations, steel placement, fill compaction or specifically designed structure.</p>
+    <p>A PS4 can only be issued for work the engineer actually observed, which is why booking inspections at the right stages matters: an engineer cannot review work that is already buried.</p>
+    <h2>Who can issue a PS4?</h2>
+    <p>The PS4 comes from the design professional engaged to observe construction. That can be the original designer, a peer reviewer, or an independent, suitably qualified person agreed with Council. Councils often make it a condition of consent that a Chartered Professional Engineer (CPEng) monitors the structural work and issues the PS4.</p>
+    <p>In Auckland, Council's <a href="https://www.aucklandcouncil.govt.nz/building-and-consents/building-consents/producer-statement-authors/Documents/ac2301-producer-statement-policy.pdf" target="_blank" rel="noopener">producer statement policy</a> sets out the detail. Producer statements are accepted at Council's discretion from authors on its Producer Statement Register. After every inspection the engineer must leave a site record describing what was inspected, the findings and any instructions given to the builder, so the council inspector can see it. The PS4 is then supplied as soon as practical after the work is complete, backed by those records.</p>
+    <h2>PS1, PS2, PS3 and PS4 at a glance</h2>
+    <div class="cm-table-wrap">
+      <table class="cm-table ps-table">
+        <caption>New Zealand producer statements, as described in Auckland Council's producer statement policy</caption>
+        <thead><tr><th scope="col">Statement</th><th scope="col">Issued by</th><th scope="col">What it confirms</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">PS1 Design</th><td>The design professional</td><td>The building work as designed and documented complies with the Building Code.</td></tr>
+          <tr><th scope="row">PS2 Design review</th><td>A design professional who reviewed someone else's design</td><td>The design they reviewed complies with the Building Code.</td></tr>
+          <tr><th scope="row">PS3 Construction</th><td>The contractor who did the work</td><td>Specialist work such as piling, waterproofing membranes or cladding systems was built to the consented plans.</td></tr>
+          <tr><th scope="row">PS4 Construction review</th><td>The design professional who reviewed the contractor's work</td><td>The building work was carried out in accordance with the consented plans and the Building Code.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The design side is covered in more depth in our guide <a href="${base}guides/what-is-a-ps1.html">What is a PS1?</a></p>
     <h2>What does a site inspection cost?</h2>
     <p>A single inspection with a written report is priced by location and scope, quoted fixed when you book, with PS4 documentation priced within a monitoring package rather than per visit. For projects outside Auckland we quote travel transparently, and for construction monitoring across a whole build our <a href="construction-supervision.html">construction monitoring service (CM2 and CM3)</a> is usually the better-value structure.</p>
+    <h2>Pre-pour concrete inspections</h2>
+    <p>The most common inspection we do is the pre-pour: the last chance to check foundation and slab reinforcing before concrete makes it invisible forever. We check bar sizes and spacing against the drawings, cover to the steel (the concrete depth that protects it from corrosion), lap lengths, starter bars and hold-down fixings, penetrations and setdowns, and the footing dimensions and bearing. Anything out is fixed while the formwork is still open, and the pour goes ahead on time.</p>
     <h2>How an inspection visit works</h2>
     <p>Your builder (or you) books the inspection a day or two ahead, telling us the stage and what is being covered up. On site, the engineer checks the work against the consented drawings: dimensions, materials, reinforcing placement and cover, fixings and connections, drainage falls. Anything that does not match is identified immediately and a fix agreed, usually while everyone is still standing next to it. You receive a written report the same day recording what was inspected, what was found and what, if anything, must change before the stage proceeds.</p>
     <h2>What the written report gives you</h2>
     <p>Each report states the date, stage, drawings referenced, observations and outcome, which builds the evidence chain behind the final PS4. That paper trail matters beyond council: it is what a future buyer's lawyer, an insurer or a dispute resolver will ask for when questions arise years later. Owners who keep our inspection reports with their property records are consistently glad they did.</p>
+    <h2>What if the work was covered before it was inspected?</h2>
+    <p>It happens: the slab is poured or the linings go on before anyone calls the engineer. The engineer can only sign a PS4 for what they observed, so a missed hold point usually means opening up the work, testing, or collecting other evidence, and council decides what it will accept. It is always cheaper to book the inspection. If a hold point has already been missed, call us before anything else is covered and we will work out the most practical way forward.</p>
     <h2>Inspections anywhere in New Zealand</h2>
     <p>Most of our inspection work is in Auckland, but engineered builds happen everywhere, and regional projects from Waikato to Queenstown regularly need independent PS4 construction review. We support remote projects with planned inspection visits scheduled around your critical stages, so distance never becomes a compliance gap.</p>
     <h2>Common questions</h2>
@@ -1241,6 +1265,9 @@ const ARTICLES = {
       ['Can I book a one-off inspection?', 'Yes. Single inspections with a written report are common for retaining walls, decks and remedial questions. If a PS4 is needed across multiple stages, we will say so up front.'],
       ['How much notice do you need?', 'For Auckland sites, a day or two is usually enough. Booking the sequence of hold points at the start of the build is even better.'],
       ['Can you inspect a problem in an existing house?', 'Yes. We assess cracking, sagging, leaks with structural implications and other concerns, and report with clear next steps.'],
+      ['What is the difference between a PS3 and a PS4?', 'A PS3 comes from the contractor who did the work, usually for specialist items such as piling or waterproofing membranes. A PS4 comes from the design professional who reviewed the contractor’s work on site. They are different people confirming different things.'],
+      ['What does the engineer leave on site after an inspection?', 'A written site record of what was inspected, what was found and any instructions given to the builder. Auckland Council expects it to be left on site so the council inspector can review it, and the records together support the final PS4.'],
+      ['Do I need a PS4 for my Code Compliance Certificate?', 'If your consent conditions call for engineering construction monitoring or a PS4, yes: council will ask for it before issuing Code Compliance. Your consent documents will say. Send them to us if you are unsure.'],
     ])}
     <h2>Beyond new builds: assessments of existing structures</h2>
     <p>Inspections are not only for construction. We assess existing houses and structures for buyers before purchase, for owners worried about cracking or movement, and for insurers and lawyers who need an engineer's written opinion. The output is the same discipline applied to an existing building: a clear report stating what we observed, what it means structurally, and what to do about it, with costs and urgency ranked honestly.</p>
@@ -1264,7 +1291,7 @@ const GUIDES = [
       <li>${si('check', 2.2)}<span><b>PS1, Design:</b> the designer's statement that the design complies with the Building Code. Lodged with your consent application.</span></li>
       <li>${si('check', 2.2)}<span><b>PS2, Design Review:</b> an independent engineer's peer review of someone else's design. Councils request it for complex or unusual structures.</span></li>
       <li>${si('check', 2.2)}<span><b>PS3, Construction:</b> the contractor's statement that they built the works in accordance with the design.</span></li>
-      <li>${si('check', 2.2)}<span><b>PS4, Construction Review:</b> the engineer's statement, after construction monitoring, that the built work matches the consented design. Council wants this before your Code Compliance Certificate.</span></li>
+      <li>${si('check', 2.2)}<span><b><a href="${base}services/site-inspections.html#ps4">PS4, Construction Review</a>:</b> the engineer's statement, after construction monitoring, that the built work matches the consented design. Council wants this before your Code Compliance Certificate.</span></li>
     </ul>
     <h2>When does a building consent need a PS1?</h2>
     <p>Whenever your project includes <b>specific engineering design</b>: anything outside the standard "acceptable solutions" such as NZS 3604 timber framing. Common triggers include removing a load-bearing wall, steel beams and portals, decks above 1.5 metres, retaining walls over 1.5 metres or carrying surcharge, swimming pools, difficult ground, and almost every commercial structure. If your project stays entirely within NZS 3604, you may not need one at all: a good engineer will tell you that for free rather than sell you paperwork you do not need.</p>
@@ -1480,7 +1507,7 @@ const SERVICE_TITLES = {
   'structural-design': 'Structural Design Engineer Auckland | Stable Structure',
   'civil-design': 'Civil Engineering Design, Auckland | Stable Structure',
   'building-consent-documentation': 'PS1 &amp; Building Consent Docs, Auckland | Stable Structure',
-  'site-inspections': 'Site Inspections &amp; PS4, Auckland | Stable Structure',
+  'site-inspections': 'Site Inspections &amp; PS4 Construction Review, Auckland',
   'construction-supervision': 'Construction Monitoring &amp; Supervision Auckland | CM1–CM5, PS4',
   'retaining-walls': 'Engineered Retaining Wall Design Auckland | Stable Structure',
   'swimming-pools': 'Swimming Pool Structural Design, Auckland | Stable Structure',
@@ -1491,14 +1518,17 @@ const SERVICE_TITLES = {
 /* Per-service overrides where search data showed the generic title/description
    weren't matching what people search for. */
 const SERVICE_H1 = {
+  'site-inspections': 'Site inspections &amp; <span class="hl">PS4</span> construction review',
   'construction-supervision': 'Construction <span class="hl">monitoring</span> &amp; supervision, Auckland',
   'retaining-walls': 'Engineered <span class="hl">retaining walls</span>, Auckland',
 };
 const SERVICE_DESCS = {
+  'site-inspections': 'Structural site inspections and PS4 construction review across Auckland: pre-pour and framing inspections, written site records, and the PS4 council needs.',
   'construction-supervision': 'Construction monitoring (CM1 to CM5) and site supervision in South and East Auckland: stage inspections, written site reports and the PS4 council needs.',
   'retaining-walls': 'Retaining wall engineers in Botany, East Auckland. Engineered timber, block and concrete walls, driveway walls, drainage, PS1 and consent. Fixed quotes.',
 };
 const SERVICE_LASTMOD = {
+  'site-inspections': '2026-09-30',
   'construction-supervision': '2026-09-30',
   'retaining-walls': '2026-09-30',
 };
