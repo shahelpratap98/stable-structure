@@ -211,6 +211,11 @@
     else window.addEventListener('resize', layout);
   }
 
+  // Wide diagrams that scroll sideways on phones open centred on the subject
+  [].slice.call(document.querySelectorAll('.rw-scroll')).forEach(function (s) {
+    if (s.scrollWidth > s.clientWidth) s.scrollLeft = (s.scrollWidth - s.clientWidth) * 0.6;
+  });
+
   // Border glow — pointer-reactive edge glow on .border-glow-card
   // (ported from React Bits "BorderGlow"; CSS holds the design, JS only
   // feeds it the live cursor angle and how close the pointer is to an edge).
