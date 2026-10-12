@@ -166,9 +166,9 @@
       </div>
     </div>
 
-    <!-- Enquiry form. Submits via the visitor's email app to gajan@stablestructure.co.nz (no backend needed).
-         For a smoother inbox experience, swap action for a form endpoint (e.g. Formspree). -->
-    <form class="enquiry reveal" id="enquiryForm" action="mailto:gajan@stablestructure.co.nz" method="post" enctype="text/plain" novalidate>
+    <!-- Enquiry form. Posts to /api/enquiry (app/api/enquiry/route.ts), which
+         emails it to gajan@stablestructure.co.nz with Reply-To set to the visitor. -->
+    <form class="enquiry reveal" id="enquiryForm" action="/api/enquiry" method="post" novalidate>
       <h3>Make an enquiry</h3>
       <p class="fsub">Your enquiry goes straight to Gajanthan Vethanathan. We usually reply within one business day.</p>
       <div class="field two">
@@ -194,6 +194,7 @@
         <textarea id="message" name="message" placeholder="Tell us about your project, location and timeframe…"></textarea>
         <p class="hint">Adding your suburb and a rough timeframe helps us reply with a useful quote.</p>
       </div>
+      <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off" /></div>
       <button type="submit" class="btn btn-primary btn-lg">Send enquiry <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
       <div class="form-status" id="formStatus" role="status" aria-live="polite"></div>
       <p class="form-note">By sending this enquiry you agree to be contacted about your project. We never share your details.</p>

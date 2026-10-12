@@ -253,29 +253,45 @@
     return out;
   }
 
-  // Enquiry form
+  // Enquiry form: posts to /api/enquiry, which emails the office.
   var form = document.getElementById('enquiryForm');
   if (form) {
     var status = document.getElementById('formStatus');
+    var btn = form.querySelector('button[type=submit]');
+    var btnHtml = btn ? btn.innerHTML : '';
+    var FALLBACK = ' Please call 021 148 8984 or email gajan@stablestructure.co.nz.';
+    var show = function (ok, text) {
+      if (!status) return;
+      status.className = 'form-status' + (text ? (ok ? ' ok' : ' err') : '');
+      status.textContent = text;
+    };
+    // Back from a no-JavaScript submission
+    var sent = /[?&]enquiry=(sent|error)/.exec(location.search);
+    if (sent) show(sent[1] === 'sent', sent[1] === 'sent' ? 'Thanks, your enquiry has been sent. We usually reply within one business day.' : 'Sorry, your enquiry could not be sent.' + FALLBACK);
+
     form.addEventListener('submit', function (ev) {
-      var action = form.getAttribute('action') || '';
-      // Validate first regardless of how the form is wired up
-      if (!form.checkValidity()) { ev.preventDefault(); form.reportValidity(); return; }
-      if (action.indexOf('mailto:') === 0) {
-        // Let the browser open the visitor's email app; just confirm on screen
-        if (status) {
-          status.className = 'form-status ok';
-          status.textContent = 'Opening your email app to send this enquiry to gajan@stablestructure.co.nz — if nothing opens, email us directly or call 021 148 8984.';
-        }
-      } else if (action === '#') {
-        ev.preventDefault();
-        if (status) {
-          status.className = 'form-status ok';
-          status.textContent = 'Thanks — your enquiry is ready. Connect a form endpoint to receive it, or call/WhatsApp/email us to reach us right away.';
-        }
-        var btn = form.querySelector('button[type=submit]');
-        if (btn) btn.textContent = 'Enquiry received ✓';
-      }
+      ev.preventDefault();
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      var data = {};
+      Array.prototype.forEach.call(form.elements, function (el) { if (el.name) data[el.name] = el.value; });
+      if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+      show(true, '');
+      fetch(form.getAttribute('action'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (body) {
+          if (!res.ok || !body.ok) throw new Error(body.error || 'Sorry, your enquiry could not be sent.');
+        });
+      }).then(function () {
+        form.reset();
+        show(true, 'Thanks, your enquiry has been sent. We usually reply within one business day.');
+        if (btn) { btn.textContent = 'Enquiry sent ✓'; }
+      }).catch(function (err) {
+        show(false, (err && err.message && err.message !== 'Failed to fetch' ? err.message : 'Sorry, your enquiry could not be sent.') + FALLBACK);
+        if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+      });
     });
   }
 })();

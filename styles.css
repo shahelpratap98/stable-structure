@@ -646,6 +646,8 @@ form.enquiry .btn{width:100%; margin-top:8px}
 .form-note{font-size:12.5px; color:var(--muted-2); text-align:center; margin-top:14px}
 .form-status{display:none; margin-top:14px; padding:14px 16px; border-radius:11px; font-size:14.5px; font-weight:500}
 .form-status.ok{display:block; background:#E9F6EC; color:#1B6E33; border:1px solid #BEE4C7}
+.form-status.err{display:block; background:#FDECEC; color:#9B1C1C; border:1px solid #F5C2C2}
+.enquiry .hp{position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden}
 .callout{margin-top:22px; padding:22px; border-radius:14px; background:var(--ink); color:#fff; display:flex; align-items:center; gap:18px; flex-wrap:wrap}
 .callout b{font-family:"Space Grotesk",sans-serif; font-size:18px; color:#fff}
 .callout p{color:#AEBECE; font-size:14px}

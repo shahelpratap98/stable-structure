@@ -18,13 +18,15 @@ export async function sendEmail(opts: {
   paragraphs: string[];
   button?: { label: string; url: string };
   attachments?: Attachment[];
+  replyTo?: string;
+  footer?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!emailEnabled()) return { ok: false, error: "Email isn't set up on this server." };
 
   const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.55;color:#0E1C2B;max-width:520px">
 ${opts.paragraphs.map((p) => `<p>${escapeHtml(p)}</p>`).join("\n")}
 ${opts.button ? `<p><a href="${escapeHtml(opts.button.url)}" style="display:inline-block;background:#0C1E33;color:#ffffff;text-decoration:none;font-weight:bold;padding:10px 18px;border-radius:8px">${escapeHtml(opts.button.label)}</a></p>` : ""}
-<p style="color:#556577;font-size:13px">Stable Structure staff portal</p>
+<p style="color:#556577;font-size:13px">${escapeHtml(opts.footer ?? "Stable Structure staff portal")}</p>
 </div>`;
   const text = [...opts.paragraphs, opts.button ? `${opts.button.label}: ${opts.button.url}` : ""].filter(Boolean).join("\n\n");
 
@@ -36,6 +38,7 @@ ${opts.button ? `<p><a href="${escapeHtml(opts.button.url)}" style="display:inli
         from: process.env.EMAIL_FROM,
         to: [opts.to],
         subject: opts.subject,
+        ...(opts.replyTo ? { reply_to: opts.replyTo } : {}),
         html,
         text,
         attachments: opts.attachments?.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })),

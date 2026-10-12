@@ -696,9 +696,9 @@ function contactBlock(base) {
       </div>
     </div>
 
-    <!-- Enquiry form. Submits via the visitor's email app to ${EMAIL} (no backend needed).
-         For a smoother inbox experience, swap action for a form endpoint (e.g. Formspree). -->
-    <form class="enquiry reveal" id="enquiryForm" action="mailto:${EMAIL}" method="post" enctype="text/plain" novalidate>
+    <!-- Enquiry form. Posts to /api/enquiry (app/api/enquiry/route.ts), which
+         emails it to ${EMAIL} with Reply-To set to the visitor. -->
+    <form class="enquiry reveal" id="enquiryForm" action="/api/enquiry" method="post" novalidate>
       <h3>Make an enquiry</h3>
       <p class="fsub">Your enquiry goes straight to ${OWNER}. We usually reply within one business day.</p>
       <div class="field two">
@@ -716,6 +716,7 @@ function contactBlock(base) {
         <textarea id="message" name="message" placeholder="Tell us about your project, location and timeframe…"></textarea>
         <p class="hint">Adding your suburb and a rough timeframe helps us reply with a useful quote.</p>
       </div>
+      <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off" /></div>
       <button type="submit" class="btn btn-primary btn-lg">Send enquiry ${si('arrow', 2.2)}</button>
       <div class="form-status" id="formStatus" role="status" aria-live="polite"></div>
       <p class="form-note">By sending this enquiry you agree to be contacted about your project. We never share your details.</p>

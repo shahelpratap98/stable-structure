@@ -35,7 +35,7 @@ const siteCsp = [
   "frame-src https://www.facebook.com https://maps.google.com https://www.google.com",
   "object-src 'none'",
   "base-uri 'self'",
-  "form-action 'self' mailto:",
+  "form-action 'self'",
   "frame-ancestors 'self'",
   "upgrade-insecure-requests",
 ].join("; ");
