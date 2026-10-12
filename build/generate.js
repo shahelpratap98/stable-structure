@@ -592,10 +592,24 @@ const GOOGLE_WRITE_URL = GOOGLE_PLACE_ID
 const REVIEWS = {
   rating: '5.0',
   featured: {
-    initial: 'S', name: 'Sonia Singh', meta: 'Local Guide · 26 reviews', when: 'a month ago',
-    text: 'Gajan &amp; Team are very Professional, reliable, and incredibly thorough. Highly recommend their structural engineering services.',
-    org: 'Proconcept Design Ltd',
+    initial: 'H', name: 'Haran / Kash', meta: 'A-Frame Builders Ltd', when: '2 months ago',
+    paras: [
+      'We have worked with Gajanthan Vethanathan and Stable Structure on multiple residential development projects, and the level of service has been exceptional every time.',
+      'Gajanthan is an outstanding Structural and Civil Engineer with exceptional technical knowledge, professionalism, and attention to detail. He is always responsive, provides practical engineering solutions, and works closely with the entire project team to ensure everything runs smoothly. His advice has been invaluable throughout our developments, from the design stage through to construction.',
+      'As the engineering partner for A-Frame Builders, Gajanthan has consistently delivered high-quality work, met tight deadlines, and gone above and beyond to support our projects. His commitment, integrity, and problem-solving skills give us complete confidence on every job.',
+    ],
   },
+  /* Written Google reviews, verbatim. */
+  written: [
+    { initial: 'P', name: 'Prutvi Kumar', meta: '', when: '2 months ago',
+      text: 'Gajan and team are very efficient the designs are very thorough. They provide the details which are clear and easy to understand. They respond to site clarifications and council queries efficiently and resolve issues. I highly recommend them.' },
+    { initial: 'A', name: 'Aleki Bon', meta: 'Local Guide', when: '2 months ago',
+      text: 'The team at Stable Structure as &lsquo;solid&rsquo; to deal with. They are efficient and have superior knowledge in their field. We send lot of work their way as they get the jobs done fast and at a fair price point.' },
+    { initial: 'J', name: 'Jedd Forbes', meta: '', when: '2 months ago',
+      text: 'Gajan is a pleasure to work with. Professional, calm and considered. Looking forward to the next project.' },
+    { initial: 'S', name: 'Sonia Singh', meta: 'Proconcept Design Ltd', when: '4 months ago',
+      text: 'Gajan &amp; Team are very Professional, reliable, and incredibly thorough. Highly recommend their structural engineering services.' },
+  ],
   others: [
     { initial: 'A', name: 'Ananayan', when: '6 months ago' },
     { initial: 'N', name: 'Niranjan Tharma', when: '2 years ago' },
@@ -620,9 +634,18 @@ function featuredReview() {
   const f = REVIEWS.featured;
   return `<figure class="tcard featured-review reveal">
       <div class="fr-top">${stars5()}<span class="via">${googleGlyph()} Google review</span></div>
-      <blockquote>“${f.text}”</blockquote>
-      <figcaption class="who"><div class="av">${f.initial}</div><div><b>${f.name}</b><span>${f.org} · ${f.meta} · ${f.when}</span></div></figcaption>
+      <blockquote>${f.paras.map((t, i) => `<p>${i === 0 ? '“' : ''}${t}${i === f.paras.length - 1 ? '”' : ''}</p>`).join('')}</blockquote>
+      <figcaption class="who"><div class="av">${f.initial}</div><div><b>${f.name}</b><span>${f.meta} · ${f.when} · via Google</span></div></figcaption>
     </figure>`;
+}
+function writtenReviews(n = REVIEWS.written.length) {
+  return `<div class="rev-grid${n % 3 === 0 ? ' three' : ''}">
+      ${REVIEWS.written.slice(0, n).map(r => `<figure class="tcard reveal">
+        <div class="stars sm" role="img" aria-label="Rated 5 out of 5 stars">${star().repeat(5)}</div>
+        <blockquote>“${r.text}”</blockquote>
+        <figcaption class="who"><div class="av">${r.initial}</div><div><b>${r.name}</b><span>${r.meta ? r.meta + ' · ' : ''}${r.when} · via Google</span></div></figcaption>
+      </figure>`).join('\n      ')}
+    </div>`;
 }
 function otherReviews() {
   return `<div class="rev-mini-grid">
@@ -1376,6 +1399,7 @@ pages.push({
       <div class="section-head center reveal"><span class="eyebrow">Client reviews</span><h2 class="section-title">Rated 5.0 on Google</h2><p class="lead">Our clients rate Stable Structure 5 stars for technical expertise, communication and attention to detail.</p></div>
       ${reviewsSummary()}
       <div style="margin-top:24px">${featuredReview()}</div>
+      ${writtenReviews(3)}
       <div style="text-align:center;margin-top:36px" class="reveal"><a class="btn btn-ghost btn-lg" href="testimonials.html">Read all reviews ${si('arrow', 2.2)}</a></div>
     </div></section>`,
     ctaBand(''),
@@ -1471,6 +1495,8 @@ pages.push({
     `<section class="pad"><div class="container">
       ${reviewsSummary()}
       <div style="margin:36px 0 14px"><div class="section-head center reveal" style="margin-bottom:24px"><span class="eyebrow">Featured review</span></div>${featuredReview()}</div>
+      <div class="section-head center reveal" style="margin:48px auto 0"><span class="eyebrow">What clients say</span><h2 class="section-title">From builders, designers &amp; developers</h2></div>
+      ${writtenReviews()}
       <div class="section-head center reveal" style="margin:48px auto 0"><span class="eyebrow">More 5-star ratings</span><h2 class="section-title">Consistently rated five stars</h2><p class="lead">Further verified Google ratings from clients across our projects.</p></div>
       ${otherReviews()}
     </div></section>`,

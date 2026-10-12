@@ -418,6 +418,13 @@ section{scroll-margin-top:calc(var(--nav-h) + 12px)}
 .featured-review .fr-top{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap}
 .featured-review .via{display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--muted)}
 .featured-review blockquote{font-size:18px}
+.featured-review blockquote p{margin:0 0 12px}
+.featured-review blockquote p:last-child{margin-bottom:0}
+.rev-grid{display:grid; grid-template-columns:1fr; gap:18px; margin-top:24px}
+@media(min-width:760px){ .rev-grid{grid-template-columns:repeat(2,1fr)} }
+@media(min-width:1080px){ .rev-grid.three{grid-template-columns:repeat(3,1fr)} }
+.rev-grid .tcard blockquote{font-size:15.5px}
+.rev-grid .stars.sm svg{width:15px;height:15px}
 .rev-mini-grid{display:grid; grid-template-columns:1fr; gap:14px; margin-top:24px}
 @media(min-width:600px){ .rev-mini-grid{grid-template-columns:repeat(2,1fr)} }
 @media(min-width:980px){ .rev-mini-grid{grid-template-columns:repeat(4,1fr)} }
