@@ -19,7 +19,7 @@ import {
 } from "@/lib/design/model";
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
-import { HistoryPanel, LevelsPanel, MemberPanel, Overview, SchedulePanel, type PlanFile } from "./panels";
+import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, Overview, SchedulePanel, type PlanFile } from "./panels";
 import { countPages, loadPdf, renderPage, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 
@@ -52,7 +52,19 @@ function newMember(model: DesignModel, type: MemberType, levelId: string, a: Pt,
   };
 }
 
-export function DesignEditor({ job, initialModel, initialRevision, initialPlans }: { job: Job; initialModel: DesignModel; initialRevision: number; initialPlans: PlanFile[] }) {
+export function DesignEditor({
+  job,
+  initialModel,
+  initialRevision,
+  initialPlans,
+  canDelete,
+}: {
+  job: Job;
+  initialModel: DesignModel;
+  initialRevision: number;
+  initialPlans: PlanFile[];
+  canDelete: boolean;
+}) {
   const locked = job.status === "signed";
   const [model, setModel] = useState(initialModel);
   const modelRef = useRef(model); // kept in step by commit / undo / redo
@@ -643,6 +655,7 @@ export function DesignEditor({ job, initialModel, initialRevision, initialPlans 
               )
             ) : null}
             {tab === "schedule" ? <SchedulePanel model={model} results={results} selectedId={selectedId} onPick={(id) => pick(id, true)} /> : null}
+            {tab === "levels" ? <JobSection job={job} locked={locked} canDelete={canDelete} /> : null}
             {tab === "levels" ? (
               <LevelsPanel
                 model={model}

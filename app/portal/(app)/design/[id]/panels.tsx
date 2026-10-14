@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useActionState, useEffect, useState, type ReactNode } from "react";
 import { DRAFT_NOTE, SG8_DEPTHS, STATUS_COLOUR, STATUS_LABEL, type Result } from "@/lib/design/calc";
 import {
   byLabel,
@@ -15,7 +15,9 @@ import {
   type MemberType,
   type TimberGrade,
 } from "@/lib/design/model";
-import { listRevisions } from "../actions";
+import { ActionForm } from "@/components/action-form";
+import { Spinner } from "@/components/spinner";
+import { deleteDesignJob, listRevisions, updateJobDetails } from "../actions";
 
 export type PlanFile = { id: string; fileName: string; pageCount: number; url: string };
 
@@ -659,5 +661,51 @@ export function HistoryPanel({ jobId, revision, locked, onRestore }: { jobId: st
         </ol>
       )}
     </Section>
+  );
+}
+
+// ---------------------------------------------------------------- job details
+
+export function JobSection({ job, locked, canDelete }: { job: { id: string; title: string; jobNo: string; address: string }; locked: boolean; canDelete: boolean }) {
+  return (
+    <Section title="Job">
+      <ActionForm action={updateJobDetails} submitLabel="Save details" quiet className="grid grid-cols-2 gap-2">
+        <input type="hidden" name="id" value={job.id} />
+        <fieldset disabled={locked} className="contents">
+          <label className="col-span-2 flex flex-col gap-1">
+            <span className="text-xs font-semibold text-muted">Name</span>
+            <input name="title" defaultValue={job.title} required maxLength={200} className="field py-1.5 text-sm" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-semibold text-muted">Job number</span>
+            <input name="job_no" defaultValue={job.jobNo} maxLength={40} className="field py-1.5 text-sm" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-semibold text-muted">Site address</span>
+            <input name="address" defaultValue={job.address} maxLength={300} className="field py-1.5 text-sm" />
+          </label>
+        </fieldset>
+      </ActionForm>
+      {canDelete ? <DeleteJob id={job.id} title={job.title} /> : null}
+    </Section>
+  );
+}
+
+function DeleteJob({ id, title }: { id: string; title: string }) {
+  const [state, action, pending] = useActionState(deleteDesignJob, undefined);
+  return (
+    <form
+      action={action}
+      className="mt-3 border-t border-line pt-3"
+      onSubmit={(e) => {
+        if (!window.confirm(`Delete "${title}" with its plans and history? This can't be undone.`)) e.preventDefault();
+      }}
+    >
+      <input type="hidden" name="id" value={id} />
+      <button type="submit" disabled={pending} className="btn btn-quiet px-2.5 py-1 text-xs text-bad">
+        {pending ? <><Spinner /> Deleting…</> : "Delete this job"}
+      </button>
+      {state && !state.ok ? <p className="mt-2 text-xs font-semibold text-bad">{state.message}</p> : null}
+    </form>
   );
 }

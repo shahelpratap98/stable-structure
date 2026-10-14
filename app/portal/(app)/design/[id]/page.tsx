@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { requireProfile } from "@/lib/auth";
+import { isAdmin, requireProfile } from "@/lib/auth";
 import { normaliseModel } from "@/lib/design/model";
 import { createClient } from "@/lib/supabase/server";
 import { DesignEditor } from "./editor";
@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Design" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function DesignJobPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireProfile();
+  const profile = await requireProfile();
   const { id } = await params;
   if (!UUID.test(id)) notFound();
 
@@ -30,7 +30,8 @@ export default async function DesignJobPage({ params }: { params: Promise<{ id: 
 
   return (
     <DesignEditor
-      key={`${job.id}:${job.revision}`}
+      key={job.id}
+      canDelete={isAdmin(profile.role)}
       job={{ id: job.id, title: job.title, jobNo: job.job_no, address: job.address, status: job.status }}
       initialModel={normaliseModel(job.model)}
       initialRevision={job.revision}
