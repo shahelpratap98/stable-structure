@@ -53,6 +53,7 @@ is the same four files concatenated for pasting into the Supabase SQL editor.
 | `0700_external_invoices` | `invoices.is_external` + `record_external_invoice` for time billed from another system |
 | `0800_leave` | annual / sick / bereavement / parental leave requests (half days), `v_leave_calendar` (type hidden from other staff), `leave_balances` with carry-over via `app.leave_balance` (opening balances + anniversary accrual, sick capped), `decide_leave`, leave-aware `hours_check` |
 | `0900_leave_balance_booked` | balance deducts approved leave booked for the future too |
+| `1000_design` | structural design app: `design_jobs` (model as jsonb, `member_count`), `design_revisions` (every save), `design_plans`, `save_design` (conflict and sign-off checks), private storage bucket `design-plans` (PDF, 50 MB) |
 
 Roles: `employee` (own time only, never sees rates or values), `approver`
 (all time, rates, approve / return), `admin` (approver + setup + invoices).
@@ -76,6 +77,37 @@ where email = 'gajan@stablestructure.co.nz';
 | Staff | `/my/day` (enter, save draft, submit; week strip), `/leave` (team calendar, request, own balance), `/reports/hours-check`, `/reports/employee` (own time only) |
 | Approvers | `/approvals`, `/entries` (+ `/entries/new`, `/entries/[id]`), all six `/reports/*` with `/export` (xlsx), `/invoices` (read) |
 | Admin | `/invoices/new`, `/invoices/[id]` (+ `/pdf`), `/admin/*`: staff, projects & rates, clients, work types, public holidays, company & GST, audit log |
+| All staff | `/design` (design jobs), `/design/[id]` (plan editor, 3D model, draft calculations, IFC export) |
+
+## Structural design app
+
+BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
+`app/portal/(app)/design/` (pages, editor, plan view, 3D view) and
+`lib/design/` (model, calculations, geometry, IFC export).
+
+- **Model**: one jsonb document per job (`lib/design/model.ts`), saved by the
+  editor's autosave through `save_design`, which refuses a stale revision
+  (someone else saved) or a signed-off job. Every save is a row in
+  `design_revisions`; the History tab restores any of them.
+- **Plans**: PDFs upload from the browser straight to the private
+  `design-plans` bucket under the person's own session, then
+  `registerPlan` records them. pdf.js renders the page in the browser.
+- **Levels**: each level holds the posts and walls of that storey and the
+  framing at its top. Ground-floor joists and bearers go on Foundation. All
+  levels share one metre frame: set the scale, then the origin (the same
+  corner) on every level.
+- **3D**: three.js, loaded only when the 3D view opens. Picking a member in
+  3D opens its level on the plan.
+- **IFC**: `lib/design/ifc.ts` writes IFC4 (IfcBeam, IfcMember RAFTER,
+  IfcColumn, IfcWall SHEAR, IfcFooting, IfcPile, one IfcBuildingStorey per
+  level). Checked with IfcOpenShell: no schema errors.
+- **Calculations are DRAFT** (`lib/design/calc.ts`): SG8 beams, lintels,
+  joists and rafters to NZS 3603 (bending, shear, long and short term
+  deflection) and loads passed from beams to posts, piles and footings. Every
+  result says it is not for building consent until each calculator has been
+  checked against Stable Structure's spreadsheets (stage 3). hySPAN / hy90
+  wait for their properties; steel (NZS 3404), posts, bracing and footings
+  report loads only.
 
 ## Environment
 
