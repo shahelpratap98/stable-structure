@@ -54,6 +54,7 @@ is the same four files concatenated for pasting into the Supabase SQL editor.
 | `0800_leave` | annual / sick / bereavement / parental leave requests (half days), `v_leave_calendar` (type hidden from other staff), `leave_balances` with carry-over via `app.leave_balance` (opening balances + anniversary accrual, sick capped), `decide_leave`, leave-aware `hours_check` |
 | `0900_leave_balance_booked` | balance deducts approved leave booked for the future too |
 | `1000_design` | structural design app: `design_jobs` (model as jsonb, `member_count`), `design_revisions` (every save), `design_plans`, `save_design` (conflict and sign-off checks), private storage bucket `design-plans` (PDF, 50 MB) |
+| `1100_design_signoff` | review and CPEng sign-off: `design_engineers` (CPEng register, admin managed), `design_people()`, `submit_design` / `return_design` / `sign_design` (named checker, exact revision) / `reopen_design` (admin, with reason); a guard trigger allows status changes only through those |
 
 Roles: `employee` (own time only, never sees rates or values), `approver`
 (all time, rates, approve / return), `admin` (approver + setup + invoices).
@@ -77,7 +78,7 @@ where email = 'gajan@stablestructure.co.nz';
 | Staff | `/my/day` (enter, save draft, submit; week strip), `/leave` (team calendar, request, own balance), `/reports/hours-check`, `/reports/employee` (own time only) |
 | Approvers | `/approvals`, `/entries` (+ `/entries/new`, `/entries/[id]`), all six `/reports/*` with `/export` (xlsx), `/invoices` (read) |
 | Admin | `/invoices/new`, `/invoices/[id]` (+ `/pdf`), `/admin/*`: staff, projects & rates, clients, work types, public holidays, company & GST, audit log |
-| All staff | `/design` (design jobs), `/design/[id]` (plan editor, 3D model, draft calculations, IFC export) |
+| All staff | `/design` (design jobs; admins manage CPEngs there), `/design/[id]` (plan editor, 3D model, calculations, IFC export, sign-off, council report PDF), `/design/guide` |
 
 ## Structural design app
 
@@ -105,7 +106,9 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   26121), and were checked against them member by member:
   `lib/design/calc.ts` (tributary loads, combinations incl. roof live and
   snow, 1 kN midspan point load, deflection caps; sections picked SG8 →
-  hySPAN → PFC/UB within depth and width limits; posts as SG8 stud packs then
+  hySPAN → PFC/UB within depth and width limits; a beam ending part-way
+  along another passes its reaction on as a point load, and beams are
+  designed in that order; posts as SG8 stud packs then
   SHS with k12; joist zones with the NZS 3604 span check and hanger R*; loads
   passed from beam ends to posts and footings), `materials.ts`,
   `bracing.ts` (NZS 3604 / GIB EzyBrace® 2016 lines, ratings, demand and line
@@ -114,6 +117,13 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   preliminary until checked by a CPEng.
 - **Sheets** view: member, joist, lintel, post, wall, bracing and retaining
   schedules plus the design basis and the job's assumptions to confirm.
+- **Sign-off**: draft → in review (designer names a CPEng checker) → signed
+  (the checker signs the revision they reviewed; the job then locks). The
+  checker or designer can send it back; an admin can reopen a signed job.
+- **Council report**: `[id]/report.tsx` builds a PDF in the browser with
+  @react-pdf/renderer (logo on every sheet, cover with sign-off, design basis,
+  schedule, bracing, a marked-up plan per level from `plan-image.ts`, a 3D
+  still from `snapshot3d`, every calc). Watermarked DRAFT until signed.
 
 ## Environment
 

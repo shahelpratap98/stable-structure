@@ -29,6 +29,7 @@ import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, Overv
 import { countPages, loadPdf, renderPage, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
+import { SignoffPanel, type Signoff } from "./signoff";
 import type { ColourBy } from "./view-3d";
 
 // three.js only loads when the 3D view is first shown.
@@ -39,7 +40,7 @@ const View3D = dynamic(() => import("./view-3d").then((m) => m.View3D), {
 
 type Job = { id: string; title: string; jobNo: string; address: string; status: "draft" | "in_review" | "signed" };
 type SaveState = "saved" | "dirty" | "saving" | "conflict" | "error" | "locked";
-type Tab = "member" | "schedule" | "levels" | "loads" | "history";
+type Tab = "member" | "schedule" | "levels" | "loads" | "history" | "signoff";
 type ViewMode = "plan" | "3d" | "split" | "sheets";
 
 const BEAM_LIKE: MemberType[] = ["beam", "lintel", "joist", "rafter"];
@@ -78,13 +79,18 @@ export function DesignEditor({
   initialRevision,
   initialPlans,
   canDelete,
+  signoff,
+  company,
 }: {
   job: Job;
+  signoff: Signoff | null;
+  company: string;
   initialModel: DesignModel;
   initialRevision: number;
   initialPlans: PlanFile[];
   canDelete: boolean;
 }) {
+  const [reporting, setReporting] = useState(false);
   const locked = job.status === "signed";
   const [model, setModel] = useState(initialModel);
   const modelRef = useRef(model); // kept in step by commit / undo / redo
@@ -107,6 +113,7 @@ export function DesignEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
   const [tab, setTab] = useState<Tab>("member");
+  const [panelOpen, setPanelOpen] = useState(false); // side panel drawer on narrow screens
   const [mode, setMode] = useState<ViewMode>("split");
   const [colourBy, setColourBy] = useState<ColourBy>("type");
   const [upTo, setUpTo] = useState<string | "all">("all");
@@ -484,6 +491,32 @@ export function DesignEditor({
     URL.revokeObjectURL(a.href);
   };
 
+  const downloadReport = async () => {
+    setReporting(true);
+    try {
+      const { buildReport } = await import("./report");
+      const blob = await buildReport({
+        job,
+        company,
+        model: modelRef.current,
+        calcs: runCalcs(modelRef.current),
+        revision: revisionRef.current,
+        status: job.status,
+        signoff,
+        plans: plans.map((p) => ({ id: p.id, url: p.url })),
+      });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(job.jobNo || job.title).replace(/[^\w.-]+/g, "-") || "structure"}-calcs-rev${revisionRef.current}${job.status === "signed" ? "" : "-DRAFT"}.pdf`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+    } catch (e) {
+      setNotice(`Couldn't build the report: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setReporting(false);
+    }
+  };
+
   // ------------------------------------------------------------ render
 
   const sortedLevels = [...model.levels].sort((a, b) => a.elevation - b.elevation);
@@ -562,6 +595,9 @@ export function DesignEditor({
           </button>
           <button type="button" onClick={redo} disabled={!stacks.redo || locked} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold disabled:opacity-40" title="Redo (Ctrl+Y)">
             Redo
+          </button>
+          <button type="button" onClick={() => setPanelOpen((o) => !o)} aria-expanded={panelOpen} className="rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold lg:hidden">
+            {panelOpen ? "Hide details" : selected ? `Details · ${selected.label}` : "Details"}
           </button>
           <button type="button" onClick={downloadIfc} disabled={!model.members.length} className="rounded-lg bg-accent px-3 py-1 text-xs font-bold text-ink disabled:opacity-40" title="Download the 3D model as IFC for Revit, ArchiCAD or AutoCAD">
             Download IFC
@@ -655,7 +691,7 @@ export function DesignEditor({
                   }}
                   onScale={(p1, p2) => setScalePick({ p1, p2 })}
                   onOrigin={(p) => {
-                    if (!level.plan) return setNotice("Pick a plan for this level first (Levels & plans).");
+                    if (!level.plan) return setNotice("Pick a plan for this level first, on the Levels tab.");
                     replacePlacement(level, level.plan.scale, p, `${level.name} origin set`);
                     setTool("select");
                   }}
@@ -709,8 +745,17 @@ export function DesignEditor({
         </div>
 
         {/* side panel */}
-        <aside className="hidden w-[22rem] shrink-0 flex-col border-l border-line bg-surface lg:flex">
-          <div className="flex border-b border-line text-xs font-semibold">
+        <aside
+          aria-label="Details"
+          className={`${panelOpen ? "fixed inset-x-0 bottom-0 z-[55] flex h-[70dvh] rounded-t-xl border-t shadow-2xl" : "hidden"} shrink-0 flex-col border-line bg-surface lg:static lg:z-auto lg:flex lg:h-auto lg:w-[22rem] lg:rounded-none lg:border-t-0 lg:border-l lg:shadow-none`}
+        >
+          <div className="flex items-center justify-between border-b border-line px-3 py-1.5 lg:hidden">
+            <span className="text-xs font-bold tracking-wide text-muted uppercase">Details</span>
+            <button type="button" onClick={() => setPanelOpen(false)} className="text-sm font-semibold text-muted hover:text-ink">
+              Close
+            </button>
+          </div>
+          <div className="flex overflow-x-auto border-b border-line text-xs font-semibold">
             {(
               [
                 ["member", selected ? selected.label : selectedLintel ? selectedLintel.opening.label : "Overview"],
@@ -718,9 +763,10 @@ export function DesignEditor({
                 ["levels", "Levels"],
                 ["loads", "Loads"],
                 ["history", "History"],
+                ["signoff", job.status === "signed" ? "Signed" : job.status === "in_review" ? "In review" : "Sign-off"],
               ] as const
             ).map(([t, label]) => (
-              <button key={t} type="button" onClick={() => setTab(t)} className={`flex-1 border-b-2 px-2 py-2.5 ${tab === t ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
+              <button key={t} type="button" onClick={() => setTab(t)} className={`flex-1 border-b-2 px-2 py-2.5 whitespace-nowrap ${tab === t ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
                 {label}
               </button>
             ))}
@@ -785,6 +831,18 @@ export function DesignEditor({
                 onUpload={upload}
               />
             ) : null}
+            {tab === "signoff" ? (
+              <SignoffPanel
+                jobId={job.id}
+                status={job.status}
+                signoff={signoff}
+                revision={revision}
+                saved={save === "saved" || save === "locked"}
+                fails={[...results.values()].filter((r) => r.status === "fail").length}
+                onReport={downloadReport}
+                reporting={reporting}
+              />
+            ) : null}
             {tab === "history" ? <HistoryPanel jobId={job.id} revision={revision} locked={locked} onRestore={restore} /> : null}
           </div>
         </aside>
@@ -798,7 +856,7 @@ export function DesignEditor({
             const d = Math.hypot(scalePick.p2.x - scalePick.p1.x, scalePick.p2.y - scalePick.p1.y);
             setScalePick(null);
             setTool("select");
-            if (!level.plan) return setNotice("Pick a plan for this level first (Levels & plans).");
+            if (!level.plan) return setNotice("Pick a plan for this level first, on the Levels tab.");
             replacePlacement(level, mm / 1000 / d, level.plan.origin, `${level.name} scale set (${mm} mm)`);
           }}
         />

@@ -734,13 +734,19 @@ export function Overview({ model, calcs, onPick }: { model: DesignModel; calcs: 
       ) : null}
       <Section title="Getting started">
         <ol className="list-decimal space-y-1.5 pl-4 text-sm text-text">
-          <li>Under <b>Levels &amp; plans</b>, upload the architect&apos;s PDF and pick the page for each level.</li>
+          <li>On the <b>Levels</b> tab, upload the architect&apos;s PDF and pick the page for each level.</li>
           <li>Choose <b>Scale</b> and click both ends of a dimension you know, then <b>Origin</b> on the same corner on every level.</li>
           <li>Draw <b>Walls</b>, then use <b>Opening</b> on each door and window: every opening gets its own lintel, sized automatically.</li>
           <li>Add beams, posts and <b>Joist zones</b>; set what each beam carries. Sections are picked SG8 → hySPAN → steel.</li>
-          <li>Set the job&apos;s loads under <b>Design loads</b>, and bracing demand per level there too.</li>
+          <li>Set the job&apos;s loads on the <b>Loads</b> tab, and bracing demand per level there too.</li>
           <li>Each level holds that storey&apos;s posts and walls and the framing at its top. Ground floor joists and bearers go on <b>Foundation</b>.</li>
+          <li>When everything passes, submit it on the <b>Sign-off</b> tab for a CPEng to check, and download the council report there.</li>
         </ol>
+        <p className="mt-2 text-xs">
+          <a href="/portal/design/guide" target="_blank" rel="noreferrer" className="font-semibold text-accent-600 hover:underline">
+            Full guide to the design app
+          </a>
+        </p>
       </Section>
       <Section title="Shortcuts">
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
@@ -972,7 +978,7 @@ export function LevelsPanel({
 
 // ---------------------------------------------------------------- design loads
 
-const PARAM_META: [keyof DesignParams, string, string, string][] = [
+export const PARAM_META: [keyof DesignParams, string, string, string][] = [
   ["Gf", "Floor dead G", "kPa", "incl. joists, flooring, ceiling, services, light partitions"],
   ["Gwet", "Tiled wet-area G", "kPa", "bathroom and ensuite"],
   ["Qf", "Floor live Q", "kPa", "residential, AS/NZS 1170.1 Table 3.1"],

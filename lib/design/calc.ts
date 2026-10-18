@@ -26,6 +26,7 @@ export type Check = { name: string; demand: number; capacity: number; unit: stri
 export type Util = { label: string; u: number };
 export type Loads = { G: number; Qf: number; Qr: number; S: number };
 export type SecInfo = { name: string; fam: Candidate["fam"] | "SHS" | "other"; b: number; d: number; tw?: number; tf?: number };
+export type PointLoad = { at: number; G: number; Qf: number; Qr: number; S: number; from: string }; // at: m from end a
 export type SeqRow = { family: string; text: string; util: number | null; pass: boolean; chosen: boolean };
 
 export type Result = {
@@ -43,7 +44,8 @@ export type Result = {
   checks: Check[];
   seq?: SeqRow[];
   notes: string[];
-  ends?: Loads; // unfactored end reaction (per end) for beams; axial for supports
+  ends?: { a: Loads; b: Loads }; // unfactored reactions at each end (beams); axial at both for supports
+  carried?: PointLoad[]; // point loads from members bearing on this one
   bu?: { W: number; E: number; line: string; dir: "along" | "across" };
 };
 
@@ -104,11 +106,12 @@ export function lineLoads(t: Trib, p: DesignParams, extraG = 0, extraQ = 0): Loa
 
 type Combo = { name: string; w: number; k1: number; pf: number; G: number; Qf: number; Qr: number; S: number };
 
-function combos(l: Loads, p: DesignParams, point: boolean): Combo[] {
+function combos(l: Loads, p: DesignParams, point: boolean, extra: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 }): Combo[] {
+  const any = { Qf: l.Qf + extra.Qf, Qr: l.Qr + extra.Qr, S: l.S + extra.S };
   const c: Combo[] = [{ name: "1.35G", w: 1.35 * l.G, k1: 0.6, pf: 0, G: 1.35, Qf: 0, Qr: 0, S: 0 }];
-  if (l.Qf > 0 || (point && p.Ppt > 0)) c.push({ name: "1.2G+1.5Q", w: 1.2 * l.G + 1.5 * l.Qf, k1: 0.8, pf: 1.5, G: 1.2, Qf: 1.5, Qr: 0, S: 0 });
-  if (l.Qr > 0) c.push({ name: "1.2G+1.5Qr+0.4Q", w: 1.2 * l.G + 1.5 * l.Qr + 0.4 * l.Qf, k1: p.k1Roof, pf: 0.4, G: 1.2, Qf: 0.4, Qr: 1.5, S: 0 });
-  if (l.S > 0) c.push({ name: "1.2G+Su+0.4Q", w: 1.2 * l.G + l.S + 0.4 * l.Qf, k1: 0.8, pf: 0.4, G: 1.2, Qf: 0.4, Qr: 0, S: 1 });
+  if (any.Qf > 0 || (point && p.Ppt > 0)) c.push({ name: "1.2G+1.5Q", w: 1.2 * l.G + 1.5 * l.Qf, k1: 0.8, pf: 1.5, G: 1.2, Qf: 1.5, Qr: 0, S: 0 });
+  if (any.Qr > 0) c.push({ name: "1.2G+1.5Qr+0.4Q", w: 1.2 * l.G + 1.5 * l.Qr + 0.4 * l.Qf, k1: p.k1Roof, pf: 0.4, G: 1.2, Qf: 0.4, Qr: 1.5, S: 0 });
+  if (any.S > 0) c.push({ name: "1.2G+Su+0.4Q", w: 1.2 * l.G + l.S + 0.4 * l.Qf, k1: 0.8, pf: 0.4, G: 1.2, Qf: 0.4, Qr: 0, S: 1 });
   return c;
 }
 
@@ -136,21 +139,38 @@ type BeamCheck = {
   govName: string;
   l: Loads;
   sw: number;
-  end: Loads; // unfactored reaction per end, point load included as Qf
+  endA: Loads; // unfactored reactions, the midspan point load included as Qf
+  endB: Loads;
 };
 
 function selfWeight(sec: Candidate) {
   return "steel" in sec ? (sec.steel.kgm * 9.81) / 1000 : sec.b * sec.d * 1e-6 * sec.mat.dens;
 }
 
-function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean }): BeamCheck {
+const pointComp = (c: Combo, q: PointLoad) => c.G * q.G + c.Qf * q.Qf + c.Qr * q.Qr + c.S * q.S;
+
+function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[] }): BeamCheck {
   const L = span;
   const Lmm = L * 1000;
   // Floor and roof dead loads already include joists and rafters.
   const sw = opts.selfWeight === false ? 0 : selfWeight(sec);
   const l = { ...base, G: base.G + sw };
   const P = opts.point ? p.Ppt : 0;
-  const cs = combos(l, p, opts.point);
+  const pts = (opts.points ?? []).filter((q) => q.at > 0 && q.at < L);
+  const sum = pts.reduce((a, q) => ({ G: a.G + q.G, Qf: a.Qf + q.Qf, Qr: a.Qr + q.Qr, S: a.S + q.S }), { G: 0, Qf: 0, Qr: 0, S: 0 });
+  const cs = combos(l, p, opts.point, sum);
+  const EI = "steel" in sec ? ES * sec.steel.Ix : (sec.mat.E * sec.b * sec.d ** 3) / 12;
+  const k2 = "steel" in sec ? 1 : sec.mat.k2;
+  // simply supported: moment at x from a point load P at a
+  const mPt = (x: number, a: number) => (x <= a ? ((L - a) * x) / L : (a * (L - x)) / L);
+  // deflections (mm) at x (mm): UDL w (N/mm), point load F (N) at a (mm)
+  const dUdl = (w: number, x: number) => (w * x * (Lmm ** 3 - 2 * Lmm * x * x + x ** 3)) / (24 * EI);
+  const dPt = (F: number, a: number, x: number) => {
+    const b = Lmm - a;
+    return x <= a ? (F * b * x * (Lmm * Lmm - b * b - x * x)) / (6 * Lmm * EI) : (F * a * (Lmm - x) * (Lmm * Lmm - a * a - (Lmm - x) ** 2)) / (6 * Lmm * EI);
+  };
+  const xs = pts.length ? [...Array.from({ length: 41 }, (_, i) => (L * i) / 40), ...pts.map((q) => q.at)] : [L / 2];
+
   let uM = 0,
     uV = 0,
     gov = cs[0].name,
@@ -159,8 +179,14 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
     Vg = 0,
     phiVg = 0;
   for (const c of cs) {
-    const M = (c.w * L * L) / 8 + (c.pf * P * L) / 4;
-    const V = (c.w * L) / 2 + (c.pf * P) / 2;
+    let M = 0;
+    for (const x of xs) {
+      const m = (c.w * x * (L - x)) / 2 + c.pf * P * mPt(x, L / 2) + pts.reduce((acc, q) => acc + pointComp(c, q) * mPt(x, q.at), 0);
+      if (m > M) M = m;
+    }
+    const RA = (c.w * L) / 2 + (c.pf * P) / 2 + pts.reduce((acc, q) => acc + (pointComp(c, q) * (L - q.at)) / L, 0);
+    const RB = (c.w * L) / 2 + (c.pf * P) / 2 + pts.reduce((acc, q) => acc + (pointComp(c, q) * q.at) / L, 0);
+    const V = Math.max(RA, RB);
     let phiM: number, phiV: number;
     if ("steel" in sec) {
       phiM = (0.9 * FY * sec.steel.Ze) / 1e6;
@@ -182,11 +208,16 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
       phiVg = phiV;
     }
   }
-  const EI = "steel" in sec ? ES * sec.steel.Ix : (sec.mat.E * sec.b * sec.d ** 3) / 12;
-  const k2 = "steel" in sec ? 1 : sec.mat.k2;
   const dP = (P * 1e3 * Lmm ** 3) / (48 * EI);
-  const dl = ((5 * (l.G + 0.4 * l.Qf) * Lmm ** 4) / (384 * EI)) * k2 + 0.4 * dP * k2;
-  const ds = (5 * (0.7 * (l.Qf + l.Qr)) * Lmm ** 4) / (384 * EI) + 0.7 * dP;
+  let dl = 0,
+    ds = 0;
+  for (const x of xs) {
+    const xm = x * 1000;
+    const dlx = k2 * (dUdl(l.G + 0.4 * l.Qf, xm) + pts.reduce((acc, q) => acc + dPt((q.G + 0.4 * q.Qf) * 1e3, q.at * 1000, xm), 0)) + 0.4 * k2 * dPt(P * 1e3, Lmm / 2, xm);
+    const dsx = dUdl(0.7 * (l.Qf + l.Qr), xm) + pts.reduce((acc, q) => acc + dPt(0.7 * (q.Qf + q.Qr) * 1e3, q.at * 1000, xm), 0) + 0.7 * dPt(P * 1e3, Lmm / 2, xm);
+    if (dlx > dl) dl = dlx;
+    if (dsx > ds) ds = dsx;
+  }
   const limL = Math.min(Lmm / 300, opts.dlim || p.dAbs || 1e9);
   const limS = Lmm / 360;
   const uDl = dl / limL;
@@ -194,15 +225,21 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
   const uDp = P > 0 && p.dPlim > 0 ? dP / p.dPlim : 0;
   const util = Math.max(uM, uV, uDl, uDs, uDp);
   const govName = util === uM ? "Bending" : util === uV ? "Shear" : util === uDl ? "Long-term δ" : util === uDs ? "Short-term δ" : "Point-load δ";
-  const end = { G: (l.G * L) / 2, Qf: (l.Qf * L) / 2 + P / 2, Qr: (l.Qr * L) / 2, S: (l.S * L) / 2 };
-  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, end };
+  const half = { G: (l.G * L) / 2, Qf: (l.Qf * L) / 2 + P / 2, Qr: (l.Qr * L) / 2, S: (l.S * L) / 2 };
+  const share = (frac: (q: PointLoad) => number): Loads =>
+    pts.reduce((a, q) => ({ G: a.G + q.G * frac(q), Qf: a.Qf + q.Qf * frac(q), Qr: a.Qr + q.Qr * frac(q), S: a.S + q.S * frac(q) }), { ...half });
+  const endA = share((q) => (L - q.at) / L);
+  const endB = share((q) => q.at / L);
+  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB };
 }
+
+export const rStar = (e: Loads) => Math.max(1.35 * e.G, 1.2 * e.G + 1.5 * e.Qf, 1.2 * e.G + 1.5 * e.Qr + 0.4 * e.Qf, 1.2 * e.G + e.S + 0.4 * e.Qf);
 
 function secInfo(c: Candidate): SecInfo {
   return "steel" in c ? { name: c.name, fam: c.fam, b: c.b, d: c.d, tw: c.steel.tw, tf: c.steel.tf } : { name: c.name, fam: c.fam, b: c.b, d: c.d };
 }
 
-type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean };
+type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[] };
 
 function designBeam(spec: BeamSpec, p: DesignParams): Result {
   const base: Result = { memberId: spec.id, mark: spec.mark, status: "none", ratio: null, summary: "", utils: [], kv: [], inputs: [], loads: [], checks: [], notes: [] };
@@ -213,7 +250,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
   let seq: SeqRow[] | undefined;
   if (spec.sizing.mode === "fixed") {
     if (!spec.fixed) return { ...base, summary: "Section not in the library (use e.g. 2/240x45, or 250PFC for steel)." };
-    chosen = checkBeam(spec.span, loads, spec.fixed, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight });
+    chosen = checkBeam(spec.span, loads, spec.fixed, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points });
   } else {
     const all = candidates(spec.sizing, spec.fallbackMaxD);
     const fams = [...new Set(all.map((c) => c.fam))];
@@ -224,7 +261,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       let best: BeamCheck | null = null;
       let pass: BeamCheck | null = null;
       for (const c of all.filter((x) => x.fam === f)) {
-        const r = checkBeam(spec.span, loads, c, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight });
+        const r = checkBeam(spec.span, loads, c, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points });
         if (!best || r.util < best.util) best = r;
         if (r.ok) {
           pass = r;
@@ -268,7 +305,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       { label: "δ long-term", value: `${fmt(c.dl, 1)} / ${fmt(c.limL, 1)} mm` },
       { label: "δ short-term", value: `${fmt(c.ds, 1)} / ${fmt(c.limS, 1)} mm` },
       ...(spec.point && p.Ppt > 0 ? [{ label: `δ under ${fmt(p.Ppt, 1)} kN point load`, value: `${fmt(c.dP)} / ${fmt(p.dPlim)} mm` }] : []),
-      { label: "End reaction R* (max)", value: `${fmt(Math.max(1.35 * c.end.G, 1.2 * c.end.G + 1.5 * c.end.Qf, 1.2 * c.end.G + 1.5 * c.end.Qr + 0.4 * c.end.Qf), 1)} kN` },
+      { label: "End reactions R*", value: `${fmt(rStar(c.endA), 1)} / ${fmt(rStar(c.endB), 1)} kN` },
       ...(downstand !== null ? [{ label: "Depth vs 240 joists", value: downstand > 0 ? `${downstand} mm downstand` : "flush" }] : []),
     ],
     inputs: [
@@ -282,6 +319,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       { label: "Q roof", value: `${fmt(c.l.Qr)} kN/m` },
       ...(c.l.S > 0 ? [{ label: "Su", value: `${fmt(c.l.S)} kN/m` }] : []),
       { label: "Tributary", value: tribText(spec.trib) || "none set" },
+      ...(spec.points ?? []).map((q) => ({ label: `Point load from ${q.from}`, value: `${fmt(q.at)} m: G ${fmt(q.G)}, Q ${fmt(q.Qf + q.Qr)} kN` })),
     ],
     checks: [
       { name: `Bending, ${c.gov}`, demand: c.M, capacity: c.phiM, unit: "kNm", ratio: c.uM },
@@ -294,7 +332,8 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       "steel" in c.sec
         ? [`Steel fy ${FY}, φ 0.9, top flange restrained by the joists. Bolt a timber packer to the web for joist hangers.`]
         : [`${c.sec.fam === "LVL" ? "hySPAN: fb 48, fs 5.3 MPa, E 13.2 GPa, φ 0.9" : "SG8 dry: fb 14, fs 3.8 MPa, E 8.0 GPa, φ 0.8"}; k4 = k5 = k8 = 1.0 (compression edge restrained).`],
-    ends: c.end,
+    ends: { a: c.endA, b: c.endB },
+    carried: spec.points?.length ? spec.points : undefined,
   };
 }
 
@@ -412,10 +451,57 @@ export function runCalcs(model: DesignModel): Calcs {
 
   // beams, lintels, single joists and rafters (members plus opening lintels)
   const beamLike = [...model.members.filter((m) => BEAM_LIKE.has(m.type)), ...lintels.map((l) => l.member)];
-  for (const m of beamLike) {
+  const posts = model.members.filter((m) => SUPPORT.has(m.type));
+  // A beam end that lands part-way along another beam on the same level (and
+  // not on a post) is a point load on that beam, so the carried beam is
+  // designed first and its reaction passed on.
+  type Bearing = { carrier: string; end: "a" | "b"; at: number };
+  const bearings = new Map<string, Bearing[]>(); // carried id -> where its ends land
+  for (const x of beamLike) {
+    if (!x.b) continue;
+    for (const end of ["a", "b"] as const) {
+      const pt = x[end]!;
+      if (posts.some((s) => near(s.a, pt))) continue;
+      for (const y of beamLike) {
+        if (y.id === x.id || !y.b || y.levelId !== x.levelId) continue;
+        const L = memberLength(y);
+        const t = ((pt.x - y.a.x) * (y.b.x - y.a.x) + (pt.y - y.a.y) * (y.b.y - y.a.y)) / (L * L || 1);
+        const at = t * L;
+        const foot = { x: y.a.x + t * (y.b.x - y.a.x), y: y.a.y + t * (y.b.y - y.a.y) };
+        if (at > 0.15 && at < L - 0.15 && near(foot, pt)) {
+          bearings.set(x.id, [...(bearings.get(x.id) ?? []), { carrier: y.id, end, at }]);
+          break;
+        }
+      }
+    }
+  }
+  // order: a beam only after everything bearing on it (cycles fall back to drawing order)
+  const order: Member[] = [];
+  const done = new Set<string>();
+  const visiting = new Set<string>();
+  const byId = new Map(beamLike.map((m) => [m.id, m]));
+  const visit = (m: Member) => {
+    if (done.has(m.id) || visiting.has(m.id)) return;
+    visiting.add(m.id);
+    for (const [carried, list] of bearings) if (list.some((b) => b.carrier === m.id)) visit(byId.get(carried)!);
+    visiting.delete(m.id);
+    done.add(m.id);
+    order.push(m);
+  };
+  beamLike.forEach(visit);
+
+  for (const m of order) {
     const level = levelOf(model, m.levelId);
     const single = m.type === "joist" || m.type === "rafter";
     const sizing: Sizing = m.sizing ?? { mode: single ? "fixed" : "auto", ...(m.type === "lintel" ? { maxB: 90 } : {}) };
+    const points: PointLoad[] = [];
+    for (const [carried, list] of bearings)
+      for (const b of list) {
+        if (b.carrier !== m.id) continue;
+        const r = results.get(carried);
+        const e = r?.ends?.[b.end];
+        if (e) points.push({ at: b.at, ...e, from: r!.mark });
+      }
     const spec: BeamSpec = {
       id: m.id,
       mark: m.label,
@@ -430,8 +516,12 @@ export function runCalcs(model: DesignModel): Calcs {
       selfWeight: !single,
       fallbackMaxD: m.type === "beam" && loadKind(model, level) === "floor" ? p.beamMaxD : 0,
       flush: m.type === "beam" && loadKind(model, level) === "floor",
+      points,
     };
-    results.set(m.id, designBeam(spec, p));
+    const res = designBeam(spec, p);
+    // ends resting on another beam don't also load a post
+    for (const b of bearings.get(m.id) ?? []) res.kv.push({ label: `End ${b.end === "a" ? "1" : "2"} bears on`, value: results.get(b.carrier)?.mark ?? byId.get(b.carrier)?.label ?? "" });
+    results.set(m.id, res);
   }
 
   // joist zones
@@ -467,7 +557,7 @@ export function runCalcs(model: DesignModel): Calcs {
     }
     const count = Math.floor(width / s) + 1 + z.zone.doubled.length;
     r.kv.push({ label: "Joists", value: `${count} @ ${z.zone.spacing} crs, ${z.zone.dir === "x" ? "E–W" : "N–S"}` });
-    if (r.ends) r.kv.push({ label: "Hanger / bearing R* per joist", value: `${fmt(Math.max(1.35 * r.ends.G, 1.2 * r.ends.G + 1.5 * r.ends.Qf), 2)} kN` });
+    if (r.ends) r.kv.push({ label: "Hanger / bearing R* per joist", value: `${fmt(Math.max(1.35 * r.ends.a.G, 1.2 * r.ends.a.G + 1.5 * r.ends.a.Qf), 2)} kN` });
     r.summary = r.sec ? `${z.section} @ ${z.zone.spacing} · span ${fmt(span)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
     r.ends = undefined; // joist zones don't load posts directly
     results.set(z.id, r);
@@ -485,11 +575,11 @@ export function runCalcs(model: DesignModel): Calcs {
       if (!beamLevels.has(m.levelId) || !m.b) continue;
       const e = results.get(m.id)?.ends;
       if (!e) continue;
-      const n = (near(m.a, s.a) ? 1 : 0) + (near(m.b, s.a) ? 1 : 0);
-      if (n) {
-        loads = add(loads, e, n);
-        from.push(m.label);
-      }
+      const atA = near(m.a, s.a),
+        atB = near(m.b, s.a);
+      if (atA) loads = add(loads, e.a);
+      if (atB) loads = add(loads, e.b);
+      if (atA || atB) from.push(m.label);
     }
     for (const o of model.members) {
       if (o.type !== "post" || o.id === s.id || !near(o.a, s.a)) continue;
@@ -497,7 +587,7 @@ export function runCalcs(model: DesignModel): Calcs {
       const stacked = s.type === "post" ? ol?.id === above?.id : ol?.id === above?.id || ol?.id === s.levelId;
       const e = results.get(o.id)?.ends;
       if (stacked && e) {
-        loads = add(loads, e);
+        loads = add(loads, e.a);
         from.push(o.label);
       }
     }
@@ -516,7 +606,7 @@ export function runCalcs(model: DesignModel): Calcs {
       ],
       checks: [],
       notes: [],
-      ends: loads,
+      ends: { a: loads, b: loads },
     };
     if (s.type === "post") {
       // up to the underside of the deepest beam it carries

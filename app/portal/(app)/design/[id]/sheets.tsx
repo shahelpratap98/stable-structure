@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { RATINGS } from "@/lib/design/bracing";
-import { DRAFT_NOTE, tribText, type Calcs, type Result } from "@/lib/design/calc";
+import { DRAFT_NOTE, rStar, tribText, type Calcs, type Result } from "@/lib/design/calc";
 import { BRACE_NAME, byLabel, describeMember, MEMBER_INFO, memberLength, type DesignModel } from "@/lib/design/model";
 import { poleTotals } from "@/lib/design/retaining";
 import { FamilyTag, SummaryStrip, UtilPill } from "./panels";
@@ -44,7 +44,9 @@ const num = `${td} text-right font-mono tabular-nums whitespace-nowrap`;
 function endR(r: Result | undefined) {
   const e = r?.ends;
   if (!e) return "–";
-  return `${Math.max(1.35 * e.G, 1.2 * e.G + 1.5 * e.Qf, 1.2 * e.G + 1.5 * e.Qr + 0.4 * e.Qf).toFixed(1)} kN`;
+  const a = rStar(e.a).toFixed(1),
+    b = rStar(e.b).toFixed(1);
+  return a === b ? `${a} kN` : `${a} / ${b} kN`;
 }
 
 export function Sheets({ model, calcs, job, onPick }: { model: DesignModel; calcs: Calcs; job: { title: string; jobNo: string; address: string }; onPick: (id: string) => void }) {

@@ -134,3 +134,72 @@ export async function deleteDesignJob(_prev: ActionState, fd: FormData): Promise
   revalidatePath("/portal/design");
   redirect("/portal/design");
 }
+
+// ---------------------------------------------------------------- review and sign-off
+
+export type FlowResult = { ok: true } | { ok: false; message: string };
+
+const FLOW_ERRORS: [string, string][] = [
+  ["design_conflict", "The model has been saved since you loaded it. Reload and check the latest revision."],
+  ["design_not_draft", "This job has already been submitted."],
+  ["design_not_in_review", "This job isn't waiting for review any more. Reload to see where it's at."],
+  ["design_not_signed", "This job isn't signed."],
+  ["design_empty", "Draw the structure before submitting it."],
+];
+const flowError = (message: string) => FLOW_ERRORS.find(([k]) => message.includes(k))?.[1] ?? message;
+
+async function flow(jobId: string, fn: string, args: Record<string, unknown>): Promise<FlowResult> {
+  await requireProfile();
+  if (!UUID.test(jobId)) return { ok: false, message: "Bad request." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc(fn, { p_job: jobId, ...args });
+  if (error) return { ok: false, message: flowError(error.message) };
+  revalidatePath("/portal/design");
+  revalidatePath(`/portal/design/${jobId}`);
+  return { ok: true };
+}
+
+export async function submitDesign(jobId: string, designerId: string, checkerId: string, note: string) {
+  if (!UUID.test(designerId) || !UUID.test(checkerId)) return { ok: false, message: "Pick a designer and a checker." } as FlowResult;
+  return flow(jobId, "submit_design", { p_designer: designerId, p_checker: checkerId, p_note: note.slice(0, 1000) });
+}
+
+export async function returnDesign(jobId: string, note: string) {
+  return flow(jobId, "return_design", { p_note: note.slice(0, 1000) });
+}
+
+export async function signDesign(jobId: string, expected: number) {
+  if (!Number.isInteger(expected)) return { ok: false, message: "Bad request." } as FlowResult;
+  return flow(jobId, "sign_design", { p_expected: expected });
+}
+
+export async function reopenDesign(jobId: string, reason: string) {
+  await requireAdmin();
+  if (!reason.trim()) return { ok: false, message: "Say why it's being reopened." } as FlowResult;
+  return flow(jobId, "reopen_design", { p_reason: reason.slice(0, 900) });
+}
+
+// Admin: who is a CPEng.
+export async function saveEngineer(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const userId = text(fd, "user_id");
+  const number = text(fd, "cpeng_number");
+  if (!UUID.test(userId)) return { ok: false, message: "Pick a staff member." };
+  if (!number || number.length > 20) return { ok: false, message: "Enter their CPEng registration number." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("design_engineers").upsert({ user_id: userId, cpeng_number: number });
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/portal/design");
+  return { ok: true, message: "Saved." };
+}
+
+export async function removeEngineer(_prev: ActionState, fd: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const userId = text(fd, "user_id");
+  if (!UUID.test(userId)) return { ok: false, message: "Bad request." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("design_engineers").delete().eq("user_id", userId);
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/portal/design");
+  return { ok: true, message: "Removed." };
+}

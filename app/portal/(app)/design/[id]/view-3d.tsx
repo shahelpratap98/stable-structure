@@ -377,3 +377,70 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     </div>
   );
 }
+
+// A still of the whole model for the report: coloured by member type, wall
+// framing hidden, from the usual corner view. Returns a PNG data URL.
+export function snapshot3d(model: DesignModel, calcs: Calcs, width = 1600, height = 1000): string | null {
+  const parts = allParts(model, calcs).filter(({ part }) => part.layer !== "framing");
+  if (!parts.length) return null;
+  const canvas = document.createElement("canvas");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  renderer.setPixelRatio(1);
+  renderer.setSize(width, height, false);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#ffffff");
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f96, 1.3));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+  sun.position.set(-8, 16, -10);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+  fill.position.set(10, 6, 12);
+  scene.add(sun, fill);
+
+  const typeOf = (id: string) => (id.includes("#") ? "lintel" : model.members.find((m) => m.id === id)?.type);
+  const buckets = new Map<string, { c: string; o?: number; geos: THREE.BufferGeometry[] }>();
+  for (const { part } of parts) {
+    const g = partGeometry(part);
+    if (!g) continue;
+    let tone: { c: string; o?: number };
+    if (part.tone.startsWith("brace:")) tone = { c: RATINGS[part.tone.slice(6) as BraceSystem]?.colour ?? "#65a30d", o: 0.75 };
+    else if (part.tone !== "member") tone = TONE[part.tone as keyof typeof TONE];
+    else {
+      const t = typeOf(part.id);
+      tone = { c: t ? MEMBER_INFO[t].colour : "#64748b" };
+    }
+    const key = `${tone.c}|${tone.o ?? 1}`;
+    const b = buckets.get(key) ?? { ...tone, geos: [] };
+    b.geos.push(g);
+    buckets.set(key, b);
+  }
+  const box = new THREE.Box3();
+  const disposables: { dispose: () => void }[] = [];
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x1b2530, transparent: true, opacity: 0.3 });
+  disposables.push(edgeMat);
+  for (const b of buckets.values()) {
+    const geo = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false);
+    if (b.geos.length > 1) b.geos.forEach((g) => g.dispose());
+    if (!geo) continue;
+    const material = new THREE.MeshStandardMaterial({ color: b.c, roughness: 0.75, transparent: b.o !== undefined, opacity: b.o ?? 1, depthWrite: b.o === undefined || b.o > 0.5 });
+    const mesh = new THREE.Mesh(geo, material);
+    if (b.o === undefined) {
+      const edges = new THREE.EdgesGeometry(geo, 25);
+      mesh.add(new THREE.LineSegments(edges, edgeMat));
+      disposables.push(edges);
+    } else mesh.renderOrder = 2;
+    disposables.push(geo, material);
+    scene.add(mesh);
+    box.expandByObject(mesh);
+  }
+  const centre = box.getCenter(new THREE.Vector3());
+  const size = Math.max(4, box.getSize(new THREE.Vector3()).length());
+  const camera = new THREE.PerspectiveCamera(34, width / height, 0.05, 800);
+  camera.position.set(centre.x - size * 0.8, centre.y + size * 0.7, centre.z + size * 0.95);
+  camera.lookAt(centre);
+  renderer.render(scene, camera);
+  const url = canvas.toDataURL("image/png");
+  disposables.forEach((d) => d.dispose());
+  renderer.dispose();
+  renderer.forceContextLoss();
+  return url;
+}
