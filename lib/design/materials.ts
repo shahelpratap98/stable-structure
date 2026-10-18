@@ -59,7 +59,7 @@ const RANGES: Record<TimberKey, Range> = {
 const fits = (k: TimberKey, b: number, d: number) => !(k === "LVL" && (b === 45 || b === 90) && d > 400);
 
 export type SteelFam = "PFC" | "UB" | "UC";
-export type SteelSec = { name: string; fam: SteelFam; d: number; b: number; tw: number; tf: number; Ix: number; Ze: number; kgm: number; fy: number; Iy: number; J: number; Iw: number; S: number };
+export type SteelSec = { name: string; fam: SteelFam; d: number; b: number; tw: number; tf: number; A: number; Ix: number; Ze: number; kgm: number; fy: number; Iy: number; J: number; Iw: number; S: number };
 
 // Hot-rolled sections to AS/NZS 3679.1 Grade 300: d, b, tf, tw (mm), area
 // (mm2), Ix (mm4), plastic modulus Sx (mm3), minor-axis Iy (mm4), torsion
@@ -149,7 +149,7 @@ export const STEEL: SteelSec[] = TABLE.map(([name, fam, d, b, tf, tw, A, Ix, S, 
   // UB and UC names carry their mass; PFC mass from the area at 7850 kg/m³
   const named = /U[BC]([\d.]+)$/.exec(name);
   const kgm = e?.kgm ?? (named ? Number(named[1]) : Math.round(A * 0.785) / 100);
-  return { name, fam, d, b, tf, tw, Ix, Iy, J, Iw, S, fy: e?.fy ?? fy, Ze: e?.Ze ?? effectiveZ(fam, d, b, tf, tw, Ix, S, fy), kgm };
+  return { name, fam, d, b, tf, tw, A, Ix, Iy, J, Iw, S, fy: e?.fy ?? fy, Ze: e?.Ze ?? effectiveZ(fam, d, b, tf, tw, Ix, S, fy), kgm };
 }).sort((x, y) => x.kgm - y.kgm);
 export const FY = 300;
 export const ES = 200000;

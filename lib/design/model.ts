@@ -110,13 +110,14 @@ export type Member = {
   extraQ?: number; // kN/m
   wall?: WallSpec;
   zone?: ZoneSpec;
-  brace?: { system: BraceSystem; line?: string };
+  brace?: { system: BraceSystem; line?: string; bu?: number; base?: "fixed" | "pinned" }; // bu: rating for specifically designed elements; base: portal leg bases
   rw?: RetainSpec;
   height?: number; // m, post height override
   free?: "a" | "b"; // beams: this end is unsupported (a cantilever)
   restraint?: "full" | "ends"; // steel beams: compression flange held continuously (default) or only at supports
   segment?: number; // m, spacing of intermediate lateral restraints when restraint is "ends"
   dz?: number; // m, height offset from the level (split levels): + raises the member
+  lateral?: number; // kN (ULS) at the top of a post: a cantilever post, fixed at its base
   notes?: string;
 };
 

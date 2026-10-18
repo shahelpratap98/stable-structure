@@ -50,11 +50,15 @@ function bars(Mstar: number, b: number, d: number) {
 }
 
 // N* factored load (kN) from a post of plan size c (mm) onto a square pad
-export function designPad(Nstar: number, c: number, site: SiteData, fixed?: { B: number; D: number }): FootingResult {
+export function designPad(Nstar: number, c: number, site: SiteData, fixed?: { B: number; D: number }, Mstar = 0): FootingResult {
   const qCap = site.phiBearing * site.bearing;
   const tryPad = (B: number, D: number) => {
     const sw = 1.2 * CONC * (B / 1000) ** 2 * (D / 1000);
-    const qStar = (Nstar + sw) / (B / 1000) ** 2;
+    const Bm = B / 1000;
+    // with a base moment (cantilever post): pressure under the toe, triangular once e > B/6
+    const P = Nstar + 0.9 * (sw / 1.2);
+    const e = Mstar > 0 ? Mstar / Math.max(P, 1e-6) : 0;
+    const qStar = Mstar > 0 ? (e <= Bm / 6 ? (P / (Bm * Bm)) * (1 + (6 * e) / Bm) : e < Bm / 2 ? (2 * P) / (3 * Bm * (Bm / 2 - e)) : Infinity) : (Nstar + sw) / (Bm * Bm);
     const qNet = Nstar / (B / 1000) ** 2; // net upward pressure for the concrete checks
     const d = D - COVER - 16;
     // punching, interior post (alpha_s 20, beta_c 1)
@@ -65,7 +69,7 @@ export function designPad(Nstar: number, c: number, site: SiteData, fixed?: { B:
     const uPunch = Vp > 0 ? (Vp * 1e3) / (0.75 * vc * bo * d) : 0;
     // bending at the post face, and one-way shear at d from the face
     const arm = (B - c) / 2 / 1000;
-    const M = (qNet * (B / 1000) * arm * arm) / 2;
+    const M = (Math.max(qNet, Mstar > 0 ? qStar : 0) * (B / 1000) * arm * arm) / 2;
     const reo = bars(M, B, d);
     const sh = Math.max(0, arm - d / 1000);
     const V1 = qNet * (B / 1000) * sh;
@@ -101,7 +105,7 @@ export function designPad(Nstar: number, c: number, site: SiteData, fixed?: { B:
     bars: r.reo.text,
     lines: [
       { label: "Pad", value: `${r.B} × ${r.B} × ${r.D} deep` },
-      { label: "Bearing q* / φq", value: `${r.qStar.toFixed(0)} / ${qCap.toFixed(0)} kPa` },
+      { label: Mstar > 0 ? `Bearing q* max (base moment ${Mstar.toFixed(1)} kNm) / φq` : "Bearing q* / φq", value: `${r.qStar.toFixed(0)} / ${qCap.toFixed(0)} kPa` },
       { label: "Punching V* / φVc", value: `${r.Vp.toFixed(1)} kN · ${(r.uPunch * 100).toFixed(0)}%` },
       { label: "One-way shear", value: `${r.V1.toFixed(1)} kN · ${(r.uShear * 100).toFixed(0)}%` },
       { label: "Bending M* at post face", value: `${r.M.toFixed(1)} kNm` },

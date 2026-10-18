@@ -273,8 +273,13 @@ export function Sheets({ model, calcs, job, onPick }: { model: DesignModel; calc
                       </p>
                       <p className={`font-mono text-2xl font-semibold ${s.okTotal && linesOk ? "text-ok" : "text-bad"}`}>{pct === null ? "no demand" : `${pct}%`}</p>
                       <p className="font-mono text-[11px] text-muted">
-                        W {s.totW}/{s.demandW} · EQ {s.totE}/{s.demandE} · {linesOk ? "all lines OK" : "line check fails"}
+                        W {s.totW}/{s.demandW} · EQ {s.totE}/{s.demandE} · {linesOk ? "all lines OK" : "line check fails"} · demand {s.source === "site" ? "from site data" : s.source === "entered" ? "entered" : "not set"}
                       </p>
+                      {s.notes.map((n) => (
+                        <p key={n} className="mt-1 text-[11px] text-warn">
+                          {n}
+                        </p>
+                      ))}
                     </div>
                   );
                 })}

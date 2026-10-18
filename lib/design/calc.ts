@@ -13,6 +13,7 @@
 import { braceCalcs, type BracingSheet } from "./bracing";
 import { DEFAULT_SITE, windBasis } from "./site";
 import { designPad, designStrip, slabPunch } from "./foundations";
+import { designPortal } from "./lateral";
 import { solveBeam } from "./frame";
 import { candidates, fixedCandidate, FAMILY_LABEL, FY, ES, SG8, type Candidate, type SteelSec } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
@@ -51,6 +52,7 @@ export type Result = {
   carried?: PointLoad[]; // point loads from members bearing on this one
   supportLoads?: { at: number; loads: Loads }[]; // beams over more than two supports: reaction at each (m from end 1)
   bu?: { W: number; E: number; line: string; dir: "along" | "across" };
+  baseMoment?: number; // kN·m at the base of a cantilever post, for its footing
 };
 
 // A lintel made by an opening in a wall. Its id is "<wall id>#<opening id>".
@@ -672,21 +674,34 @@ function k12(S: number) {
   return x <= 10 ? 1 : x <= 20 ? 1.5 - 0.05 * x : 200 / (x * x);
 }
 
-type PostCand = { name: string; fam: "SG8" | "SHS"; b: number; d: number; phiN?: number; A?: number; I?: number };
+type PostCand = { name: string; fam: "SG8" | "SHS"; b: number; d: number; phiN?: number; A?: number; I?: number; S?: number; t?: number };
 
-// C350L0 square hollow sections: b (mm), t (mm), A (mm2), I (mm4), from the
-// published tables. Every one listed is fully effective (kf = 1) at fy 350.
-const SHS: [number, number, number, number][] = [
-  [89, 5, 1590, 1.82e6],
-  [89, 6, 1870, 2.06e6],
-  [100, 6, 2130, 3.04e6],
-  [125, 6, 2730, 6.29e6],
-  [100, 9, 3000, 3.91e6],
-  [150, 6, 3330, 11.3e6],
-  [125, 9, 3900, 8.38e6],
-  [150, 9, 4800, 15.4e6],
-  [150, 10, 5260, 16.5e6],
+// C350L0 square hollow sections: b (mm), t (mm), A (mm2), I (mm4), plastic
+// modulus S (mm3), from the published tables. Every one listed is fully
+// effective (kf = 1) at fy 350.
+export const SHS: [number, number, number, number, number][] = [
+  [89, 5, 1590, 1.82e6, 49.2e3],
+  [89, 6, 1870, 2.06e6, 56.7e3],
+  [100, 6, 2130, 3.04e6, 73.5e3],
+  [125, 6, 2730, 6.29e6, 120e3],
+  [100, 9, 3000, 3.91e6, 98.6e3],
+  [150, 6, 3330, 11.3e6, 178e3],
+  [125, 9, 3900, 8.38e6, 165e3],
+  [150, 9, 4800, 15.4e6, 248e3],
+  [150, 10, 5260, 16.5e6, 269e3],
 ];
+// SHS effective section modulus (cl 5.2): flats as webs/flanges of a cold-formed hollow section, λep 30, λey 40
+export function shsZe(b: number, t: number, I: number, S: number) {
+  const Z = I / (b / 2);
+  const lam = ((b - 2 * t) / t) * Math.sqrt(350 / 250);
+  const Zc = Math.min(S, 1.5 * Z);
+  return lam <= 30 ? Zc : lam <= 40 ? Z + ((40 - lam) / 10) * (Zc - Z) : Z * (40 / lam);
+}
+// Member compression capacity phi·Nc (kN) for a steel section about an axis with radius of gyration r (mm), le (m)
+export function steelPhiNc(A: number, fy: number, r: number, le: number, ab: number) {
+  const ln = ((le * 1000) / r) * Math.sqrt(fy / 250);
+  return (0.9 * alphaC(ln, ab) * A * fy) / 1e3;
+}
 
 // AS 4100 cl 6.3.3 member capacity of a pin-ended SHS post of height h (m):
 // cold-formed, so alpha_b = -0.5; phi 0.9, fy 350.
@@ -747,7 +762,7 @@ function designPost(loads: Loads, h: number, p: DesignParams, fixed: PostCand | 
     : [
         ...[2, 3, 4].map((n): PostCand => ({ name: `${n}/90×45 SG8`, fam: "SG8", b: 45 * n, d: 90 })),
         // the 89 SHS keeps the 290 kN of the Lot 6 model as a ceiling
-        ...SHS.map(([b, t, A, I]): PostCand => ({ name: `${b}×${b}×${t.toFixed(1)} SHS`, fam: "SHS", b, d: b, A, I, ...(b === 89 && t === 5 ? { phiN: 290 } : {}) })),
+        ...SHS.map(([b, t, A, I, S]): PostCand => ({ name: `${b}×${b}×${t.toFixed(1)} SHS`, fam: "SHS", b, d: b, A, I, S, t, ...(b === 89 && t === 5 ? { phiN: 290 } : {}) })),
       ];
   let out: { sec: PostCand; util: number; ok: boolean; N: number; cap: number; gov: string; k12: number | null } | null = null;
   for (const c of cands) {
@@ -959,6 +974,39 @@ export function runCalcs(model: DesignModel): Calcs {
       ];
       res.checks = from.length ? [{ name: `Axial, ${d.gov}`, demand: d.N, capacity: d.cap, unit: "kN", ratio: d.util }] : [];
       res.notes = ["Post sits within the wall; linings and nogs restrain it in the plane of the wall. Continue the load path to a pad footing and check bottom-plate bearing."];
+      // a cantilever post: fixed at the base, H at the top; SHS for combined actions
+      if (s.lateral && s.lateral > 0) {
+        const H = s.lateral;
+        let pick: { name: string; b: number; u: number; uN: number; uM: number; drift: number; Nc: number; Ms: number } | null = null;
+        for (const [b, t, A, I, S] of SHS) {
+          const Nc = steelPhiNc(A, 350, Math.sqrt(I / A), 2 * h, -0.5);
+          const Ms = (0.9 * 350 * shsZe(b, t, I, S)) / 1e6;
+          const M = H * h;
+          const uN = d.N / Nc,
+            uM = M / Ms;
+          const drift = ((H * 1e3) * (h * 1000) ** 3) / (3 * ES * I);
+          const u = Math.max(uN + uM, drift / ((h * 1000) / 40));
+          pick = { name: `${b}×${b}×${t.toFixed(1)} SHS`, b, u, uN, uM, drift, Nc, Ms };
+          if (u <= 1) break;
+        }
+        if (pick) {
+          res.sec = { name: pick.name, fam: "SHS", b: pick.b, d: pick.b };
+          res.ratio = pick.u;
+          res.status = statusFor(pick.u);
+          res.summary = `${pick.name} cantilever · N* ${fmt(d.N, 1)} kN, H ${fmt(H, 1)} kN · ${Math.round(pick.u * 100)}%`;
+          res.utils = [{ label: "N/φNc + M/φMs", u: pick.uN + pick.uM }, { label: "Drift (h/40)", u: pick.drift / ((h * 1000) / 40) }];
+          res.kv.push(
+            { label: "Cantilever M* = H·h", value: `${fmt(H * h, 1)} kNm` },
+            { label: "φNc (le = 2h) / φMs", value: `${fmt(pick.Nc, 1)} kN / ${fmt(pick.Ms, 1)} kNm` },
+            { label: "Top drift", value: `${fmt(pick.drift, 1)} mm (h/40 = ${fmt((h * 1000) / 40, 1)})` },
+          );
+          res.checks.push({ name: "Combined N*/φNc + M*/φMs", demand: pick.uN + pick.uM, capacity: 1, unit: "", ratio: pick.uN + pick.uM });
+          res.notes = [
+            "Cantilever post: fixed at the base, lateral H at the top; linear interaction N*/φNc + M*/φMs ≤ 1 (conservative against AS 4100 cl 8.4), le = 2h. Fix it to its footing with a base plate and hold-down bolts for the base moment.",
+          ];
+          res.baseMoment = H * h;
+        }
+      }
       // a post standing straight on a ground slab: punching through the slab
       if (from.length && !seats.get(s.id) && level?.floor === "slab") {
         const Nst = d.N;
@@ -979,7 +1027,7 @@ export function runCalcs(model: DesignModel): Calcs {
         const c = ps ? Math.max(ps.b, ps.d, ps.fam === "SHS" ? 200 : 0) : 150;
         const dims = s.section.split(/x/i).map(Number);
         const fixed = s.sizing?.mode !== "auto" && dims.length >= 2 && dims[0] > 0 ? { B: dims[0], D: dims[2] || 300 } : undefined;
-        const f = designPad(N, c, site, fixed);
+        const f = designPad(N, c, site, fixed, post ? (results.get(post.id)?.baseMoment ?? 0) : 0);
         const u = Math.max(f.uBearing, f.uPunch, f.uShear);
         res.status = statusFor(u);
         res.ratio = u;
@@ -1176,6 +1224,24 @@ export function runCalcs(model: DesignModel): Calcs {
           ],
           bu: { W: el.W, E: el.E, line: line.id, dir: sheet.dir },
         });
+        // a specifically designed portal: frame analysis of the legs and beam for the force it is rated at
+        if (el.system === "PORTAL" && m.b) {
+          const near3 = (q: Pt, r: Pt) => Math.hypot(q.x - r.x, q.y - r.y) <= 0.3;
+          const mb = m.b;
+          const beam = beamLike.find((x) => x.levelId === m.levelId && !!x.b && ((near3(x.a, m.a) && near3(x.b, mb)) || (near3(x.a, mb) && near3(x.b, m.a))));
+          const ll = beam ? lineLoads(tribOf(beam).trib, p, beam.extraG, beam.extraQ) : { G: 0, Qf: 0, Qr: 0, S: 0 };
+          const lvl = levelOf(model, m.levelId);
+          const pr = designPortal({ span: memberLength(m), height: lvl?.height ?? 2.4, base: m.brace?.base ?? "fixed", H: Math.max(el.W, el.E) / 20, gG: ll.G, gQ: ll.Qf + ll.Qr });
+          const r = results.get(m.id)!;
+          r.status = okLine && sheet.okTotal ? statusFor(pr.util) : "fail";
+          r.ratio = Math.max(r.ratio ?? 0, pr.util);
+          r.sec = pr.sec ? { name: pr.sec.name, fam: pr.sec.fam, b: pr.sec.b, d: pr.sec.d, tw: pr.sec.tw, tf: pr.sec.tf } : undefined;
+          r.summary = `Portal ${pr.sec?.name ?? "?"} · ${el.W} BU · ${Math.round(pr.util * 100)}% (${pr.gov})${beam ? ` · beam ${beam.label}` : ""}`;
+          r.kv.push(...pr.lines);
+          r.utils = [{ label: "Portal", u: pr.util }];
+          r.checks = [{ name: `Portal (${pr.gov})`, demand: pr.util * 100, capacity: 100, unit: "%", ratio: pr.util }];
+          r.notes = [...pr.notes, ...(beam ? [`Gravity on the portal beam from ${beam.label}'s loads.`] : ["No beam drawn along the portal: gravity load on its beam not included."]), ...r.notes];
+        }
       }
 
   // walls on the lowest level: a strip footing for what they carry

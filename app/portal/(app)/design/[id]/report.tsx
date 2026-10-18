@@ -326,6 +326,14 @@ function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImag
                   />
                 ))}
               </View>
+              <Text style={[s.muted, { marginTop: 3 }]}>
+                Demand {b.source === "site" ? "from the site data (NZS 1170.5 / AS/NZS 1170.2)" : b.source === "entered" ? "as entered" : "not set"}. Centre of rigidity {fmt(b.cr)} m against floor centre {fmt(b.cm)} m; widest line spacing {fmt(b.maxGap)} m.
+              </Text>
+              {b.notes.map((n, k) => (
+                <Text key={k} style={{ color: "#8a5a12", marginTop: 2 }}>
+                  {n}
+                </Text>
+              ))}
             </View>
           ))}
         </Frame>

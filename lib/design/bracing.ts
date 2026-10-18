@@ -52,6 +52,11 @@ export type BracingSheet = {
   totE: number;
   okTotal: boolean;
   source: "entered" | "site" | "none"; // where the demand came from
+  cm: number; // m, centre of the floor across the lines
+  cr: number; // m, centre of rigidity of the lines
+  maxGap: number; // m, widest spacing between lines
+  shearFlow: number; // kN/m, diaphragm shear along each side
+  notes: string[];
 };
 
 const dirOf = (m: { a: { x: number; y: number }; b?: { x: number; y: number } }) =>
@@ -99,7 +104,9 @@ export function braceCalcs(model: DesignModel): BracingSheet[] {
         const elements: BraceEl[] = g.members.map((m) => {
           const L = memberLength(m);
           const system = m.brace?.system ?? "GS2N";
-          return { memberId: m.id, mark: m.label, system, L, ...buOf(system, L, level) };
+          // specifically designed elements (portals, block walls) can carry their own rating
+          const bu = RATINGS[system].sed && m.brace?.bu ? { W: m.brace.bu, E: m.brace.bu } : buOf(system, L, level);
+          return { memberId: m.id, mark: m.label, system, L, ...bu };
         });
         const extLen = extWalls.filter((w) => dirOf(w) === dir && Math.abs(coordOf(w, dir) - g.coord) <= 0.6).reduce((s, w) => s + memberLength(w), 0);
         const sumW = elements.reduce((s, e) => s + e.W, 0);
@@ -110,7 +117,32 @@ export function braceCalcs(model: DesignModel): BracingSheet[] {
       });
       const totW = lines.reduce((s, l) => s + l.sumW, 0);
       const totE = lines.reduce((s, l) => s + l.sumE, 0);
-      sheets.push({ level, dir, lines, demandW: dW, demandE: dE, totW, totE, okTotal: totW >= dW && totE >= dE, source: demand.source });
+      // Torsion and diaphragm: centre of rigidity (lines weighted by their BUs) against the centre
+      // of the floor, the widest gap between lines, and the diaphragm shear flow across it.
+      const zones = model.members.filter((m) => m.type === "joistzone" && m.b && m.levelId === level.id);
+      const onLevel = model.members.filter((m) => m.levelId === level.id);
+      const pts = onLevel.flatMap((m) => [m.a, ...(m.b ? [m.b] : [])]);
+      const span = (k: "x" | "y") => (pts.length ? Math.max(...pts.map((q) => q[k])) - Math.min(...pts.map((q) => q[k])) : 0);
+      const axis = dir === "along" ? "y" : "x"; // lines along x sit at a y coordinate
+      const zArea = zones.reduce((a, z) => a + Math.abs((z.b!.x - z.a.x) * (z.b!.y - z.a.y)), 0);
+      const cm = zArea
+        ? zones.reduce((a, z) => a + Math.abs((z.b!.x - z.a.x) * (z.b!.y - z.a.y)) * ((z.a[axis] + z.b![axis]) / 2), 0) / zArea
+        : pts.length
+          ? (Math.max(...pts.map((q) => q[axis])) + Math.min(...pts.map((q) => q[axis]))) / 2
+          : 0;
+      const sumBU = lines.reduce((a, l) => a + Math.max(l.sumW, l.sumE), 0) || 1;
+      const cr = lines.reduce((a, l) => a + Math.max(l.sumW, l.sumE) * l.coord, 0) / sumBU;
+      const width = span(axis);
+      const coords = [...lines.map((l) => l.coord)].sort((a, b) => a - b);
+      const maxGap = coords.length > 1 ? Math.max(...coords.slice(1).map((c, i) => c - coords[i])) : 0;
+      const along = span(axis === "y" ? "x" : "y");
+      const shearFlow = along > 0 ? Math.max(dW, dE) / 20 / 2 / along : 0; // kN/m, half the storey force into each side
+      const notes: string[] = [];
+      if (lines.length < 2) notes.push("Only one bracing line in this direction: the building can twist. Add a second line or design for torsion.");
+      if (width > 0 && Math.abs(cm - cr) > 0.1 * width)
+        notes.push(`Torsion: the bracing's centre of rigidity is ${Math.abs(cm - cr).toFixed(1)} m from the centre of the floor (${((100 * Math.abs(cm - cr)) / width).toFixed(0)}% of its ${width.toFixed(1)} m width). Spread the bracing or check torsion.`);
+      if (maxGap > 6) notes.push(`Bracing lines ${maxGap.toFixed(1)} m apart: more than the 6 m NZS 3604 allows without a designed diaphragm. Diaphragm shear flow about ${shearFlow.toFixed(1)} kN/m along each side.`);
+      sheets.push({ level, dir, lines, demandW: dW, demandE: dE, totW, totE, okTotal: totW >= dW && totE >= dE, source: demand.source, cm, cr, maxGap, shearFlow, notes });
     }
   }
   return sheets;

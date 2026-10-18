@@ -347,6 +347,7 @@ export function MemberPanel({
           ) : null}
           {m.type === "joist" || m.type === "rafter" ? <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} /> : null}
           {m.type === "post" ? <NumberField label="Height" unit="m" value={m.height} min={0.1} placeholder="storey height" onCommit={(v) => set({ height: v }, "height")} /> : null}
+          {m.type === "post" ? <NumberField label="Lateral at top (ULS)" unit="kN" value={m.lateral} min={0} placeholder="none" onCommit={(v) => set({ lateral: v || undefined }, v ? `cantilever post, ${v} kN at the top` : "no lateral load")} /> : null}
           {m.type !== "joistzone" ? <NumberField label="Height offset" unit="m" value={m.dz} placeholder="on the level" onCommit={(v) => set({ dz: v || undefined }, `height offset ${v ?? 0} m`)} /> : null}
           {m.type === "footing" || m.type === "pile" ? sectionField : null}
         </fieldset>
@@ -414,7 +415,28 @@ export function MemberPanel({
         <Section title="Bracing element">
           <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
             <Select<BraceSystem> label="GIB system" value={m.brace?.system ?? "GS2N"} options={BRACE_SYSTEMS.map((s) => ({ value: s, label: BRACE_NAME[s] }))} onChange={(v) => set({ brace: { ...m.brace, system: v } }, `bracing ${BRACE_NAME[v]}`)} />
-            <TextField label="Line" value={m.brace?.line ?? ""} placeholder="auto" onCommit={(v) => set({ brace: { system: m.brace?.system ?? "GS2N", line: v || undefined } }, `bracing line ${v || "auto"}`)} />
+            <TextField label="Line" value={m.brace?.line ?? ""} placeholder="auto" onCommit={(v) => set({ brace: { ...m.brace, system: m.brace?.system ?? "GS2N", line: v || undefined } }, `bracing line ${v || "auto"}`)} />
+            {RATINGS[m.brace?.system ?? "GS2N"].sed ? (
+              <NumberField
+                label="Rated at"
+                unit="BU"
+                value={m.brace?.bu}
+                min={0}
+                placeholder={String(RATINGS[m.brace?.system ?? "GS2N"].fixed ?? 150)}
+                onCommit={(v) => set({ brace: { ...m.brace, system: m.brace?.system ?? "GS2N", bu: v } }, `bracing rated ${v ?? "default"} BU`)}
+              />
+            ) : null}
+            {m.brace?.system === "PORTAL" ? (
+              <Select
+                label="Portal bases"
+                value={m.brace?.base ?? "fixed"}
+                options={[
+                  { value: "fixed", label: "Fixed (moment base plates)" },
+                  { value: "pinned", label: "Pinned" },
+                ]}
+                onChange={(v) => set({ brace: { ...m.brace, system: "PORTAL", base: v } }, `portal ${v} bases`)}
+              />
+            ) : null}
           </fieldset>
           <p className="mt-2 flex items-center gap-2 text-xs text-muted">
             <i className="inline-block h-2.5 w-4" style={{ background: RATINGS[m.brace?.system ?? "GS2N"].colour }} />
