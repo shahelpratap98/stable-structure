@@ -25,7 +25,7 @@ import {
 } from "@/lib/design/model";
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
-import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, Overview, ParamsPanel, SchedulePanel, type PlanFile } from "./panels";
+import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, Overview, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
 import { countPages, loadPdf, renderPage, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
@@ -797,6 +797,16 @@ export function DesignEditor({
               )
             ) : null}
             {tab === "schedule" ? <SchedulePanel model={model} calcs={calcs} selectedId={selectedId} onPick={(id) => pick(id, true)} /> : null}
+            {tab === "loads" ? (
+              <SitePanel
+                model={model}
+                locked={locked}
+                onSite={(site, summary) => {
+                  const m = modelRef.current;
+                  commit({ ...m, site }, summary);
+                }}
+              />
+            ) : null}
             {tab === "loads" ? (
               <ParamsPanel
                 model={model}

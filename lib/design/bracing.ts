@@ -11,6 +11,7 @@
 // Demand is entered per level (NZS 3604 tables or a GIB demand sheet).
 
 import { BRACE_NAME, memberLength, type BraceSystem, type DesignModel, type Level, type Member } from "./model";
+import { demandFromSite } from "./site";
 
 type Rating = { W: [number, number]; E: [number, number]; sed?: boolean; fixed?: number; colour: string };
 
@@ -50,18 +51,31 @@ export type BracingSheet = {
   totW: number;
   totE: number;
   okTotal: boolean;
+  source: "entered" | "site" | "none"; // where the demand came from
 };
 
 const dirOf = (m: { a: { x: number; y: number }; b?: { x: number; y: number } }) =>
   m.b && Math.abs(m.b.x - m.a.x) >= Math.abs(m.b.y - m.a.y) ? "along" : "across";
 const coordOf = (m: Member, dir: "along" | "across") => (dir === "along" ? (m.a.y + (m.b?.y ?? m.a.y)) / 2 : (m.a.x + (m.b?.x ?? m.a.x)) / 2);
 
+// Demand per level: what was typed in (e.g. from the NZS 3604 tables) wins;
+// otherwise the specific-design demand worked out from the site data.
+export function levelDemand(model: DesignModel, level: Level): { windAlong: number; windAcross: number; eq: number; source: "entered" | "site" | "none" } {
+  const d = model.bracing[level.id];
+  if (d && (d.windAlong || d.windAcross || d.eq)) return { ...d, source: "entered" };
+  if (model.site) {
+    const s = demandFromSite(model, model.site).find((x) => x.level.id === level.id);
+    if (s) return { windAlong: s.windAlong, windAcross: s.windAcross, eq: s.eqBU, source: "site" };
+  }
+  return { windAlong: 0, windAcross: 0, eq: 0, source: "none" };
+}
+
 export function braceCalcs(model: DesignModel): BracingSheet[] {
   const sheets: BracingSheet[] = [];
   for (const level of [...model.levels].sort((a, b) => b.elevation - a.elevation)) {
     const els = model.members.filter((m) => m.type === "bracing" && m.levelId === level.id && m.b);
     if (!els.length) continue;
-    const demand = model.bracing[level.id] ?? { windAlong: 0, windAcross: 0, eq: 0 };
+    const demand = levelDemand(model, level);
     const extWalls = model.members.filter((m) => m.type === "wall" && m.levelId === level.id && m.b && m.wall && m.wall.kind !== "int");
     for (const dir of ["along", "across"] as const) {
       const mine = els.filter((m) => dirOf(m) === dir);
@@ -96,7 +110,7 @@ export function braceCalcs(model: DesignModel): BracingSheet[] {
       });
       const totW = lines.reduce((s, l) => s + l.sumW, 0);
       const totE = lines.reduce((s, l) => s + l.sumE, 0);
-      sheets.push({ level, dir, lines, demandW: dW, demandE: dE, totW, totE, okTotal: totW >= dW && totE >= dE });
+      sheets.push({ level, dir, lines, demandW: dW, demandE: dE, totW, totE, okTotal: totW >= dW && totE >= dE, source: demand.source });
     }
   }
   return sheets;

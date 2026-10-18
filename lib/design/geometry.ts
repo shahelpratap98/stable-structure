@@ -242,7 +242,9 @@ export function allParts(model: DesignModel, calcs: Calcs): { part: Part; level:
   for (const m of model.members) {
     const level = lv.get(m.levelId);
     if (!level) continue;
-    for (const part of partsFor(model, calcs, m)) out.push({ part, level });
+    // split levels: the member sits dz above (or below) its level
+    const dz = m.dz ?? 0;
+    for (const part of partsFor(model, calcs, m)) out.push({ part: dz ? { ...part, z0: part.z0 + dz, z1: part.z1 + dz } : part, level });
   }
   for (const vl of calcs.lintels) {
     const level = lv.get(vl.wall.levelId);

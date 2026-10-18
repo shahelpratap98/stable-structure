@@ -5,6 +5,7 @@ import { ActionForm } from "@/components/action-form";
 import { Spinner } from "@/components/spinner";
 import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
 import { autoTrib, DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
+import { DEFAULT_SITE, demandFromSite, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
 import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
   BRACE_NAME,
@@ -346,6 +347,7 @@ export function MemberPanel({
           ) : null}
           {m.type === "joist" || m.type === "rafter" ? <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} /> : null}
           {m.type === "post" ? <NumberField label="Height" unit="m" value={m.height} min={0.1} placeholder="storey height" onCommit={(v) => set({ height: v }, "height")} /> : null}
+          {m.type !== "joistzone" ? <NumberField label="Height offset" unit="m" value={m.dz} placeholder="on the level" onCommit={(v) => set({ dz: v || undefined }, `height offset ${v ?? 0} m`)} /> : null}
           {m.type === "footing" || m.type === "pile" ? sectionField : null}
         </fieldset>
         <datalist id="design-sections">
@@ -1135,7 +1137,7 @@ export function ParamsPanel({
                 </div>
               );
             })}
-            <p className="text-xs text-muted">From NZS 3604:2011 Tables 5.6–5.10 or a GIB EzyBrace® demand sheet. Along = east–west lines, across = north–south.</p>
+            <p className="text-xs text-muted">From NZS 3604:2011 Tables 5.6–5.10 or a GIB EzyBrace® demand sheet. Along = east–west lines, across = north–south. Leave at 0 to use the demand worked out from the site data.</p>
           </fieldset>
         ) : (
           <p className="text-sm text-muted">Add bracing elements (G) to a level to enter its demand.</p>
@@ -1152,6 +1154,133 @@ export function ParamsPanel({
         />
       </Section>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- site
+
+export function SitePanel({ model, locked, onSite }: { model: DesignModel; locked: boolean; onSite: (s: SiteData | undefined, summary: string) => void }) {
+  const site = model.site;
+  if (!site)
+    return (
+      <Section title="Site">
+        <p className="text-sm text-muted">Add the site to work out wind and earthquake bracing demand (specific design to NZS 1170.5 and AS/NZS 1170.2), footing sizes and durability notes.</p>
+        <button type="button" className="btn btn-quiet mt-2 px-2.5 py-1 text-xs" disabled={locked} onClick={() => onSite({ ...DEFAULT_SITE }, "site added")}>
+          Add site data
+        </button>
+      </Section>
+    );
+  const set = (patch: Partial<SiteData>, what: string) => onSite({ ...site, ...patch }, what);
+  const q = quakeBasis(site);
+  const top = Math.max(...model.levels.map((l) => l.elevation + l.height)) - Math.min(...model.levels.map((l) => l.elevation));
+  const w = windBasis(site, top);
+  const demand = demandFromSite(model, site);
+  return (
+    <Section title="Site" aside={<span className="text-[11px] text-muted">NZS 1170.5 · AS/NZS 1170.2</span>}>
+      <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+        <Select
+          label="Town (hazard factor Z)"
+          value={site.town}
+          options={[...Object.keys(TOWNS).map((t) => ({ value: t, label: `${t} (Z ${TOWNS[t].Z})` })), { value: "custom", label: "Other: enter Z" }]}
+          onChange={(v) => set({ town: v, ...(v !== "custom" ? { windRegion: TOWNS[v].region } : {}) }, `site ${v}`)}
+        />
+        {site.town === "custom" ? <NumberField label="Z" value={site.Z} min={0.13} onCommit={(v) => set({ Z: v }, `Z ${v}`)} /> : <span />}
+        <Select label="Soil class" value={site.soil} options={(["A", "B", "C", "D", "E"] as const).map((s) => ({ value: s, label: `Class ${s}` }))} onChange={(v) => set({ soil: v }, `soil class ${v}`)} />
+        <Select
+          label="Importance level"
+          value={String(site.importance) as "1" | "2" | "3"}
+          options={[
+            { value: "1", label: "IL1" },
+            { value: "2", label: "IL2 (houses)" },
+            { value: "3", label: "IL3" },
+          ]}
+          onChange={(v) => set({ importance: Number(v) as 1 | 2 | 3 }, `IL${v}`)}
+        />
+        <NumberField label="Ductility μ" value={site.mu} min={1} onCommit={(v) => set({ mu: v ?? 3.5 }, `ductility ${v}`)} />
+        <Select label="Wind region" value={site.windRegion} options={(["A6", "A7", "W"] as const).map((r) => ({ value: r, label: r }))} onChange={(v) => set({ windRegion: v }, `wind region ${v}`)} />
+        <Select
+          label="Terrain category"
+          value={String(site.terrain) as "1" | "2" | "2.5" | "3" | "4"}
+          options={[
+            { value: "1", label: "TC1 open water / flat" },
+            { value: "2", label: "TC2 open, few obstructions" },
+            { value: "2.5", label: "TC2.5 developing" },
+            { value: "3", label: "TC3 suburban" },
+            { value: "4", label: "TC4 city centre" },
+          ]}
+          onChange={(v) => set({ terrain: Number(v) as 1 | 2 | 2.5 | 3 | 4 }, `terrain ${v}`)}
+        />
+        <NumberField label="Shielding Ms" value={site.Ms} min={0.7} onCommit={(v) => set({ Ms: v ?? 1 }, `Ms ${v}`)} />
+        <NumberField label="Topography Mt" value={site.Mt} min={1} onCommit={(v) => set({ Mt: v ?? 1 }, `Mt ${v}`)} />
+        <Check label="In a lee zone (×1.35)" checked={site.lee} onChange={(v) => set({ lee: v }, v ? "lee zone" : "not a lee zone")} />
+        <Select
+          label="Exposure zone"
+          value={site.exposure}
+          options={[
+            { value: "B", label: "B low" },
+            { value: "C", label: "C medium" },
+            { value: "D", label: "D high (within 500 m of the sea)" },
+            { value: "E", label: "E beachfront" },
+            { value: "SED", label: "SED microclimate" },
+          ]}
+          onChange={(v) => set({ exposure: v }, `exposure zone ${v}`)}
+        />
+        <NumberField label="Ultimate bearing" unit="kPa" value={site.bearing} min={50} onCommit={(v) => set({ bearing: v ?? 300 }, `bearing ${v} kPa`)} />
+        <NumberField label="φ bearing" value={site.phiBearing} min={0.3} onCommit={(v) => set({ phiBearing: v ?? 0.5 }, `bearing φ ${v}`)} />
+        <Select
+          label="Expansive soil"
+          value={site.expansive}
+          options={[
+            { value: "none", label: "No (good ground)" },
+            { value: "moderate", label: "Moderate (class M / TC2)" },
+            { value: "high", label: "High (class H, E / TC3)" },
+          ]}
+          onChange={(v) => set({ expansive: v }, `expansive ${v}`)}
+        />
+      </fieldset>
+      <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted">Earthquake Cd(T1)</dt>
+        <dd className="text-right font-mono tabular-nums">
+          {q.Cd.toFixed(3)} = {q.Ch.toFixed(2)}·{q.Z}·{q.R}·{q.Sp}/{q.kmu.toFixed(2)}
+        </dd>
+        <dt className="text-muted">Wind Vdes, q</dt>
+        <dd className="text-right font-mono tabular-nums">
+          {w.Vdes.toFixed(1)} m/s, {(w.q / 1000).toFixed(2)} kPa
+        </dd>
+        <dt className="text-muted">NZS 3604 wind zone</dt>
+        <dd className="text-right font-mono">{w.zone}</dd>
+      </dl>
+      {demand.length ? (
+        <table className="mt-3 w-full text-xs tabular-nums">
+          <thead className="text-[11px] text-muted">
+            <tr>
+              <th className="text-left font-semibold">Storey</th>
+              <th className="text-right font-semibold">Wind along</th>
+              <th className="text-right font-semibold">Across</th>
+              <th className="text-right font-semibold">EQ</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {demand.map((d) => (
+              <tr key={d.level.id}>
+                <td className="py-1">{d.level.name}</td>
+                <td className="py-1 text-right">{d.windAlong}</td>
+                <td className="py-1 text-right">{d.windAcross}</td>
+                <td className="py-1 text-right" title={`seismic weight ${d.weight.toFixed(0)} kN, storey shear ${d.eqShear.toFixed(1)} kN`}>
+                  {d.eqBU}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      <p className="mt-2 text-xs text-muted">
+        Bracing units (20 BU = 1 kN), used wherever no demand is typed in below. Earthquake: equivalent static, T1 0.4 s, weight from joist-zone areas and walls. {WIND_NOTE}
+      </p>
+      <button type="button" className="mt-2 text-xs font-semibold text-bad hover:underline" disabled={locked} onClick={() => onSite(undefined, "site removed")}>
+        Remove site data
+      </button>
+    </Section>
   );
 }
 

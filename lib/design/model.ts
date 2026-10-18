@@ -11,6 +11,7 @@
 // automatic section selection SG8 -> hySPAN -> steel, joist zones, GIB
 // bracing lines and pole / block retaining walls.
 
+import { normaliseSite, type SiteData } from "./site";
 export type Pt = { x: number; y: number };
 
 export type MemberType =
@@ -115,6 +116,7 @@ export type Member = {
   free?: "a" | "b"; // beams: this end is unsupported (a cantilever)
   restraint?: "full" | "ends"; // steel beams: compression flange held continuously (default) or only at supports
   segment?: number; // m, spacing of intermediate lateral restraints when restraint is "ends"
+  dz?: number; // m, height offset from the level (split levels): + raises the member
   notes?: string;
 };
 
@@ -146,6 +148,7 @@ export type DesignModel = {
   params: DesignParams;
   bracing: Record<string, BracingDemand>; // by level id
   notes: string[]; // assumptions to confirm before issue
+  site?: SiteData; // wind, earthquake and ground data for specific design
 };
 
 export const MEMBER_TYPES: MemberType[] = ["beam", "lintel", "joist", "rafter", "joistzone", "wall", "post", "bracing", "footing", "pile", "retaining"];
@@ -276,6 +279,7 @@ export function normaliseModel(raw: unknown): DesignModel {
     params,
     bracing,
     notes: Array.isArray(m.notes) ? m.notes.filter((n) => typeof n === "string").slice(0, 100) : [],
+    site: normaliseSite(m.site),
   };
 }
 

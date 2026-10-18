@@ -11,6 +11,7 @@
 // Every result is preliminary until checked by a CPEng (see DRAFT_NOTE).
 
 import { braceCalcs, type BracingSheet } from "./bracing";
+import { windBasis } from "./site";
 import { solveBeam } from "./frame";
 import { candidates, fixedCandidate, FAMILY_LABEL, FY, ES, SG8, type Candidate, type SteelSec } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
@@ -395,13 +396,16 @@ function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, 
   return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB, reactions, ltb: ltbGov };
 }
 
+const upliftNotes = (net: number, span: number) =>
+  net > 0 ? [`Wind uplift: net ${fmt(net)} kN/m (roof width × (1.1q − 0.9G)), so each end needs a hold-down for ${fmt((net * span) / 2, 1)} kN (NZS 3604 fixing or a rated connector).`] : [];
+
 export const rStar = (e: Loads) => Math.max(1.35 * e.G, 1.2 * e.G + 1.5 * e.Qf, 1.2 * e.G + 1.5 * e.Qr + 0.4 * e.Qf, 1.2 * e.G + e.S + 0.4 * e.Qf);
 
 function secInfo(c: Candidate): SecInfo {
   return "steel" in c ? { name: c.name, fam: c.fam, b: c.b, d: c.d, tw: c.steel.tw, tf: c.steel.tf } : { name: c.name, fam: c.fam, b: c.b, d: c.d };
 }
 
-type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[]; supports?: number[]; restraint?: "full" | "ends"; segment?: number };
+type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[]; supports?: number[]; restraint?: "full" | "ends"; segment?: number; uplift?: number };
 
 function designBeam(spec: BeamSpec, p: DesignParams): Result {
   const base: Result = { memberId: spec.id, mark: spec.mark, status: "none", ratio: null, summary: "", utils: [], kv: [], inputs: [], loads: [], checks: [], notes: [] };
@@ -443,6 +447,8 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
 
   const c = chosen;
   const status = statusFor(c.util);
+  // wind uplift on roof framing: what the end fixings must hold down
+  const upNet = spec.uplift && spec.trib.roof ? spec.trib.roof * (spec.uplift - 0.9 * p.Groof) : 0;
   // web bearing at each support and point load (cl 5.13), assuming 90 mm stiff bearing at supports and 50 mm under point loads
   const webChecks: Check[] = [];
   const webNotes: string[] = [];
@@ -528,8 +534,9 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
                 : `full lateral restraint assumed (top flange held by the joists)${c.reactions ? "; over intermediate supports the bottom flange is in compression: brace it at the posts" : ""}`
             }. Bolt a timber packer to the web for joist hangers.`,
             ...webNotes,
+            ...upliftNotes(upNet, spec.span),
           ]
-        : [`${c.sec.mat.note}${c.sec.mat.size ? ` (fb ${fmt(c.sec.mat.fb, 1)} MPa at ${c.sec.d} deep)` : ""}; k4 = k5 = k8 = 1.0 (compression edge restrained).`],
+        : [`${c.sec.mat.note}${c.sec.mat.size ? ` (fb ${fmt(c.sec.mat.fb, 1)} MPa at ${c.sec.d} deep)` : ""}; k4 = k5 = k8 = 1.0 (compression edge restrained).`, ...upliftNotes(upNet, spec.span)],
     ends: { a: c.endA, b: c.endB },
     supportLoads: c.reactions,
     carried: spec.points?.length ? spec.points : undefined,
@@ -926,7 +933,10 @@ export function runCalcs(model: DesignModel): Calcs {
       const below = level ? downFrom(level)[0] : undefined;
       // a post passing down through a double-height space stands on that lower framing
       const bottom = seatLevel && below && seatLevel.elevation < below.elevation - 1e-6 ? framingTop(model, seatLevel) : (level?.elevation ?? 0);
-      const h = s.height ?? Math.max(0.3, topOfPost - bottom);
+      // split levels: the beams it carries and its own base can be offset from the level
+      const dzs = beamLike.filter((m) => from.includes(m.label) && beamLevels.has(m.levelId)).map((m) => m.dz ?? 0);
+      const topDz = dzs.length ? Math.max(...dzs) : 0;
+      const h = s.height ?? Math.max(0.3, topOfPost + topDz - bottom - (s.dz ?? 0));
       const fixed: PostCand | null =
         s.sizing?.mode === "fixed"
           ? (() => {
@@ -981,6 +991,9 @@ export function runCalcs(model: DesignModel): Calcs {
     return { trib: defaultTrib(model, m), note: "assumed: nothing typed in or found on the drawing" };
   };
 
+  // net roof uplift pressure for tie-downs: external −0.9 with internal +0.2 (AS/NZS 1170.2)
+  const upliftKPa = model.site ? (windBasis(model.site, Math.max(...model.levels.map((l) => l.elevation + l.height)) - Math.min(...model.levels.map((l) => l.elevation))).q * 1.1) / 1000 : undefined;
+
   const levelsDown = [...model.levels].sort((a, b) => b.elevation - a.elevation);
   const onLevel = (m: Member, l: Level) => m.levelId === l.id || (l === levelsDown[levelsDown.length - 1] && !levelOf(model, m.levelId));
   for (const lvl of levelsDown) {
@@ -1022,6 +1035,7 @@ export function runCalcs(model: DesignModel): Calcs {
         supports: beamSupports(m),
         restraint: m.restraint,
         segment: m.segment,
+        uplift: upliftKPa,
       };
       const res = designBeam(spec, p);
       const tn = tribOf(m).note;
