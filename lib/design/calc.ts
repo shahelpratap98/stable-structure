@@ -11,7 +11,8 @@
 // Every result is preliminary until checked by a CPEng (see DRAFT_NOTE).
 
 import { braceCalcs, type BracingSheet } from "./bracing";
-import { windBasis } from "./site";
+import { DEFAULT_SITE, windBasis } from "./site";
+import { designPad, designStrip, slabPunch } from "./foundations";
 import { solveBeam } from "./frame";
 import { candidates, fixedCandidate, FAMILY_LABEL, FY, ES, SG8, type Candidate, type SteelSec } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
@@ -958,15 +959,46 @@ export function runCalcs(model: DesignModel): Calcs {
       ];
       res.checks = from.length ? [{ name: `Axial, ${d.gov}`, demand: d.N, capacity: d.cap, unit: "kN", ratio: d.util }] : [];
       res.notes = ["Post sits within the wall; linings and nogs restrain it in the plane of the wall. Continue the load path to a pad footing and check bottom-plate bearing."];
+      // a post standing straight on a ground slab: punching through the slab
+      if (from.length && !seats.get(s.id) && level?.floor === "slab") {
+        const Nst = d.N;
+        const sp = slabPunch(Nst, Math.max(d.sec.b, d.sec.d, d.sec.fam === "SHS" ? 200 : 0));
+        res.kv.push({ label: "Slab punching (100 mm slab)", value: `${fmt(Nst, 1)} / ${fmt(sp.cap, 1)} kN` });
+        res.checks.push({ name: "Punching through a 100 mm slab", demand: Nst, capacity: sp.cap, unit: "kN", ratio: sp.u });
+        if (sp.u > 1) res.notes.push(`The slab can't take this post on its own: thicken it to ${sp.need} mm under the post, or give it a pad footing.`);
+      }
     } else {
       const N = Math.max(1.35 * loads.G, 1.2 * loads.G + 1.5 * loads.Qf, 1.2 * loads.G + 1.5 * loads.Qr + 0.4 * loads.Qf);
       res.kv.push({ label: "N*", value: `${fmt(N, 1)} kN` });
       res.summary = from.length ? `N* ${fmt(N, 1)} kN from ${from.join(", ")}` : res.summary;
-      if (s.type === "footing") {
+      res.notes = [];
+      if (s.type === "footing" && from.length) {
+        // the post on it sets the punching perimeter (a steel post's base plate at least 200 mm)
+        const post = posts.find((o) => o.type === "post" && seats.get(o.id)?.id === s.id);
+        const ps = post ? results.get(post.id)?.sec : undefined;
+        const c = ps ? Math.max(ps.b, ps.d, ps.fam === "SHS" ? 200 : 0) : 150;
         const dims = s.section.split(/x/i).map(Number);
-        if (dims.length >= 2 && dims[0] > 0 && dims[1] > 0) res.kv.push({ label: "Bearing pressure (factored)", value: `${fmt(N / ((dims[0] / 1000) * (dims[1] / 1000)), 0)} kPa` });
-      }
-      res.notes = ["Foundation design is by the engineer: check bearing against the site's geotechnical report."];
+        const fixed = s.sizing?.mode !== "auto" && dims.length >= 2 && dims[0] > 0 ? { B: dims[0], D: dims[2] || 300 } : undefined;
+        const f = designPad(N, c, site, fixed);
+        const u = Math.max(f.uBearing, f.uPunch, f.uShear);
+        res.status = statusFor(u);
+        res.ratio = u;
+        res.sec = { name: `${f.B}×${f.B}×${f.D} pad`, fam: "other", b: f.B, d: f.D };
+        res.summary = `${f.B}×${f.B}×${f.D} pad · ${f.bars} · ${Math.round(u * 100)}%`;
+        res.utils = [
+          { label: "Bearing", u: f.uBearing },
+          { label: "Punching", u: f.uPunch },
+          { label: "One-way shear", u: f.uShear },
+        ];
+        res.kv.push(...f.lines);
+        res.checks = [
+          { name: "Bearing", demand: f.qStar, capacity: f.qCap, unit: "kPa", ratio: f.uBearing },
+          { name: "Punching shear (NZS 3101 12.7)", demand: f.uPunch * 100, capacity: 100, unit: "%", ratio: f.uPunch },
+          { name: "One-way shear", demand: f.uShear * 100, capacity: 100, unit: "%", ratio: f.uShear },
+        ];
+        res.notes = [...f.notes, ...(model.site ? [] : ["No site data entered: good ground (300 kPa ultimate, φ 0.5) assumed."])];
+        if (fixed) res.inputs.push({ label: "Size", value: `${fixed.B} × ${fixed.B} × ${fixed.D} (fixed; choose Pick the size to let the app size it)` });
+      } else res.notes = ["Check bearing against the site's geotechnical report."];
     }
     results.set(s.id, res);
   };
@@ -993,6 +1025,8 @@ export function runCalcs(model: DesignModel): Calcs {
 
   // net roof uplift pressure for tie-downs: external −0.9 with internal +0.2 (AS/NZS 1170.2)
   const upliftKPa = model.site ? (windBasis(model.site, Math.max(...model.levels.map((l) => l.elevation + l.height)) - Math.min(...model.levels.map((l) => l.elevation))).q * 1.1) / 1000 : undefined;
+
+  const site = model.site ?? DEFAULT_SITE;
 
   const levelsDown = [...model.levels].sort((a, b) => b.elevation - a.elevation);
   const onLevel = (m: Member, l: Level) => m.levelId === l.id || (l === levelsDown[levelsDown.length - 1] && !levelOf(model, m.levelId));
@@ -1143,6 +1177,34 @@ export function runCalcs(model: DesignModel): Calcs {
           bu: { W: el.W, E: el.E, line: line.id, dir: sheet.dir },
         });
       }
+
+  // walls on the lowest level: a strip footing for what they carry
+  const lowest = [...model.levels].sort((a, b) => a.elevation - b.elevation)[0];
+  for (const w of model.members) {
+    if (w.type !== "wall" || !w.b || w.levelId !== lowest?.id || results.has(w.id)) continue;
+    const a = autoTrib(model, w);
+    const lvl = levelOf(model, w.levelId);
+    const self = (w.wall?.kind === "block" ? p.gWallBlock : w.wall?.kind === "int" ? p.gWallInt : p.gWallExt) * (lvl?.height ?? 2.4);
+    const ll = lineLoads(a?.trib ?? {}, p, self);
+    const wStar = Math.max(1.35 * ll.G, 1.2 * ll.G + 1.5 * ll.Qf, 1.2 * ll.G + 1.5 * ll.Qr + 0.4 * ll.Qf);
+    const f = designStrip(wStar, site, w.wall?.thickness ?? 90);
+    results.set(w.id, {
+      memberId: w.id,
+      mark: w.label,
+      status: statusFor(f.u),
+      ratio: f.u,
+      summary: `${describeMember(w)} · strip ${f.B}×${f.D} · w* ${fmt(wStar, 1)} kN/m`,
+      utils: [{ label: "Bearing", u: f.u }],
+      kv: f.lines,
+      inputs: [{ label: "Carries", value: a ? `${tribText(a.trib)} (${a.from.join(", ")})` : "its own weight only" }],
+      loads: [
+        { label: "G (incl. wall)", value: `${fmt(ll.G)} kN/m` },
+        { label: "Q", value: `${fmt(ll.Qf + ll.Qr)} kN/m` },
+      ],
+      checks: [{ name: "Strip footing bearing", demand: f.q, capacity: f.qCap, unit: "kPa", ratio: f.u }],
+      notes: [`Strip footing under the wall: bearing to φb ${site.phiBearing} × ${site.bearing} kPa. Point loads from posts in the wall need their own pads.`],
+    });
+  }
 
   for (const m of model.members) {
     if (results.has(m.id)) continue;
