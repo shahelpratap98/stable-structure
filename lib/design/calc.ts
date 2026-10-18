@@ -490,82 +490,28 @@ export function runCalcs(model: DesignModel): Calcs {
   };
   beamLike.forEach(visit);
 
-  for (const m of order) {
-    const level = levelOf(model, m.levelId);
-    const single = m.type === "joist" || m.type === "rafter";
-    const sizing: Sizing = m.sizing ?? { mode: single ? "fixed" : "auto", ...(m.type === "lintel" ? { maxB: 90 } : {}) };
-    const points: PointLoad[] = [];
-    for (const [carried, list] of bearings)
-      for (const b of list) {
-        if (b.carrier !== m.id) continue;
-        const r = results.get(carried);
-        const e = r?.ends?.[b.end];
-        if (e) points.push({ at: b.at, ...e, from: r!.mark });
-      }
-    const spec: BeamSpec = {
-      id: m.id,
-      mark: m.label,
-      role: m.role || `${MEMBER_INFO[m.type].label}${level ? ` · ${level.name}` : ""}`,
-      span: memberLength(m),
-      trib: m.trib && Object.values(m.trib).some((v) => v) ? m.trib : defaultTrib(model, m),
-      extraG: m.extraG,
-      extraQ: m.extraQ,
-      sizing,
-      fixed: fixedCandidate(m.section, m.material, m.grade),
-      point: !single,
-      selfWeight: !single,
-      fallbackMaxD: m.type === "beam" && loadKind(model, level) === "floor" ? p.beamMaxD : 0,
-      flush: m.type === "beam" && loadKind(model, level) === "floor",
-      points,
-    };
-    const res = designBeam(spec, p);
-    // ends resting on another beam don't also load a post
-    for (const b of bearings.get(m.id) ?? []) res.kv.push({ label: `End ${b.end === "a" ? "1" : "2"} bears on`, value: results.get(b.carrier)?.mark ?? byId.get(b.carrier)?.label ?? "" });
-    results.set(m.id, res);
-  }
-
-  // joist zones
-  for (const z of model.members) {
-    if (z.type !== "joistzone" || !z.b || !z.zone) continue;
-    const span = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
-    const width = z.zone.dir === "x" ? Math.abs(z.b.y - z.a.y) : Math.abs(z.b.x - z.a.x);
-    const s = z.zone.spacing / 1000;
-    const r = designBeam(
-      {
-        id: z.id,
-        mark: z.label,
-        role: z.role || `Floor joists${z.zone.wet ? " (wet area)" : ""}`,
-        span,
-        trib: z.zone.wet ? { floor: s, wet: s } : { floor: s },
-        sizing: { mode: "fixed", dlim: 20 },
-        fixed: fixedCandidate(z.section, z.material, z.grade),
-        point: false,
-        selfWeight: false,
-        fallbackMaxD: 0,
-      },
-      p,
-    );
-    if (z.zone.tableSpan && r.ratio !== null) {
-      const uT = span / z.zone.tableSpan;
-      r.utils.push({ label: "NZS 3604 span", u: uT });
-      r.kv.push({ label: "NZS 3604 Table 7.1", value: `${fmt(span)} ≤ ${fmt(z.zone.tableSpan)} m` });
-      if (uT > r.ratio) {
-        r.ratio = uT;
-        r.govName = "NZS 3604 span";
-      }
-      r.status = statusFor(r.ratio);
+  // Where a post on the level above stands part-way along a beam (and not on
+  // a post below), its load is a point load on that beam.
+  const postLanding = (m: Member) => {
+    if (!m.b) return [];
+    const above = levelAbove(model, levelOf(model, m.levelId));
+    if (!above) return [];
+    const L = memberLength(m);
+    const out: { post: Member; at: number }[] = [];
+    for (const q of posts) {
+      if (q.type !== "post" || q.levelId !== above.id) continue;
+      if (posts.some((s) => s.levelId === m.levelId && near(s.a, q.a))) continue;
+      const t = ((q.a.x - m.a.x) * (m.b.x - m.a.x) + (q.a.y - m.a.y) * (m.b.y - m.a.y)) / (L * L || 1);
+      const foot = { x: m.a.x + t * (m.b.x - m.a.x), y: m.a.y + t * (m.b.y - m.a.y) };
+      if (t * L > 0.15 && t * L < L - 0.15 && near(foot, q.a)) out.push({ post: q, at: t * L });
     }
-    const count = Math.floor(width / s) + 1 + z.zone.doubled.length;
-    r.kv.push({ label: "Joists", value: `${count} @ ${z.zone.spacing} crs, ${z.zone.dir === "x" ? "E–W" : "N–S"}` });
-    if (r.ends) r.kv.push({ label: "Hanger / bearing R* per joist", value: `${fmt(Math.max(1.35 * r.ends.a.G, 1.2 * r.ends.a.G + 1.5 * r.ends.a.Qf), 2)} kN` });
-    r.summary = r.sec ? `${z.section} @ ${z.zone.spacing} · span ${fmt(span)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
-    r.ends = undefined; // joist zones don't load posts directly
-    results.set(z.id, r);
-  }
+    return out;
+  };
+  const landed = new Set<string>(); // posts whose load went into a beam below
 
-  // posts, piles and footings, top level down, adding what bears on them
-  const ordered = model.members.filter((m) => SUPPORT.has(m.type)).sort((a, b) => (levelOf(model, b.levelId)?.elevation ?? 0) - (levelOf(model, a.levelId)?.elevation ?? 0));
-  for (const s of ordered) {
+  // A post, pile or footing: beam ends on its own level (and roof beams for a
+  // top-storey post), plus posts standing directly on it from the level above.
+  const designSupport = (s: Member) => {
     const level = levelOf(model, s.levelId);
     const above = levelAbove(model, level);
     const beamLevels = new Set([s.levelId, ...(s.type === "post" && above?.kind === "roof" ? [above.id] : [])]);
@@ -581,10 +527,13 @@ export function runCalcs(model: DesignModel): Calcs {
       if (atB) loads = add(loads, e.b);
       if (atA || atB) from.push(m.label);
     }
+    // A footing or pile takes the post on its own level; only where there is
+    // none does a post from the level above stand on it directly.
+    const ownPost = s.type !== "post" && model.members.some((o) => o.type === "post" && o.levelId === s.levelId && near(o.a, s.a));
     for (const o of model.members) {
       if (o.type !== "post" || o.id === s.id || !near(o.a, s.a)) continue;
       const ol = levelOf(model, o.levelId);
-      const stacked = s.type === "post" ? ol?.id === above?.id : ol?.id === above?.id || ol?.id === s.levelId;
+      const stacked = (s.type === "post" ? ol?.id === above?.id : ownPost ? ol?.id === s.levelId : ol?.id === above?.id) && !landed.has(o.id);
       const e = results.get(o.id)?.ends;
       if (stacked && e) {
         loads = add(loads, e.a);
@@ -645,6 +594,94 @@ export function runCalcs(model: DesignModel): Calcs {
       res.notes = ["Foundation design is by the engineer: check bearing against the site's geotechnical report."];
     }
     results.set(s.id, res);
+  };
+
+  const levelsDown = [...model.levels].sort((a, b) => b.elevation - a.elevation);
+  const onLevel = (m: Member, l: Level) => m.levelId === l.id || (l === levelsDown[levelsDown.length - 1] && !levelOf(model, m.levelId));
+  for (const lvl of levelsDown) {
+    for (const m of order.filter((x) => onLevel(x, lvl))) {
+      const level = levelOf(model, m.levelId);
+      const single = m.type === "joist" || m.type === "rafter";
+      const sizing: Sizing = m.sizing ?? { mode: single ? "fixed" : "auto", ...(m.type === "lintel" ? { maxB: 90 } : {}) };
+      const points: PointLoad[] = [];
+      for (const [carried, list] of bearings)
+        for (const b of list) {
+          if (b.carrier !== m.id) continue;
+          const r = results.get(carried);
+          const e = r?.ends?.[b.end];
+          if (e) points.push({ at: b.at, ...e, from: r!.mark });
+        }
+      for (const { post, at } of postLanding(m)) {
+        const e = results.get(post.id)?.ends?.a;
+        if (!e) continue;
+        points.push({ at, ...e, from: `${results.get(post.id)!.mark} above` });
+        landed.add(post.id);
+        results.get(post.id)!.kv.push({ label: "Stands on", value: `${m.label}, ${(at).toFixed(2)} m from its end 1` });
+      }
+      const spec: BeamSpec = {
+        id: m.id,
+        mark: m.label,
+        role: m.role || `${MEMBER_INFO[m.type].label}${level ? ` · ${level.name}` : ""}`,
+        span: memberLength(m),
+        trib: m.trib && Object.values(m.trib).some((v) => v) ? m.trib : defaultTrib(model, m),
+        extraG: m.extraG,
+        extraQ: m.extraQ,
+        sizing,
+        fixed: fixedCandidate(m.section, m.material, m.grade),
+        point: !single,
+        selfWeight: !single,
+        fallbackMaxD: m.type === "beam" && loadKind(model, level) === "floor" ? p.beamMaxD : 0,
+        flush: m.type === "beam" && loadKind(model, level) === "floor",
+        points,
+      };
+      const res = designBeam(spec, p);
+      // ends resting on another beam don't also load a post
+      for (const b of bearings.get(m.id) ?? []) res.kv.push({ label: `End ${b.end === "a" ? "1" : "2"} bears on`, value: results.get(b.carrier)?.mark ?? byId.get(b.carrier)?.label ?? "" });
+      results.set(m.id, res);
+    }
+
+    // then this level's posts, piles and footings (posts first, so a footing
+    // or pile under one sees it)
+    for (const s of posts.filter((x) => onLevel(x, lvl)).sort((a, b) => Number(b.type === "post") - Number(a.type === "post"))) designSupport(s);
+  }
+
+  // joist zones
+  for (const z of model.members) {
+    if (z.type !== "joistzone" || !z.b || !z.zone) continue;
+    const span = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
+    const width = z.zone.dir === "x" ? Math.abs(z.b.y - z.a.y) : Math.abs(z.b.x - z.a.x);
+    const s = z.zone.spacing / 1000;
+    const r = designBeam(
+      {
+        id: z.id,
+        mark: z.label,
+        role: z.role || `Floor joists${z.zone.wet ? " (wet area)" : ""}`,
+        span,
+        trib: z.zone.wet ? { floor: s, wet: s } : { floor: s },
+        sizing: { mode: "fixed", dlim: 20 },
+        fixed: fixedCandidate(z.section, z.material, z.grade),
+        point: false,
+        selfWeight: false,
+        fallbackMaxD: 0,
+      },
+      p,
+    );
+    if (z.zone.tableSpan && r.ratio !== null) {
+      const uT = span / z.zone.tableSpan;
+      r.utils.push({ label: "NZS 3604 span", u: uT });
+      r.kv.push({ label: "NZS 3604 Table 7.1", value: `${fmt(span)} ≤ ${fmt(z.zone.tableSpan)} m` });
+      if (uT > r.ratio) {
+        r.ratio = uT;
+        r.govName = "NZS 3604 span";
+      }
+      r.status = statusFor(r.ratio);
+    }
+    const count = Math.floor(width / s) + 1 + z.zone.doubled.length;
+    r.kv.push({ label: "Joists", value: `${count} @ ${z.zone.spacing} crs, ${z.zone.dir === "x" ? "E–W" : "N–S"}` });
+    if (r.ends) r.kv.push({ label: "Hanger / bearing R* per joist", value: `${fmt(Math.max(1.35 * r.ends.a.G, 1.2 * r.ends.a.G + 1.5 * r.ends.a.Qf), 2)} kN` });
+    r.summary = r.sec ? `${z.section} @ ${z.zone.spacing} · span ${fmt(span)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
+    r.ends = undefined; // joist zones don't load posts directly
+    results.set(z.id, r);
   }
 
   // retaining walls
