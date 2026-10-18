@@ -5,23 +5,31 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { runCalcs } from "@/lib/design/calc";
 import { exportIfc } from "@/lib/design/ifc";
+import { FAMILY_COLOUR, FAMILY_LABEL } from "@/lib/design/materials";
 import {
   DEFAULT_SECTION,
+  defaultWall,
+  defaultZone,
   MEMBER_INFO,
   MEMBER_TYPES,
   newId,
   nextLabel,
+  nextMark,
   type DesignModel,
+  type DesignParams,
   type Level,
   type Member,
   type MemberType,
+  type Opening,
   type Pt,
 } from "@/lib/design/model";
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
-import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, Overview, SchedulePanel, type PlanFile } from "./panels";
+import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, Overview, ParamsPanel, SchedulePanel, type PlanFile } from "./panels";
 import { countPages, loadPdf, renderPage, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
+import { Sheets } from "./sheets";
+import type { ColourBy } from "./view-3d";
 
 // three.js only loads when the 3D view is first shown.
 const View3D = dynamic(() => import("./view-3d").then((m) => m.View3D), {
@@ -31,25 +39,37 @@ const View3D = dynamic(() => import("./view-3d").then((m) => m.View3D), {
 
 type Job = { id: string; title: string; jobNo: string; address: string; status: "draft" | "in_review" | "signed" };
 type SaveState = "saved" | "dirty" | "saving" | "conflict" | "error" | "locked";
-type Tab = "member" | "schedule" | "levels" | "history";
-type ViewMode = "plan" | "3d" | "split";
+type Tab = "member" | "schedule" | "levels" | "loads" | "history";
+type ViewMode = "plan" | "3d" | "split" | "sheets";
 
 const BEAM_LIKE: MemberType[] = ["beam", "lintel", "joist", "rafter"];
 
 function newMember(model: DesignModel, type: MemberType, levelId: string, a: Pt, b?: Pt): Member {
-  return {
+  const m: Member = {
     id: newId(),
     type,
-    label: nextLabel(model.members, type),
+    label: nextLabel(model, type),
     levelId,
     a,
     ...(b ? { b } : {}),
     material: "timber",
-    ...(BEAM_LIKE.includes(type) || type === "post" ? { grade: "SG8" as const } : {}),
+    ...(BEAM_LIKE.includes(type) || type === "post" || type === "joistzone" ? { grade: "SG8" as const } : {}),
     section: DEFAULT_SECTION[type],
-    ...(type === "joist" ? { spacing: 450 } : type === "rafter" ? { spacing: 900 } : {}),
-    ...(type === "beam" || type === "lintel" ? { tribWidth: 1.0 } : {}),
+    ...(type === "joist" ? { spacing: 400 } : type === "rafter" ? { spacing: 900 } : {}),
+    ...(type === "beam" ? { sizing: { mode: "auto" as const } } : {}),
+    ...(type === "lintel" ? { sizing: { mode: "auto" as const, maxB: 90 } } : {}),
+    ...(type === "post" ? { sizing: { mode: "auto" as const } } : {}),
+    ...(type === "wall" ? { wall: defaultWall() } : {}),
+    ...(type === "bracing" ? { brace: { system: "GS2N" as const } } : {}),
+    ...(type === "retaining" ? { rw: { kind: "pole" as const, h0: 1, h1: 1 } } : {}),
   };
+  if (type === "joistzone" && b) {
+    // joists span the shorter way across the zone
+    m.zone = { ...defaultZone(), dir: Math.abs(b.y - a.y) <= Math.abs(b.x - a.x) ? "y" : "x" };
+    m.a = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) };
+    m.b = { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) };
+  }
+  return m;
 }
 
 export function DesignEditor({
@@ -88,7 +108,7 @@ export function DesignEditor({
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
   const [tab, setTab] = useState<Tab>("member");
   const [mode, setMode] = useState<ViewMode>("split");
-  const [colourBy, setColourBy] = useState<"type" | "result">("type");
+  const [colourBy, setColourBy] = useState<ColourBy>("type");
   const [upTo, setUpTo] = useState<string | "all">("all");
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [scalePick, setScalePick] = useState<{ p1: Pt; p2: Pt } | null>(null);
@@ -96,9 +116,11 @@ export function DesignEditor({
   const [notice, setNotice] = useState<string>("");
   const clipboard = useRef<Member | null>(null);
 
-  const results = useMemo(() => runCalcs(model), [model]);
+  const calcs = useMemo(() => runCalcs(model), [model]);
+  const results = calcs.results;
   const level = model.levels.find((l) => l.id === activeLevelId) ?? model.levels[0];
   const selected = model.members.find((m) => m.id === selectedId) ?? null;
+  const selectedLintel = selectedId?.includes("#") ? (calcs.lintels.find((l) => l.id === selectedId) ?? null) : null;
 
   // ------------------------------------------------------------ editing
 
@@ -158,6 +180,42 @@ export function DesignEditor({
     [commit],
   );
 
+  const updateOpening = useCallback(
+    (lintelId: string, patch: Partial<Opening>, summary: string) => {
+      const [wallId, opId] = lintelId.split("#");
+      const m = modelRef.current;
+      commit(
+        { ...m, members: m.members.map((x) => (x.id === wallId && x.wall ? { ...x, wall: { ...x.wall, openings: x.wall.openings.map((o) => (o.id === opId ? { ...o, ...patch } : o)) } } : x)) },
+        summary,
+      );
+    },
+    [commit],
+  );
+
+  const removeOpening = useCallback(
+    (lintelId: string) => {
+      const [wallId, opId] = lintelId.split("#");
+      const m = modelRef.current;
+      const wall = m.members.find((x) => x.id === wallId);
+      const op = wall?.wall?.openings.find((o) => o.id === opId);
+      if (!wall?.wall || !op) return;
+      commit({ ...m, members: m.members.map((x) => (x.id === wallId && x.wall ? { ...x, wall: { ...x.wall, openings: x.wall.openings.filter((o) => o.id !== opId) } } : x)) }, `Removed opening ${op.label}`);
+      setSelectedId(wallId);
+    },
+    [commit],
+  );
+
+  const addOpening = (wallId: string, s0: number, s1: number) => {
+    const m = modelRef.current;
+    const wall = m.members.find((x) => x.id === wallId);
+    if (!wall?.wall) return;
+    const prefix = (m.levels.find((l) => l.id === wall.levelId)?.elevation ?? 0) > 0.5 ? "LF" : "L";
+    const op: Opening = { id: newId().slice(0, 8), label: nextMark(m, prefix), offset: s0, width: s1 - s0, sill: 0.9 };
+    commit({ ...m, members: m.members.map((x) => (x.id === wallId && x.wall ? { ...x, wall: { ...x.wall, openings: [...x.wall.openings, op] } } : x)) }, `Added opening ${op.label} to ${wall.label}`);
+    setSelectedId(`${wallId}#${op.id}`);
+    setTab("member");
+  };
+
   const placeCopy = useCallback(
     (source: Member, offset: Pt, levelId = source.levelId) => {
       const m = modelRef.current;
@@ -165,7 +223,7 @@ export function DesignEditor({
         ...source,
         id: newId(),
         levelId,
-        label: nextLabel(m.members, source.type),
+        label: nextLabel(m, source.type),
         a: { x: source.a.x + offset.x, y: source.a.y + offset.y },
         ...(source.b ? { b: { x: source.b.x + offset.x, y: source.b.y + offset.y } } : {}),
       };
@@ -209,7 +267,7 @@ export function DesignEditor({
   const addLevel = () => {
     const m = modelRef.current;
     const top = [...m.levels].sort((a, b) => b.elevation - a.elevation)[0];
-    const lvl: Level = { id: newId(), name: "New level", kind: "floor", elevation: top ? +(top.elevation + top.height).toFixed(3) : 0, height: 2.4, plan: null };
+    const lvl: Level = { id: newId(), name: "New level", kind: "floor", floor: "timber", elevation: top ? +(top.elevation + top.height).toFixed(3) : 0, height: 2.4, plan: null };
     commit({ ...m, levels: [...m.levels, lvl] }, "Added a level");
     setActiveLevelId(lvl.id);
   };
@@ -228,7 +286,7 @@ export function DesignEditor({
     setSelectedId(id);
     if (!id) return;
     setTab("member");
-    const mem = modelRef.current.members.find((x) => x.id === id);
+    const mem = modelRef.current.members.find((x) => x.id === id.split("#")[0]);
     if (mem && fromElsewhere) {
       if (mem.levelId !== activeLevelId) setActiveLevelId(mem.levelId);
       setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
@@ -369,6 +427,11 @@ export function DesignEditor({
         redo();
         return;
       }
+      if ((k === "delete" || k === "backspace") && !ctrl && selectedLintel) {
+        e.preventDefault();
+        removeOpening(selectedLintel.id);
+        return;
+      }
       if (ctrl && k === "d" && selected) {
         e.preventDefault();
         placeCopy(selected, { x: 0.3, y: 0.3 });
@@ -400,6 +463,7 @@ export function DesignEditor({
       else if (k === "h") setTool("pan");
       else if (k === "s") setTool("scale");
       else if (k === "o") setTool("origin");
+      else if (k === "n") setTool("opening");
       else {
         const type = MEMBER_TYPES.find((ty) => MEMBER_INFO[ty].key === k);
         if (type) setTool(type);
@@ -407,12 +471,12 @@ export function DesignEditor({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, cursor, level.id, undo, redo, placeCopy, removeMember]);
+  }, [selected, selectedLintel, cursor, level.id, undo, redo, placeCopy, removeMember, removeOpening]);
 
   // ------------------------------------------------------------ export
 
   const downloadIfc = () => {
-    const text = exportIfc(modelRef.current, { title: job.title, jobNo: job.jobNo, address: job.address });
+    const text = exportIfc(modelRef.current, runCalcs(modelRef.current), { title: job.title, jobNo: job.jobNo, address: job.address });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type: "application/x-step" }));
     a.download = `${(job.jobNo || job.title).replace(/[^\w.-]+/g, "-") || "structure"}.ifc`;
@@ -480,16 +544,16 @@ export function DesignEditor({
         ) : null}
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <div className="flex rounded-lg bg-white/10 p-0.5 text-xs font-semibold">
-            {(["plan", "split", "3d"] as const).map((v) => (
+            {(["plan", "split", "3d", "sheets"] as const).map((v) => (
               <button key={v} type="button" onClick={() => setMode(v)} className={`rounded-md px-2.5 py-1 ${mode === v ? "bg-white text-ink" : "text-white/80 hover:text-white"}`}>
-                {v === "plan" ? "Plan" : v === "3d" ? "3D" : "Plan + 3D"}
+                {v === "plan" ? "Plan" : v === "3d" ? "3D" : v === "split" ? "Plan + 3D" : "Sheets"}
               </button>
             ))}
           </div>
           <div className="flex rounded-lg bg-white/10 p-0.5 text-xs font-semibold">
-            {(["type", "result"] as const).map((v) => (
+            {(["type", "material", "result"] as const).map((v) => (
               <button key={v} type="button" onClick={() => setColourBy(v)} className={`rounded-md px-2.5 py-1 ${colourBy === v ? "bg-white text-ink" : "text-white/80 hover:text-white"}`}>
-                {v === "type" ? "By type" : "By result"}
+                {v === "type" ? "Type" : v === "material" ? "Material" : "Result"}
               </button>
             ))}
           </div>
@@ -524,6 +588,7 @@ export function DesignEditor({
           {toolButton("pan", "Pan", "H")}
           <p className="mt-2 px-2.5 text-[11px] font-bold tracking-wide text-muted uppercase">Members</p>
           {MEMBER_TYPES.map((t) => toolButton(t, MEMBER_INFO[t].label, MEMBER_INFO[t].key.toUpperCase(), MEMBER_INFO[t].colour))}
+          {toolButton("opening", "Opening", "N", "#0891b2")}
           <p className="mt-2 px-2.5 text-[11px] font-bold tracking-wide text-muted uppercase">Plan</p>
           {toolButton("scale", "Scale", "S")}
           {toolButton("origin", "Origin", "O")}
@@ -535,7 +600,12 @@ export function DesignEditor({
         </nav>
 
         {/* plan and 3D */}
-        <div className={`flex min-w-0 flex-1 ${mode === "split" ? "flex-col lg:flex-row" : ""}`}>
+        {mode === "sheets" ? (
+          <div className="min-w-0 flex-1">
+            <Sheets model={model} calcs={calcs} job={job} onPick={(id) => { pick(id, true); setMode("split"); }} />
+          </div>
+        ) : null}
+        <div className={`min-w-0 flex-1 ${mode === "sheets" ? "hidden" : "flex"} ${mode === "split" ? "flex-col lg:flex-row" : ""}`}>
           {mode !== "3d" ? (
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               <div className="flex items-center gap-1 overflow-x-auto border-b border-line bg-surface px-2 py-1.5">
@@ -559,6 +629,7 @@ export function DesignEditor({
                       {MEMBER_INFO[t].label}
                     </option>
                   ))}
+                  <option value="opening">Opening</option>
                   <option value="scale">Scale</option>
                   <option value="origin">Origin</option>
                 </select>
@@ -572,11 +643,12 @@ export function DesignEditor({
                   pageLoading={pageLoading}
                   tool={locked && tool !== "pan" ? "select" : tool}
                   selectedId={selectedId}
-                  results={results}
+                  calcs={calcs}
                   colourBy={colourBy}
                   focus={focus}
                   onSelect={(id) => pick(id)}
                   onCreate={createMember}
+                  onOpening={addOpening}
                   onMove={(id, a, b) => {
                     const mem = modelRef.current.members.find((x) => x.id === id);
                     if (mem) updateMember(id, { a, ...(b ? { b } : {}) }, `Moved ${mem.label}`);
@@ -592,9 +664,9 @@ export function DesignEditor({
               </div>
             </div>
           ) : null}
-          {mode !== "plan" ? (
+          {mode === "3d" || mode === "split" ? (
             <div className={`relative min-h-0 min-w-0 flex-1 ${mode === "split" ? "border-t border-line lg:border-t-0 lg:border-l" : ""}`}>
-              <View3D model={model} results={results} selectedId={selectedId} colourBy={colourBy} upToLevel={upTo} onSelect={(id) => pick(id, true)} />
+              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} upToLevel={upTo} onSelect={(id) => pick(id, true)} />
               <div className="absolute top-2 left-2 flex items-center gap-2 rounded-lg bg-surface/90 px-2 py-1 text-xs shadow">
                 <label htmlFor="upto" className="font-semibold text-muted">
                   Show
@@ -608,6 +680,20 @@ export function DesignEditor({
                   ))}
                 </select>
               </div>
+              {colourBy === "material" ? (
+                <div className="absolute bottom-2 left-2 grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-surface/90 px-2.5 py-1.5 text-xs shadow">
+                  {(Object.keys(FAMILY_COLOUR) as (keyof typeof FAMILY_COLOUR)[]).map((f) => (
+                    <span key={f} className="flex items-center gap-1.5">
+                      <i className="inline-block h-2 w-3.5 border border-black/20" style={{ background: FAMILY_COLOUR[f] }} />
+                      {FAMILY_LABEL[f]}
+                    </span>
+                  ))}
+                  <span className="flex items-center gap-1.5">
+                    <i className="inline-block h-2 w-3.5 border border-black/20" style={{ background: "#b8342a" }} />
+                    Fails
+                  </span>
+                </div>
+              ) : null}
               {colourBy === "result" ? (
                 <div className="absolute bottom-2 left-2 flex gap-3 rounded-lg bg-surface/90 px-2.5 py-1 text-xs shadow">
                   {(["pass", "close", "fail", "none"] as const).map((s) => (
@@ -627,9 +713,10 @@ export function DesignEditor({
           <div className="flex border-b border-line text-xs font-semibold">
             {(
               [
-                ["member", selected ? selected.label : "Overview"],
+                ["member", selected ? selected.label : selectedLintel ? selectedLintel.opening.label : "Overview"],
                 ["schedule", "Schedule"],
-                ["levels", "Levels & plans"],
+                ["levels", "Levels"],
+                ["loads", "Loads"],
                 ["history", "History"],
               ] as const
             ).map(([t, label]) => (
@@ -640,7 +727,16 @@ export function DesignEditor({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {tab === "member" ? (
-              selected ? (
+              selectedLintel ? (
+                <OpeningPanel
+                  lintel={selectedLintel}
+                  result={results.get(selectedLintel.id)}
+                  locked={locked}
+                  onChange={(patch, summary) => updateOpening(selectedLintel.id, patch, summary)}
+                  onDelete={() => removeOpening(selectedLintel.id)}
+                  onSelectWall={() => setSelectedId(selectedLintel.wall.id)}
+                />
+              ) : selected ? (
                 <MemberPanel
                   model={model}
                   member={selected}
@@ -651,10 +747,29 @@ export function DesignEditor({
                   onDelete={() => removeMember(selected.id)}
                 />
               ) : (
-                <Overview model={model} results={results} onPick={(id) => pick(id, true)} />
+                <Overview model={model} calcs={calcs} onPick={(id) => pick(id, true)} />
               )
             ) : null}
-            {tab === "schedule" ? <SchedulePanel model={model} results={results} selectedId={selectedId} onPick={(id) => pick(id, true)} /> : null}
+            {tab === "schedule" ? <SchedulePanel model={model} calcs={calcs} selectedId={selectedId} onPick={(id) => pick(id, true)} /> : null}
+            {tab === "loads" ? (
+              <ParamsPanel
+                model={model}
+                locked={locked}
+                onParam={(k: keyof DesignParams, v: number) => {
+                  const m = modelRef.current;
+                  commit({ ...m, params: { ...m.params, [k]: v } }, `${k} ${v}`);
+                }}
+                onDemand={(levelId, k, v) => {
+                  const m = modelRef.current;
+                  const d = m.bracing[levelId] ?? { windAlong: 0, windAcross: 0, eq: 0 };
+                  commit({ ...m, bracing: { ...m.bracing, [levelId]: { ...d, [k]: v } } }, `bracing demand ${k} ${v}`);
+                }}
+                onNotes={(notes) => {
+                  const m = modelRef.current;
+                  if (notes.join("\n") !== m.notes.join("\n")) commit({ ...m, notes }, "assumptions to confirm");
+                }}
+              />
+            ) : null}
             {tab === "levels" ? <JobSection job={job} locked={locked} canDelete={canDelete} /> : null}
             {tab === "levels" ? (
               <LevelsPanel
@@ -668,10 +783,6 @@ export function DesignEditor({
                 onAddLevel={addLevel}
                 onDeleteLevel={deleteLevel}
                 onUpload={upload}
-                onLoads={(kind, key, v) => {
-                  const m = modelRef.current;
-                  commit({ ...m, loads: { ...m.loads, [kind]: { ...m.loads[kind], [key]: v } } }, `${kind} ${key} ${v} kPa`);
-                }}
               />
             ) : null}
             {tab === "history" ? <HistoryPanel jobId={job.id} revision={revision} locked={locked} onRestore={restore} /> : null}

@@ -1,11 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { STATUS_COLOUR, type Result } from "@/lib/design/calc";
-import { MEMBER_INFO, type Level, type Member, type MemberType, type Pt } from "@/lib/design/model";
+import { RATINGS } from "@/lib/design/bracing";
+import { STATUS_COLOUR, type Calcs } from "@/lib/design/calc";
+import { FAMILY_COLOUR } from "@/lib/design/materials";
+import { MEMBER_INFO, memberLength, type Level, type Member, type MemberType, type Pt } from "@/lib/design/model";
 import type { RenderedPage } from "./pdf";
+import type { ColourBy } from "./view-3d";
 
-export type Tool = "select" | "pan" | "scale" | "origin" | MemberType;
+export type Tool = "select" | "pan" | "scale" | "origin" | "opening" | MemberType;
 
 // Where a level's plan sits in the shared metre frame. Levels without a plan
 // get a 30 x 20 m sheet with a 1 m grid so work can start before plans arrive.
@@ -37,10 +40,11 @@ type Props = {
   pageLoading: boolean;
   tool: Tool;
   selectedId: string | null;
-  results: Map<string, Result>;
-  colourBy: "type" | "result";
+  calcs: Calcs;
+  colourBy: ColourBy;
   onSelect: (id: string | null) => void;
   onCreate: (type: MemberType, a: Pt, b?: Pt) => void;
+  onOpening: (wallId: string, s0: number, s1: number) => void; // metres along the wall
   onMove: (id: string, a: Pt, b?: Pt) => void;
   onScale: (p1: Pt, p2: Pt) => void; // PDF points
   onOrigin: (p: Pt) => void; // PDF point
@@ -59,7 +63,8 @@ function distToSegment(p: Pt, a: Pt, b: Pt) {
 }
 
 export function PlanView(props: Props) {
-  const { level, members, ghosts, page, tool, selectedId, results, colourBy } = props;
+  const { level, members, ghosts, page, tool, selectedId, calcs, colourBy } = props;
+  const results = calcs.results;
   const frame = useMemo(() => frameFor(level, page), [level, page]);
   const box = useRef<HTMLDivElement>(null);
   const canvasHost = useRef<HTMLDivElement>(null);
@@ -68,9 +73,10 @@ export function PlanView(props: Props) {
   const [cursor, setCursor] = useState<Pt | null>(null); // PDF space, snapped
   // First click of a line or scale pick; dropped when the tool or level changes.
   const startKey = `${tool}|${level.id}`;
-  const [startState, setStartState] = useState<{ key: string; p: Pt } | null>(null);
+  const [startState, setStartState] = useState<{ key: string; p: Pt; wallId?: string } | null>(null);
   const start = startState?.key === startKey ? startState.p : null;
-  const setStart = (p: Pt | null) => setStartState(p ? { key: startKey, p } : null);
+  const startWall = startState?.key === startKey ? startState.wallId : undefined;
+  const setStart = (p: Pt | null, wallId?: string) => setStartState(p ? { key: startKey, p, wallId } : null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const [shift, setShift] = useState(false);
   const [space, setSpace] = useState(false);
@@ -109,7 +115,7 @@ export function PlanView(props: Props) {
   // Centre on a member picked elsewhere (3D view, schedule).
   const [focusSeen, setFocusSeen] = useState(0);
   if (props.focus && props.focus.n !== focusSeen) {
-    const target = members.find((x) => x.id === props.focus!.id);
+    const target = members.find((x) => x.id === props.focus!.id.split("#")[0]);
     if (target) {
       setFocusSeen(props.focus.n);
       const a = toPdf(frame, target.a);
@@ -193,6 +199,24 @@ export function PlanView(props: Props) {
     return p;
   };
 
+  const scaleK = frame.scale ?? GRID_FRAME.scale; // metres per PDF unit
+  const half = (m: Member) => (m.type === "wall" ? (m.wall?.thickness ?? 90) / 2000 / scaleK : 0);
+
+  // Distance along a wall (metres) of the point nearest p, if p is on the wall.
+  const onWall = (p: Pt, onlyId?: string): { id: string; s: number } | null => {
+    let best: { id: string; s: number; d: number } | null = null;
+    for (const sh of shapes) {
+      if (sh.m.type !== "wall" || !sh.b || (onlyId && sh.m.id !== onlyId)) continue;
+      const dx = sh.b.x - sh.a.x;
+      const dy = sh.b.y - sh.a.y;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 ? Math.max(0, Math.min(1, ((p.x - sh.a.x) * dx + (p.y - sh.a.y) * dy) / len2)) : 0;
+      const d = Math.hypot(p.x - (sh.a.x + t * dx), p.y - (sh.a.y + t * dy));
+      if (d < half(sh.m) + (HIT_PX / view.zoom) * 1.5 && (!best || d < best.d)) best = { id: sh.m.id, s: t * memberLength(sh.m), d };
+    }
+    return best ? { id: best.id, s: best.s } : null;
+  };
+
   const hitTest = (p: Pt): { id: string; end?: "a" | "b" } | null => {
     const tol = HIT_PX / view.zoom;
     const sel = shapes.find((s) => s.m.id === selectedId);
@@ -203,15 +227,33 @@ export function PlanView(props: Props) {
     let best: { id: string; d: number } | null = null;
     // Points first (they sit on top of lines in the drawing)
     for (const s of shapes) {
-      const d = s.b ? distToSegment(p, s.a, s.b) : Math.hypot(s.a.x - p.x, s.a.y - p.y) * 0.7;
+      if (s.m.type === "joistzone") continue;
+      const d = s.b ? Math.max(0, distToSegment(p, s.a, s.b) - half(s.m)) : Math.hypot(s.a.x - p.x, s.a.y - p.y) * 0.7;
       if (d < tol && (!best || d < best.d)) best = { id: s.m.id, d };
     }
-    return best ? { id: best.id } : null;
+    if (best) {
+      const m = members.find((x) => x.id === best!.id);
+      // a click on an opening picks its lintel
+      if (m?.type === "wall" && m.wall?.openings.length) {
+        const w = onWall(p, m.id);
+        const o = w ? m.wall.openings.find((op) => w.s >= op.offset - 0.05 && w.s <= op.offset + op.width + 0.05) : undefined;
+        if (o) return { id: `${m.id}#${o.id}` };
+      }
+      return { id: best.id };
+    }
+    // joist zones last: anywhere inside the rectangle
+    for (const s of [...shapes].reverse()) {
+      if (s.m.type !== "joistzone" || !s.b) continue;
+      if (p.x >= Math.min(s.a.x, s.b.x) && p.x <= Math.max(s.a.x, s.b.x) && p.y >= Math.min(s.a.y, s.b.y) && p.y <= Math.max(s.a.y, s.b.y)) return { id: s.m.id };
+    }
+    return null;
   };
 
-  const lineTool = tool !== "select" && tool !== "pan" && tool !== "scale" && tool !== "origin" && MEMBER_INFO[tool].line;
-  const pointTool = tool !== "select" && tool !== "pan" && tool !== "scale" && tool !== "origin" && !MEMBER_INFO[tool].line;
-  const needsScale = frame.hasPlan && !frame.scale && (lineTool || pointTool);
+  const memberTool = tool !== "select" && tool !== "pan" && tool !== "scale" && tool !== "origin" && tool !== "opening";
+  const lineTool = memberTool && MEMBER_INFO[tool as MemberType].line;
+  const pointTool = memberTool && !MEMBER_INFO[tool as MemberType].line;
+  const areaTool = memberTool && !!MEMBER_INFO[tool as MemberType].area;
+  const needsScale = frame.hasPlan && !frame.scale && (lineTool || pointTool || tool === "opening");
 
   const onPointerDown = (e: React.PointerEvent) => {
     box.current?.setPointerCapture(e.pointerId);
@@ -235,6 +277,26 @@ export function PlanView(props: Props) {
       return;
     }
     if (needsScale) return;
+    if (tool === "opening") {
+      const w = onWall(raw, startWall);
+      if (!w) return;
+      if (!start) setStart(raw, w.id);
+      else {
+        const first = onWall(start, w.id);
+        if (first && Math.abs(first.s - w.s) > 0.1) props.onOpening(w.id, Math.min(first.s, w.s), Math.max(first.s, w.s));
+        setStart(null);
+      }
+      return;
+    }
+    if (areaTool) {
+      const p = snap(raw, null);
+      if (!start) setStart(p);
+      else {
+        if (Math.abs(p.x - start.x) * scaleK > 0.2 && Math.abs(p.y - start.y) * scaleK > 0.2) props.onCreate(tool as MemberType, toWorld(frame, start), toWorld(frame, p));
+        setStart(null);
+      }
+      return;
+    }
     if (lineTool) {
       const p = snap(raw, start);
       if (!start) setStart(p);
@@ -256,6 +318,7 @@ export function PlanView(props: Props) {
       return;
     }
     props.onSelect(hit.id);
+    if (hit.id.includes("#")) return; // opening lintels move with their wall
     if (hit.end) setDrag({ kind: "end", id: hit.id, end: hit.end, to: raw });
     else setDrag({ kind: "move", id: hit.id, from: raw, delta: { x: 0, y: 0 } });
   };
@@ -276,7 +339,7 @@ export function PlanView(props: Props) {
       setDrag({ ...drag, to: snap(raw, other, drag.id) });
       return;
     }
-    const p = tool === "select" || tool === "pan" ? raw : snap(raw, start);
+    const p = tool === "select" || tool === "pan" || tool === "opening" ? raw : snap(raw, areaTool ? null : start);
     setCursor(p);
     props.onCursor(frame.scale ? toWorld(frame, p) : null);
   };
@@ -320,7 +383,17 @@ export function PlanView(props: Props) {
       const f = zoom / v.zoom;
       return { zoom, pan: { x: size.w / 2 - (size.w / 2 - v.pan.x) * f, y: size.h / 2 - (size.h / 2 - v.pan.y) * f } };
     });
-  const colourOf = (m: Member) => (colourBy === "result" ? STATUS_COLOUR[results.get(m.id)?.status ?? "none"] : MEMBER_INFO[m.type].colour);
+  const colourOf = (m: Pick<Member, "id" | "type" | "brace">) => {
+    const r = results.get(m.id);
+    if (colourBy === "result") return STATUS_COLOUR[r?.status ?? "none"];
+    if (colourBy === "material") {
+      if (r?.status === "fail") return "#b8342a";
+      const f = r?.sec?.fam;
+      if (f && f in FAMILY_COLOUR) return FAMILY_COLOUR[f as keyof typeof FAMILY_COLOUR];
+    }
+    if (m.type === "bracing") return RATINGS[m.brace?.system ?? "GS2N"].colour;
+    return MEMBER_INFO[m.type].colour;
+  };
 
   const lengthLabel = (a: Pt, b: Pt) => (frame.scale ? `${Math.round(Math.hypot(b.x - a.x, b.y - a.y) * frame.scale * 1000)} mm` : "");
   const grid = !frame.hasPlan;
@@ -369,7 +442,7 @@ export function PlanView(props: Props) {
           {/* level below, faint */}
           <g opacity={0.35}>
             {ghostShapes.map(({ m, a, b }) =>
-              b ? (
+              m.type === "joistzone" ? null : b ? (
                 <line key={m.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#475569" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
               ) : (
                 <rect key={m.id} x={a.x - px(4)} y={a.y - px(4)} width={px(8)} height={px(8)} fill="#475569" />
@@ -377,7 +450,111 @@ export function PlanView(props: Props) {
             )}
           </g>
 
+          {/* joist zones under everything else */}
           {shapes.map(({ m, a, b }) => {
+            if (m.type !== "joistzone" || !b || !m.zone) return null;
+            const x0 = Math.min(a.x, b.x),
+              x1 = Math.max(a.x, b.x),
+              y0 = Math.min(a.y, b.y),
+              y1 = Math.max(a.y, b.y);
+            const step = Math.max(px(3), m.zone.spacing / 1000 / scaleK);
+            const ns = m.zone.dir === "y";
+            const hatch: number[] = [];
+            for (let v = (ns ? x0 : y0) + step / 2; v < (ns ? x1 : y1) && hatch.length < 300; v += step) hatch.push(v);
+            const colour = colourOf(m);
+            const selected = m.id === selectedId;
+            return (
+              <g key={m.id}>
+                <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={colour} fillOpacity={selected ? 0.16 : 0.07} stroke={colour} strokeWidth={selected ? 2.5 : 1.5} strokeDasharray="8 4" vectorEffect="non-scaling-stroke" />
+                <g stroke={colour} strokeOpacity={0.35} strokeWidth={1} vectorEffect="non-scaling-stroke">
+                  {hatch.map((v, i) => (ns ? <line key={i} x1={v} y1={y0} x2={v} y2={y1} vectorEffect="non-scaling-stroke" /> : <line key={i} x1={x0} y1={v} x2={x1} y2={v} vectorEffect="non-scaling-stroke" />))}
+                  {m.zone.doubled.map((d, i) => {
+                    const v = ns ? toPdf(frame, { x: d, y: 0 }).x : toPdf(frame, { x: 0, y: d }).y;
+                    return ns ? <line key={`d${i}`} x1={v} y1={y0} x2={v} y2={y1} strokeOpacity={0.9} strokeWidth={3} vectorEffect="non-scaling-stroke" /> : <line key={`d${i}`} x1={x0} y1={v} x2={x1} y2={v} strokeOpacity={0.9} strokeWidth={3} vectorEffect="non-scaling-stroke" />;
+                  })}
+                </g>
+                <text x={(x0 + x1) / 2} y={(y0 + y1) / 2} textAnchor="middle" fontSize={px(11)} fontWeight={700} fill={colour} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                  {m.label} · {m.section} @ {m.zone.spacing} {ns ? "↕" : "↔"}
+                  {results.get(m.id)?.status === "fail" ? " ✕" : ""}
+                </text>
+                {selected ? (
+                  <>
+                    <circle cx={a.x} cy={a.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                    <circle cx={b.x} cy={b.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  </>
+                ) : null}
+              </g>
+            );
+          })}
+
+          {/* walls at true thickness, with their openings */}
+          {shapes.map(({ m, a, b }) => {
+            if (m.type !== "wall" || !b || !m.wall) return null;
+            const L = memberLength(m) || 1;
+            const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+            const ux = (b.x - a.x) / len,
+              uy = (b.y - a.y) / len;
+            const h = Math.max(px(2), half(m));
+            const at = (sM: number) => ({ x: a.x + (ux * sM * len) / L, y: a.y + (uy * sM * len) / L });
+            const quad = (s0: number, s1: number) => {
+              const p0 = at(s0),
+                p1 = at(s1);
+              return `${p0.x - uy * h},${p0.y + ux * h} ${p1.x - uy * h},${p1.y + ux * h} ${p1.x + uy * h},${p1.y - ux * h} ${p0.x + uy * h},${p0.y - ux * h}`;
+            };
+            const ops = [...m.wall.openings].sort((o1, o2) => o1.offset - o2.offset);
+            const segs: [number, number][] = [];
+            let cur = 0;
+            for (const o of ops) {
+              segs.push([cur, Math.max(cur, o.offset)]);
+              cur = o.offset + o.width;
+            }
+            segs.push([cur, L]);
+            const selected = m.id === selectedId;
+            const fill = m.wall.kind === "block" ? "#9b948a" : m.wall.kind === "int" ? "#cbd5e1" : "#64748b";
+            const ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+            const upright = ang > 90 || ang < -90 ? ang + 180 : ang;
+            const mid = at(L / 2);
+            return (
+              <g key={m.id}>
+                {segs.map(([s0, s1], i) => (s1 - s0 > 0.001 ? <polygon key={i} points={quad(s0, s1)} fill={fill} fillOpacity={0.75} stroke={selected ? "#1da9e3" : "#334155"} strokeWidth={selected ? 2.5 : 1} vectorEffect="non-scaling-stroke" /> : null))}
+                {ops.map((o) => {
+                  const lid = `${m.id}#${o.id}`;
+                  const r = results.get(lid);
+                  const c = colourOf({ id: lid, type: "lintel" });
+                  const p0 = at(o.offset),
+                    p1 = at(o.offset + o.width),
+                    pm = at(o.offset + o.width / 2);
+                  const sel = lid === selectedId;
+                  return (
+                    <g key={o.id}>
+                      {sel ? <line x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke="#1da9e3" strokeOpacity={0.35} strokeWidth={14} vectorEffect="non-scaling-stroke" /> : null}
+                      <line x1={p0.x} y1={p0.y} x2={p1.x} y2={p1.y} stroke={c} strokeWidth={o.sill > 0.05 ? 2 : 1} strokeDasharray={o.sill > 0.05 ? undefined : "4 3"} vectorEffect="non-scaling-stroke" />
+                      <g transform={`translate(${pm.x} ${pm.y}) rotate(${upright})`}>
+                        <text y={-h - px(4)} textAnchor="middle" fontSize={px(10)} fontWeight={700} fill={c} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                          {o.label}
+                          {r?.status === "fail" ? " ✕" : ""}
+                        </text>
+                      </g>
+                    </g>
+                  );
+                })}
+                <g transform={`translate(${mid.x} ${mid.y}) rotate(${upright})`}>
+                  <text y={h + px(11)} textAnchor="middle" fontSize={px(9)} fontWeight={600} fill="#334155" stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                    {m.label}
+                  </text>
+                </g>
+                {selected ? (
+                  <>
+                    <circle cx={a.x} cy={a.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                    <circle cx={b.x} cy={b.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  </>
+                ) : null}
+              </g>
+            );
+          })}
+
+          {shapes.map(({ m, a, b }) => {
+            if (m.type === "joistzone" || m.type === "wall") return null;
             const colour = colourOf(m);
             const selected = m.id === selectedId;
             const res = results.get(m.id);
@@ -385,12 +562,12 @@ export function PlanView(props: Props) {
               const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
               const ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
               const upright = ang > 90 || ang < -90 ? ang + 180 : ang;
-              const dash = m.type === "joist" || m.type === "rafter" ? "10 5" : undefined;
-              const width = m.type === "bracing" ? 7 : m.type === "beam" ? 4.5 : 3.5;
+              const dash = m.type === "joist" || m.type === "rafter" ? "10 5" : m.type === "retaining" ? "14 4 3 4" : undefined;
+              const width = m.type === "bracing" ? 7 : m.type === "retaining" ? 6 : m.type === "beam" ? 4.5 : 3.5;
               return (
                 <g key={m.id}>
                   {selected ? <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#1da9e3" strokeOpacity={0.35} strokeWidth={width + 9} strokeLinecap="round" vectorEffect="non-scaling-stroke" /> : null}
-                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={colour} strokeOpacity={m.type === "bracing" ? 0.55 : 1} strokeWidth={width} strokeDasharray={dash} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={colour} strokeOpacity={m.type === "bracing" ? 0.7 : 1} strokeWidth={width} strokeDasharray={dash} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                   <g transform={`translate(${mid.x} ${mid.y}) rotate(${upright})`}>
                     <text y={-px(6)} textAnchor="middle" fontSize={px(11)} fontWeight={700} fill={colour} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
                       {m.label}
@@ -419,13 +596,23 @@ export function PlanView(props: Props) {
                 )}
                 <text x={a.x + r + px(3)} y={a.y - r} fontSize={px(11)} fontWeight={700} fill={colour} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
                   {m.label}
+                  {res?.status === "fail" ? " ✕" : ""}
                 </text>
               </g>
             );
           })}
 
+          {/* joist zone being drawn */}
+          {areaTool && start && cursor ? (
+            <rect x={Math.min(start.x, cursor.x)} y={Math.min(start.y, cursor.y)} width={Math.abs(cursor.x - start.x)} height={Math.abs(cursor.y - start.y)} fill="#b7791f" fillOpacity={0.08} stroke="#b7791f" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+          ) : null}
+          {/* opening being picked */}
+          {tool === "opening" && start && cursor ? (
+            <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} stroke="#0891b2" strokeWidth={4} strokeOpacity={0.6} vectorEffect="non-scaling-stroke" />
+          ) : null}
+
           {/* line or scale in progress */}
-          {start && cursor ? (
+          {start && cursor && !areaTool && tool !== "opening" ? (
             <g>
               <line x1={start.x} y1={start.y} x2={cursor.x} y2={cursor.y} stroke={tool === "scale" ? "#dc2626" : "#1da9e3"} strokeWidth={2.5} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
               <text x={cursor.x + px(10)} y={cursor.y - px(10)} fontSize={px(12)} fontWeight={700} fill="#0c1e33" stroke="white" strokeWidth={px(3)} paintOrder="stroke">
@@ -451,7 +638,17 @@ export function PlanView(props: Props) {
       {tool === "origin" ? (
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white">Click the same corner on every level (for example the outside corner of the house)</p>
       ) : null}
-      {lineTool && !needsScale ? (
+      {tool === "opening" && !needsScale ? (
+        <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-xs text-white">
+          {start ? "Click the other side of the opening on the same wall" : "Click one side of a door or window on a wall"}
+        </p>
+      ) : null}
+      {areaTool && !needsScale ? (
+        <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-xs text-white">
+          {start ? "Click the opposite corner of the joist zone" : "Click one corner of the joist zone"}
+        </p>
+      ) : null}
+      {lineTool && !areaTool && !needsScale ? (
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-xs text-white">
           {start ? "Click the other end · Shift for 15° steps · Esc to cancel" : `Click the start of the ${MEMBER_INFO[tool as MemberType].label.toLowerCase()}`}
         </p>

@@ -101,13 +101,19 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
 - **IFC**: `lib/design/ifc.ts` writes IFC4 (IfcBeam, IfcMember RAFTER,
   IfcColumn, IfcWall SHEAR, IfcFooting, IfcPile, one IfcBuildingStorey per
   level). Checked with IfcOpenShell: no schema errors.
-- **Calculations are DRAFT** (`lib/design/calc.ts`): SG8 beams, lintels,
-  joists and rafters to NZS 3603 (bending, shear, long and short term
-  deflection) and loads passed from beams to posts, piles and footings. Every
-  result says it is not for building consent until each calculator has been
-  checked against Stable Structure's spreadsheets (stage 3). hySPAN / hy90
-  wait for their properties; steel (NZS 3404), posts, bracing and footings
-  report loads only.
+- **Calculations** follow Stable Structure's own framing models (Lot 6 and
+  26121), and were checked against them member by member:
+  `lib/design/calc.ts` (tributary loads, combinations incl. roof live and
+  snow, 1 kN midspan point load, deflection caps; sections picked SG8 →
+  hySPAN → PFC/UB within depth and width limits; posts as SG8 stud packs then
+  SHS with k12; joist zones with the NZS 3604 span check and hanger R*; loads
+  passed from beam ends to posts and footings), `materials.ts`,
+  `bracing.ts` (NZS 3604 / GIB EzyBrace® 2016 lines, ratings, demand and line
+  minimums), `retaining.ts` (pole bands and block walls). Wall openings make
+  their own lintels (ids `<wall id>#<opening id>`). All results are marked
+  preliminary until checked by a CPEng.
+- **Sheets** view: member, joist, lintel, post, wall, bracing and retaining
+  schedules plus the design basis and the job's assumptions to confirm.
 
 ## Environment
 

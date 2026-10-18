@@ -1,22 +1,34 @@
 "use client";
 
 import { useActionState, useEffect, useState, type ReactNode } from "react";
-import { DRAFT_NOTE, SG8_DEPTHS, STATUS_COLOUR, STATUS_LABEL, type Result } from "@/lib/design/calc";
+import { ActionForm } from "@/components/action-form";
+import { Spinner } from "@/components/spinner";
+import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
+import { DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
+import { DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
+  BRACE_NAME,
   byLabel,
+  DEFAULT_PARAMS,
   describeMember,
   formatLength,
   MEMBER_INFO,
   memberLength,
+  type BraceSystem,
   type DesignModel,
+  type DesignParams,
+  type Family,
   type Level,
   type Material,
   type Member,
   type MemberType,
+  type Opening,
+  type Sizing,
   type TimberGrade,
+  type Trib,
+  type WallSpec,
+  type ZoneSpec,
 } from "@/lib/design/model";
-import { ActionForm } from "@/components/action-form";
-import { Spinner } from "@/components/spinner";
 import { deleteDesignJob, listRevisions, updateJobDetails } from "../actions";
 
 export type PlanFile = { id: string; fileName: string; pageCount: number; url: string };
@@ -55,7 +67,7 @@ export function TextField({ label, value, onCommit, list, placeholder, wide }: {
   );
 }
 
-export function NumberField({ label, value, onCommit, unit, step = "any", min }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; unit?: string; step?: string; min?: number }) {
+export function NumberField({ label, value, onCommit, unit, min, placeholder }: { label: string; value: number | undefined; onCommit: (v: number | undefined) => void; unit?: string; min?: number; placeholder?: string }) {
   const [draft, setDraft] = useDraft(value === undefined ? "" : String(value));
   const commit = () => {
     if (draft.trim() === "") return value !== undefined && onCommit(undefined);
@@ -73,7 +85,7 @@ export function NumberField({ label, value, onCommit, unit, step = "any", min }:
         className="field py-1.5 text-sm tabular-nums"
         inputMode="decimal"
         value={draft}
-        step={step}
+        placeholder={placeholder}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && (e.currentTarget as HTMLInputElement).blur()}
@@ -82,9 +94,9 @@ export function NumberField({ label, value, onCommit, unit, step = "any", min }:
   );
 }
 
-function Select<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
+function Select<T extends string>({ label, value, options, onChange, wide }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; wide?: boolean }) {
   return (
-    <label className="flex flex-col gap-1">
+    <label className={`flex flex-col gap-1 ${wide ? "col-span-2" : ""}`}>
       <span className="text-xs font-semibold text-muted">{label}</span>
       <select className="field py-1.5 text-sm" value={value} onChange={(e) => onChange(e.target.value as T)}>
         {options.map((o) => (
@@ -97,7 +109,16 @@ function Select<T extends string>({ label, value, options, onChange }: { label: 
   );
 }
 
-function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
+function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 text-sm">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+export function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
     <section className="border-b border-line px-4 py-3.5">
       <div className="mb-2.5 flex items-center justify-between gap-2">
@@ -113,28 +134,89 @@ export function StatusDot({ status }: { status: Result["status"] }) {
   return <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STATUS_COLOUR[status] }} aria-hidden />;
 }
 
-const SECTION_SUGGESTIONS = [
-  ...SG8_DEPTHS.flatMap((d) => [`${d}x45`, `2/${d}x45`, `3/${d}x45`]),
-  "90x90",
-  "125x125",
-  "140x140",
-  "150PFC",
-  "180PFC",
-  "200PFC",
-  "150UB14",
-  "180UB16",
-  "200UB25",
-  "250UB31",
-  "310UB40",
-  "89x89x5SHS",
-  "100x100x6SHS",
-];
+export const utilTone = (u: number) => (u > 1 ? STATUS_COLOUR.fail : u > 0.9 ? STATUS_COLOUR.close : STATUS_COLOUR.pass);
 
-const LINE_TYPES = (Object.keys(MEMBER_INFO) as MemberType[]).filter((t) => MEMBER_INFO[t].line);
+export function UtilPill({ u }: { u: number | null }) {
+  if (u === null) return <span className="text-muted">–</span>;
+  const tone = u > 1 ? "bg-bad-bg text-bad" : u > 0.9 ? "bg-warn-bg text-warn" : "bg-ok-bg text-ok";
+  return <span className={`rounded-full px-1.5 py-0.5 font-mono text-[11px] ${tone}`}>{u.toFixed(2)}</span>;
+}
+
+export function FamilyTag({ fam }: { fam?: string }) {
+  if (!fam || !(fam in FAMILY_LABEL)) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold tracking-wide text-muted uppercase">
+      <i className="inline-block h-2.5 w-2.5" style={{ background: FAMILY_COLOUR[fam as keyof typeof FAMILY_COLOUR] }} />
+      {FAMILY_LABEL[fam as keyof typeof FAMILY_LABEL]}
+    </span>
+  );
+}
+
+const SECTION_SUGGESTIONS = [...SG8_DEPTHS.flatMap((d) => [`${d}x45`, `2/${d}x45`, `3/${d}x45`]), "90x90", "125x125", ...STEEL.map((s) => s.name)];
+
+const LINE_TYPES = (Object.keys(MEMBER_INFO) as MemberType[]).filter((t) => MEMBER_INFO[t].line && !MEMBER_INFO[t].area && t !== "wall" && t !== "retaining" && t !== "bracing");
 const POINT_TYPES = (Object.keys(MEMBER_INFO) as MemberType[]).filter((t) => !MEMBER_INFO[t].line);
-const BEAM_LIKE: MemberType[] = ["beam", "lintel", "joist", "rafter"];
+
+// ---------------------------------------------------------------- loads and sizing editors
+
+function TribEditor({ trib, onChange, locked }: { trib: Trib | undefined; onChange: (t: Trib) => void; locked: boolean }) {
+  const t = trib ?? {};
+  const set = (k: keyof Trib, v: number | undefined) => onChange({ ...t, [k]: v });
+  return (
+    <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+      <NumberField label="Floor width" unit="m" value={t.floor} min={0} onCommit={(v) => set("floor", v)} />
+      <NumberField label="Wet area width" unit="m" value={t.wet} min={0} onCommit={(v) => set("wet", v)} />
+      <NumberField label="Roof width (plan)" unit="m" value={t.roof} min={0} onCommit={(v) => set("roof", v)} />
+      <span />
+      <NumberField label="Ext. walls above" unit="no." value={t.wallExt} min={0} onCommit={(v) => set("wallExt", v)} />
+      <NumberField label="Int. walls above" unit="no." value={t.wallInt} min={0} onCommit={(v) => set("wallInt", v)} />
+    </fieldset>
+  );
+}
+
+function SizingEditor({ sizing, onChange, locked, fixedSection }: { sizing: Sizing; onChange: (s: Sizing) => void; locked: boolean; fixedSection?: ReactNode }) {
+  const fams = sizing.families?.length ? sizing.families : DEFAULT_FAMILIES;
+  const toggle = (f: Family, on: boolean) => {
+    const next = DEFAULT_FAMILIES.filter((x) => (x === f ? on : fams.includes(x)));
+    onChange({ ...sizing, families: next.length ? next : fams });
+  };
+  return (
+    <fieldset disabled={locked} className="flex flex-col gap-2.5">
+      <div className="flex rounded-lg bg-surface-2 p-0.5 text-xs font-semibold">
+        {(["auto", "fixed"] as const).map((m) => (
+          <button key={m} type="button" onClick={() => onChange({ ...sizing, mode: m })} className={`flex-1 rounded-md px-2 py-1 ${sizing.mode === m ? "bg-surface text-ink shadow-sm" : "text-muted"}`}>
+            {m === "auto" ? "Pick the section" : "Fixed section"}
+          </button>
+        ))}
+      </div>
+      {sizing.mode === "auto" ? (
+        <>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {DEFAULT_FAMILIES.map((f) => (
+              <Check key={f} label={FAMILY_LABEL[f]} checked={fams.includes(f)} onChange={(v) => toggle(f, v)} />
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <NumberField label="Min depth" unit="mm" value={sizing.minD} min={0} onCommit={(v) => onChange({ ...sizing, minD: v })} />
+            <NumberField label="Max depth" unit="mm" value={sizing.maxD} min={0} onCommit={(v) => onChange({ ...sizing, maxD: v })} />
+            <NumberField label="Max width" unit="mm" value={sizing.maxB} min={0} onCommit={(v) => onChange({ ...sizing, maxB: v })} />
+            <NumberField label="Deflection cap" unit="mm" value={sizing.dlim} min={0} placeholder="job default" onCommit={(v) => onChange({ ...sizing, dlim: v })} />
+          </div>
+          <p className="text-xs text-muted">Tries each family in order and uses the first section that passes, like the SG8 → hySPAN → PFC order in the Lot 6 model.</p>
+        </>
+      ) : (
+        <div className="grid grid-cols-2 gap-2.5">
+          {fixedSection}
+          <NumberField label="Deflection cap" unit="mm" value={sizing.dlim} min={0} placeholder="job default" onCommit={(v) => onChange({ ...sizing, dlim: v })} />
+        </div>
+      )}
+    </fieldset>
+  );
+}
 
 // ---------------------------------------------------------------- member
+
+const BEAM_LIKE: MemberType[] = ["beam", "lintel", "joist", "rafter"];
 
 export function MemberPanel({
   model,
@@ -155,8 +237,45 @@ export function MemberPanel({
 }) {
   const m = member;
   const beamLike = BEAM_LIKE.includes(m.type);
-  const structural = beamLike || m.type === "post";
+  const single = m.type === "joist" || m.type === "rafter";
   const set = (patch: Partial<Member>, what: string) => onChange(patch, `${m.label}: ${what}`);
+  const sizing: Sizing = m.sizing ?? { mode: single ? "fixed" : "auto" };
+
+  const sectionField = (
+    <TextField
+      label={m.type === "footing" ? "Size W x L x D (mm)" : m.type === "pile" ? "Pile diameter (mm)" : "Section"}
+      value={m.section}
+      list="design-sections"
+      onCommit={(v) => v && set({ section: v }, `section ${v}`)}
+    />
+  );
+  const materialFields = (
+    <>
+      <Select<Material>
+        label="Material"
+        value={m.material}
+        options={[
+          { value: "timber", label: "Timber" },
+          { value: "steel", label: "Steel" },
+        ]}
+        onChange={(v) => set({ material: v, ...(v === "steel" ? { section: "250PFC" } : { section: "2/240x45", grade: "SG8" }) }, `material ${v}`)}
+      />
+      {m.material === "timber" ? (
+        <Select<TimberGrade>
+          label="Grade"
+          value={m.grade ?? "SG8"}
+          options={[
+            { value: "SG8", label: "SG8 sawn" },
+            { value: "hySPAN", label: "hySPAN LVL" },
+            { value: "hy90", label: "hy90 LVL" },
+          ]}
+          onChange={(v) => set({ grade: v }, `grade ${v}`)}
+        />
+      ) : (
+        <span />
+      )}
+    </>
+  );
 
   return (
     <div>
@@ -174,58 +293,19 @@ export function MemberPanel({
         }
       >
         <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
-          <TextField label="Label" value={m.label} onCommit={(v) => v && set({ label: v }, `renamed to ${v}`)} />
-          <Select
-            label="Type"
-            value={m.type}
-            options={(MEMBER_INFO[m.type].line ? LINE_TYPES : POINT_TYPES).map((t) => ({ value: t, label: MEMBER_INFO[t].label }))}
-            onChange={(t) => set({ type: t }, `changed to ${MEMBER_INFO[t].label.toLowerCase()}`)}
-          />
-          <Select label="Level" value={m.levelId} options={model.levels.map((l) => ({ value: l.id, label: l.name }))} onChange={(v) => set({ levelId: v }, "moved level")} />
-          {structural ? (
-            <Select<Material>
-              label="Material"
-              value={m.material}
-              options={[
-                { value: "timber", label: "Timber" },
-                { value: "steel", label: "Steel" },
-              ]}
-              onChange={(v) => set({ material: v, ...(v === "steel" ? { section: m.type === "post" ? "89x89x5SHS" : "200UB25" } : { section: m.type === "post" ? "90x90" : "190x45", grade: "SG8" }) }, `material ${v}`)}
-            />
+          <TextField label="Mark" value={m.label} onCommit={(v) => v && set({ label: v }, `renamed to ${v}`)} />
+          {MEMBER_INFO[m.type].line && LINE_TYPES.includes(m.type) ? (
+            <Select label="Type" value={m.type} options={LINE_TYPES.map((t) => ({ value: t, label: MEMBER_INFO[t].label }))} onChange={(t) => set({ type: t }, `changed to ${MEMBER_INFO[t].label.toLowerCase()}`)} />
+          ) : !MEMBER_INFO[m.type].line ? (
+            <Select label="Type" value={m.type} options={POINT_TYPES.map((t) => ({ value: t, label: MEMBER_INFO[t].label }))} onChange={(t) => set({ type: t }, `changed to ${MEMBER_INFO[t].label.toLowerCase()}`)} />
           ) : (
-            <div />
+            <span />
           )}
-          {structural && m.material === "timber" ? (
-            <Select<TimberGrade>
-              label="Grade"
-              value={m.grade ?? "SG8"}
-              options={[
-                { value: "SG8", label: "SG8 sawn" },
-                { value: "hySPAN", label: "hySPAN LVL" },
-                { value: "hy90", label: "hy90 LVL" },
-              ]}
-              onChange={(v) => set({ grade: v }, `grade ${v}`)}
-            />
-          ) : null}
-          <TextField
-            label={m.type === "bracing" ? "Wall length (mm)" : m.type === "footing" ? "Size W x L x D (mm)" : m.type === "pile" ? "Pile diameter (mm)" : "Section"}
-            value={m.section}
-            list="design-sections"
-            onCommit={(v) => v && set({ section: v }, `section ${v}`)}
-          />
-          {m.type === "joist" || m.type === "rafter" ? (
-            <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} />
-          ) : null}
-          {m.type === "beam" || m.type === "lintel" ? (
-            <NumberField label="Loaded width" unit="m" value={m.tribWidth} min={0} onCommit={(v) => set({ tribWidth: v }, `loaded width ${v ?? "default"}`)} />
-          ) : null}
-          {beamLike ? (
-            <>
-              <NumberField label="Extra G line load" unit="kN/m" value={m.extraG} min={0} onCommit={(v) => set({ extraG: v }, "extra G load")} />
-              <NumberField label="Extra Q line load" unit="kN/m" value={m.extraQ} min={0} onCommit={(v) => set({ extraQ: v }, "extra Q load")} />
-            </>
-          ) : null}
-          <TextField label="Notes" value={m.notes ?? ""} wide onCommit={(v) => set({ notes: v || undefined }, "notes")} />
+          <Select label="Level" value={m.levelId} options={model.levels.map((l) => ({ value: l.id, label: l.name }))} onChange={(v) => set({ levelId: v }, "moved level")} />
+          {beamLike || m.type === "post" ? <TextField label="Role" value={m.role ?? ""} placeholder="e.g. Flush floor beam" onCommit={(v) => set({ role: v || undefined }, "role")} /> : <span />}
+          {m.type === "joist" || m.type === "rafter" ? <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} /> : null}
+          {m.type === "post" ? <NumberField label="Height" unit="m" value={m.height} min={0.1} placeholder="storey height" onCommit={(v) => set({ height: v }, "height")} /> : null}
+          {m.type === "footing" || m.type === "pile" ? sectionField : null}
         </fieldset>
         <datalist id="design-sections">
           {SECTION_SUGGESTIONS.map((s) => (
@@ -233,73 +313,344 @@ export function MemberPanel({
           ))}
         </datalist>
         <p className="mt-2.5 text-xs text-muted tabular-nums">
-          {m.b ? `Length ${formatLength(memberLength(m))} · ` : ""}
+          {m.b && m.type !== "joistzone" ? `Length ${formatLength(memberLength(m))} · ` : ""}
           {m.b ? `(${m.a.x.toFixed(2)}, ${m.a.y.toFixed(2)}) → (${m.b.x.toFixed(2)}, ${m.b.y.toFixed(2)}) m` : `At (${m.a.x.toFixed(2)}, ${m.a.y.toFixed(2)}) m`}
         </p>
       </Section>
-      {result ? <CalcSheet result={result} onApply={locked ? undefined : (s) => set({ section: s }, `section ${s} (suggested)`)} /> : null}
+
+      {beamLike ? (
+        <>
+          <Section title="Section">
+            <SizingEditor
+              sizing={sizing}
+              locked={locked}
+              onChange={(s) => set({ sizing: s }, s.mode === "auto" ? "automatic sizing" : "fixed section")}
+              fixedSection={
+                <>
+                  {materialFields}
+                  {sectionField}
+                </>
+              }
+            />
+          </Section>
+          <Section title="What it carries">
+            {single ? (
+              <p className="mb-2 text-xs text-muted">Leave blank to use the member spacing on the {loadSurface(model, m)}.</p>
+            ) : (
+              <p className="mb-2 text-xs text-muted">Loaded widths each side added together. Blank uses 1 m of {loadSurface(model, m)}.</p>
+            )}
+            <TribEditor trib={m.trib} locked={locked} onChange={(t) => set({ trib: t }, `loads ${tribText(t) || "default"}`)} />
+            <fieldset disabled={locked} className="mt-2.5 grid grid-cols-2 gap-2.5">
+              <NumberField label="Extra G" unit="kN/m" value={m.extraG} min={0} onCommit={(v) => set({ extraG: v }, "extra G load")} />
+              <NumberField label="Extra Q" unit="kN/m" value={m.extraQ} min={0} onCommit={(v) => set({ extraQ: v }, "extra Q load")} />
+            </fieldset>
+          </Section>
+        </>
+      ) : null}
+
+      {m.type === "post" ? (
+        <Section title="Section">
+          <SizingEditor
+            sizing={m.sizing ?? { mode: "auto" }}
+            locked={locked}
+            onChange={(s) => set({ sizing: s }, s.mode === "auto" ? "automatic sizing" : "fixed section")}
+            fixedSection={
+              <>
+                {materialFields}
+                {sectionField}
+              </>
+            }
+          />
+          <p className="mt-2 text-xs text-muted">Automatic tries 2, 3 and 4 × 90×45 SG8 stud packs, then 89×89×5 SHS.</p>
+        </Section>
+      ) : null}
+
+      {m.type === "joistzone" && m.zone ? <ZoneEditor m={m} locked={locked} set={set} materialFields={materialFields} sectionField={sectionField} /> : null}
+      {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} /> : null}
+      {m.type === "bracing" ? (
+        <Section title="Bracing element">
+          <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+            <Select<BraceSystem> label="GIB system" value={m.brace?.system ?? "GS2N"} options={BRACE_SYSTEMS.map((s) => ({ value: s, label: BRACE_NAME[s] }))} onChange={(v) => set({ brace: { ...m.brace, system: v } }, `bracing ${BRACE_NAME[v]}`)} />
+            <TextField label="Line" value={m.brace?.line ?? ""} placeholder="auto" onCommit={(v) => set({ brace: { system: m.brace?.system ?? "GS2N", line: v || undefined } }, `bracing line ${v || "auto"}`)} />
+          </fieldset>
+          <p className="mt-2 flex items-center gap-2 text-xs text-muted">
+            <i className="inline-block h-2.5 w-4" style={{ background: RATINGS[m.brace?.system ?? "GS2N"].colour }} />
+            Elements in a line within 0.6 m share a line unless you name one.
+          </p>
+        </Section>
+      ) : null}
+      {m.type === "retaining" && m.rw ? (
+        <Section title="Retaining wall">
+          <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+            <Select
+              label="Construction"
+              value={m.rw.kind}
+              wide
+              options={[
+                { value: "pole", label: "Timber poles (H5) with H4 rails" },
+                { value: "block", label: "20 series block, reinforced" },
+              ]}
+              onChange={(v) => set({ rw: { ...m.rw!, kind: v } }, `retaining ${v}`)}
+            />
+            <NumberField label="Retained height, start" unit="m" value={m.rw.h0} min={0} onCommit={(v) => v !== undefined && set({ rw: { ...m.rw!, h0: v } }, "retained height")} />
+            <NumberField label="Retained height, end" unit="m" value={m.rw.h1} min={0} onCommit={(v) => v !== undefined && set({ rw: { ...m.rw!, h1: v } }, "retained height")} />
+          </fieldset>
+        </Section>
+      ) : null}
+
+      <Section title="Notes">
+        <fieldset disabled={locked}>
+          <TextField label="" value={m.notes ?? ""} onCommit={(v) => set({ notes: v || undefined }, "notes")} />
+        </fieldset>
+      </Section>
+
+      {result ? <CalcSheet result={result} /> : null}
     </div>
   );
 }
 
-export function CalcSheet({ result, onApply }: { result: Result; onApply?: (section: string) => void }) {
-  const has = result.checks.length > 0;
-  return (
-    <Section title="Calculation" aside={<span className="chip bg-warn-bg text-warn">Draft</span>}>
-      <div className="flex items-center gap-2">
-        <StatusDot status={result.status} />
-        <p className="text-sm font-semibold" style={{ color: result.status === "none" ? undefined : STATUS_COLOUR[result.status] }}>
-          {STATUS_LABEL[result.status]}
-        </p>
-      </div>
-      <p className="mt-1 text-sm text-text">{result.summary}</p>
-      {result.suggestion && onApply ? (
-        <button type="button" className="btn btn-accent mt-2.5 px-3 py-1.5 text-xs" onClick={() => onApply(result.suggestion!)}>
-          Use {result.suggestion} (passes)
-        </button>
-      ) : null}
+function loadSurface(model: DesignModel, m: Member) {
+  const level = model.levels.find((l) => l.id === m.levelId);
+  if (!level) return "floor";
+  const above = [...model.levels].filter((l) => l.elevation > level.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation)[0];
+  return level.kind === "roof" || above?.kind === "roof" ? "roof" : "floor";
+}
 
-      {[...result.inputs, ...result.loads].length ? (
-        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          {[...result.inputs, ...result.loads].map((l) => (
+function ZoneEditor({ m, locked, set, materialFields, sectionField }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void; materialFields: ReactNode; sectionField: ReactNode }) {
+  const z = m.zone!;
+  const upd = (p: Partial<ZoneSpec>, w: string) => set({ zone: { ...z, ...p } }, w);
+  const [dbl, setDbl] = useState(z.doubled.map((d) => d.toFixed(3)).join(", "));
+  return (
+    <Section title="Joists">
+      <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+        {materialFields}
+        {sectionField}
+        <NumberField label="Spacing" unit="mm" value={z.spacing} min={100} onCommit={(v) => v && upd({ spacing: v }, `spacing ${v}`)} />
+        <Select
+          label="Joists span"
+          value={z.dir}
+          options={[
+            { value: "y", label: "North–south (↕)" },
+            { value: "x", label: "East–west (↔)" },
+          ]}
+          onChange={(v) => upd({ dir: v }, `span ${v === "x" ? "E–W" : "N–S"}`)}
+        />
+        <NumberField label="NZS 3604 table span" unit="m" value={z.tableSpan} min={0} placeholder="none" onCommit={(v) => upd({ tableSpan: v }, "table span")} />
+        <div className="col-span-2">
+          <Check label="Wet area (tiled floor load)" checked={z.wet} onChange={(v) => upd({ wet: v }, v ? "wet area" : "not wet")} />
+        </div>
+        <label className="col-span-2 flex flex-col gap-1">
+          <span className="text-xs font-semibold text-muted">Doubled joists under walls (plan {z.dir === "y" ? "x" : "y"}, m)</span>
+          <input
+            className="field py-1.5 text-sm tabular-nums"
+            value={dbl}
+            placeholder="e.g. 3.335, 4.025"
+            onChange={(e) => setDbl(e.target.value)}
+            onBlur={() => {
+              const vals = dbl
+                .split(/[,\s]+/)
+                .map(Number)
+                .filter((n) => Number.isFinite(n));
+              upd({ doubled: vals }, "doubled joists");
+            }}
+          />
+        </label>
+      </fieldset>
+    </Section>
+  );
+}
+
+function WallEditor({ m, locked, set }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void }) {
+  const w = m.wall!;
+  const upd = (p: Partial<WallSpec>, what: string) => set({ wall: { ...w, ...p } }, what);
+  return (
+    <Section title="Wall">
+      <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+        <Select
+          label="Kind"
+          value={w.kind}
+          options={[
+            { value: "ext", label: "External, framed" },
+            { value: "int", label: "Internal, framed" },
+            { value: "block", label: "Block (20 series)" },
+          ]}
+          onChange={(v) => upd({ kind: v, ...(v === "block" ? { thickness: 190 } : {}) }, `wall ${v}`)}
+        />
+        <Select
+          label="Thickness"
+          value={String(w.thickness) as "90" | "140" | "190"}
+          options={[
+            { value: "90", label: "90 mm" },
+            { value: "140", label: "140 mm" },
+            { value: "190", label: "190 mm" },
+          ]}
+          onChange={(v) => upd({ thickness: Number(v) }, `wall ${v} thick`)}
+        />
+        <Select
+          label="Cladding"
+          value={w.cladding}
+          options={[
+            { value: "light", label: "Lightweight" },
+            { value: "brick", label: "Brick veneer" },
+          ]}
+          onChange={(v) => upd({ cladding: v }, `cladding ${v}`)}
+        />
+        <NumberField label="Stud spacing" unit="mm" value={w.studSpacing} min={200} onCommit={(v) => v && upd({ studSpacing: v }, `studs @ ${v}`)} />
+        <div className="col-span-2">
+          <Check label="Load-bearing" checked={w.loadbearing} onChange={(v) => upd({ loadbearing: v }, v ? "load-bearing" : "non-load-bearing")} />
+        </div>
+      </fieldset>
+      <h4 className="mt-3 mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">Openings</h4>
+      {w.openings.length ? (
+        <ul className="flex flex-col gap-1 text-sm">
+          {[...w.openings]
+            .sort((a, b) => a.offset - b.offset)
+            .map((o) => (
+              <li key={o.id} className="flex justify-between gap-2 tabular-nums">
+                <span className="font-semibold">{o.label}</span>
+                <span className="text-muted">
+                  {o.sill > 0.05 ? "window" : "door"} {Math.round(o.width * 1000)} at {o.offset.toFixed(2)} m
+                </span>
+              </li>
+            ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted">None yet. Use the Opening tool (N) and click both sides of a door or window on this wall; each opening makes its own lintel.</p>
+      )}
+    </Section>
+  );
+}
+
+// An opening and the lintel over it.
+export function OpeningPanel({
+  lintel,
+  result,
+  locked,
+  onChange,
+  onDelete,
+  onSelectWall,
+}: {
+  lintel: VirtualLintel;
+  result: Result | undefined;
+  locked: boolean;
+  onChange: (patch: Partial<Opening>, summary: string) => void;
+  onDelete: () => void;
+  onSelectWall: () => void;
+}) {
+  const o = lintel.opening;
+  const set = (p: Partial<Opening>, w: string) => onChange(p, `${o.label}: ${w}`);
+  const wallLen = memberLength(lintel.wall);
+  return (
+    <div>
+      <Section
+        title={`Opening in ${lintel.wall.label}`}
+        aside={
+          <div className="flex gap-1.5">
+            <button type="button" className="btn btn-quiet px-2 py-1 text-xs" onClick={onSelectWall}>
+              Wall
+            </button>
+            <button type="button" className="btn btn-quiet px-2 py-1 text-xs text-bad" onClick={onDelete} disabled={locked}>
+              Delete
+            </button>
+          </div>
+        }
+      >
+        <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+          <TextField label="Lintel mark" value={o.label} onCommit={(v) => v && set({ label: v }, `renamed to ${v}`)} />
+          <NumberField label="Clear width" unit="m" value={o.width} min={0.1} onCommit={(v) => v && set({ width: Math.min(v, wallLen - o.offset) }, `width ${v} m`)} />
+          <NumberField label="From wall start" unit="m" value={o.offset} min={0} onCommit={(v) => v !== undefined && set({ offset: Math.min(v, Math.max(0, wallLen - o.width)) }, `moved to ${v} m`)} />
+          <NumberField label="Sill height (0 = door)" unit="m" value={o.sill} min={0} onCommit={(v) => v !== undefined && set({ sill: v }, v > 0.05 ? "window" : "door")} />
+          <TextField label="Note" value={o.note ?? ""} wide onCommit={(v) => set({ note: v || undefined }, "note")} />
+        </fieldset>
+        <p className="mt-2 text-xs text-muted">Design span is the clear width plus 90 mm bearing.</p>
+      </Section>
+      <Section title="Lintel section">
+        <SizingEditor
+          sizing={{ mode: "auto", maxB: lintel.wall.wall?.thickness, ...(o.sizing ?? {}) }}
+          locked={locked}
+          onChange={(s) => set({ sizing: s }, "lintel sizing")}
+          fixedSection={<p className="col-span-2 text-xs text-muted">Fixed sections for opening lintels: use the depth limits instead, or draw a separate lintel member.</p>}
+        />
+      </Section>
+      <Section title="What it carries">
+        <p className="mb-2 text-xs text-muted">Blank uses 1 m of the surface above.</p>
+        <TribEditor trib={o.trib} locked={locked} onChange={(t) => set({ trib: t }, `loads ${tribText(t) || "default"}`)} />
+      </Section>
+      {result ? <CalcSheet result={result} /> : null}
+    </div>
+  );
+}
+
+// The member inspector, laid out like the Lot 6 model's.
+export function CalcSheet({ result }: { result: Result }) {
+  return (
+    <Section title="Design" aside={<span className="chip bg-warn-bg text-warn">Preliminary</span>}>
+      {result.sec ? (
+        <div className="flex flex-col gap-0.5 border border-line bg-surface-2 px-3 py-2.5">
+          <FamilyTag fam={result.sec.fam} />
+          <strong className="text-lg leading-tight font-bold">{result.sec.name}</strong>
+          <span className="text-xs text-muted">{result.summary}</span>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <StatusDot status={result.status} />
+          <p className="text-sm">{result.summary || STATUS_LABEL[result.status]}</p>
+        </div>
+      )}
+      {result.utils.length ? (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {result.utils.map((u) => (
+            <div key={u.label} className="grid grid-cols-[110px_1fr_40px] items-center gap-2 text-xs">
+              <span>{u.label}</span>
+              <span className="relative h-2 overflow-hidden border border-line bg-surface-2">
+                <span className="absolute inset-y-0 left-0" style={{ width: `${Math.min(u.u, 1) * 100}%`, background: utilTone(u.u) }} />
+              </span>
+              <span className="text-right font-mono tabular-nums">{u.u.toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {result.kv.length ? (
+        <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-xs">
+          {result.kv.map((l) => (
             <div key={l.label} className="contents">
               <dt className="text-muted">{l.label}</dt>
-              <dd className="tabular-nums">
-                {l.value}
-                {l.note ? <span className="text-muted"> · {l.note}</span> : null}
-              </dd>
+              <dd className="text-right font-mono tabular-nums">{l.value}</dd>
             </div>
           ))}
         </dl>
       ) : null}
-
-      {has ? (
-        <table className="mt-3 w-full text-xs tabular-nums">
-          <thead className="text-left text-muted">
-            <tr>
-              <th className="py-1 font-semibold">Check</th>
-              <th className="py-1 text-right font-semibold">Demand</th>
-              <th className="py-1 text-right font-semibold">Capacity</th>
-              <th className="py-1 text-right font-semibold">Use</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {result.checks.map((c) => (
-              <tr key={c.name}>
-                <td className="py-1 pr-2">{c.name}</td>
-                <td className="py-1 text-right">
-                  {c.demand.toFixed(2)} {c.unit}
-                </td>
-                <td className="py-1 text-right">{c.capacity.toFixed(2)}</td>
-                <td className="py-1 text-right font-semibold" style={{ color: c.ratio > 1 ? STATUS_COLOUR.fail : c.ratio > 0.9 ? STATUS_COLOUR.close : undefined }}>
-                  {Math.round(c.ratio * 100)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {result.seq?.length ? (
+        <>
+          <h4 className="mt-3 mb-1 text-[11px] font-bold tracking-wide text-muted uppercase">Selection order</h4>
+          <table className="w-full text-xs">
+            <tbody className="divide-y divide-line">
+              {result.seq.map((s) => (
+                <tr key={s.family} className={s.chosen ? "bg-accent-100" : ""}>
+                  <td className="py-1 pr-2">{s.family}</td>
+                  <td className="py-1 pr-2 font-mono">{s.text}</td>
+                  <td className={`py-1 text-right font-mono font-semibold ${s.pass ? "text-ok" : "text-bad"}`}>
+                    {s.util !== null ? s.util.toFixed(2) : "–"} {s.pass ? "✓" : "✕"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       ) : null}
-
+      {result.loads.length ? (
+        <>
+          <h4 className="mt-3 mb-1 text-[11px] font-bold tracking-wide text-muted uppercase">Loads</h4>
+          <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-xs">
+            {result.loads.map((l) => (
+              <div key={l.label} className="contents">
+                <dt className="text-muted">{l.label}</dt>
+                <dd className="text-right font-mono tabular-nums">{l.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </>
+      ) : null}
       {result.notes.length ? (
         <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-muted">
           {result.notes.map((n) => (
@@ -307,43 +658,74 @@ export function CalcSheet({ result, onApply }: { result: Result; onApply?: (sect
           ))}
         </ul>
       ) : null}
-      <p className="mt-3 rounded-lg bg-warn-bg px-2.5 py-2 text-xs font-semibold text-warn">{DRAFT_NOTE}</p>
+      <p className="mt-3 border-l-[3px] border-warn bg-warn-bg px-2.5 py-2 text-xs text-warn">{DRAFT_NOTE}</p>
     </Section>
   );
 }
 
 // ---------------------------------------------------------------- overview
 
-export function Overview({ model, results, onPick }: { model: DesignModel; results: Map<string, Result>; onPick: (id: string) => void }) {
+export function SummaryStrip({ model, calcs }: { model: DesignModel; calcs: Calcs }) {
+  const designed = [...calcs.results.values()].filter((r) => r.sec && r.ratio !== null);
+  const counts = new Map<string, number>();
+  for (const r of designed) counts.set(r.sec!.fam, (counts.get(r.sec!.fam) ?? 0) + 1);
+  const fails = [...calcs.results.values()].filter((r) => r.status === "fail").length;
+  const top = designed.reduce<Result | null>((a, r) => (!a || (r.ratio ?? 0) > (a.ratio ?? 0) ? r : a), null);
+  void model;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {[...counts.entries()].map(([f, n]) => (
+        <span key={f} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px]">
+          <i className="inline-block h-2 w-2 rounded-full" style={{ background: FAMILY_COLOUR[f as keyof typeof FAMILY_COLOUR] ?? "#8a5a2b" }} />
+          {n} {FAMILY_LABEL[f as keyof typeof FAMILY_LABEL] ?? f}
+        </span>
+      ))}
+      {top ? <span className="rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px]">Highest {top.mark} {top.ratio!.toFixed(2)}</span> : null}
+      <span className={`rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px] ${fails ? "text-bad" : "text-ok"}`}>{fails ? `${fails} need specific design` : "All checks pass"}</span>
+    </div>
+  );
+}
+
+export function Overview({ model, calcs, onPick }: { model: DesignModel; calcs: Calcs; onPick: (id: string) => void }) {
   const counts = (Object.keys(MEMBER_INFO) as MemberType[]).map((t) => [t, model.members.filter((m) => m.type === t).length] as const).filter(([, n]) => n);
-  const failing = model.members.filter((m) => results.get(m.id)?.status === "fail").sort(byLabel);
-  const close = model.members.filter((m) => results.get(m.id)?.status === "close").sort(byLabel);
+  const attention = [...calcs.results.values()].filter((r) => r.status === "fail" || r.status === "close").sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0));
   return (
     <div>
       <Section title="This structure">
         {counts.length ? (
-          <ul className="grid grid-cols-2 gap-1.5 text-sm">
-            {counts.map(([t, n]) => (
-              <li key={t} className="flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: MEMBER_INFO[t].colour }} />
-                {n} {MEMBER_INFO[t].label.toLowerCase()}
-                {n === 1 ? "" : "s"}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="grid grid-cols-2 gap-1.5 text-sm">
+              {counts.map(([t, n]) => (
+                <li key={t} className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: MEMBER_INFO[t].colour }} />
+                  {n} {MEMBER_INFO[t].label.toLowerCase()}
+                  {n === 1 ? "" : "s"}
+                </li>
+              ))}
+              {calcs.lintels.length ? (
+                <li className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-sm" style={{ background: MEMBER_INFO.lintel.colour }} />
+                  {calcs.lintels.length} opening lintel{calcs.lintels.length === 1 ? "" : "s"}
+                </li>
+              ) : null}
+            </ul>
+            <div className="mt-3">
+              <SummaryStrip model={model} calcs={calcs} />
+            </div>
+          </>
         ) : (
-          <p className="text-sm text-muted">Nothing placed yet. Pick a member type on the left and click on the plan.</p>
+          <p className="text-sm text-muted">Nothing placed yet. Pick a tool on the left and click on the plan.</p>
         )}
       </Section>
-      {failing.length || close.length ? (
+      {attention.length ? (
         <Section title="Needs attention">
           <ul className="flex flex-col gap-1 text-sm">
-            {[...failing, ...close].map((m) => (
-              <li key={m.id}>
-                <button type="button" className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-2" onClick={() => onPick(m.id)}>
-                  <StatusDot status={results.get(m.id)!.status} />
-                  <span className="font-semibold">{m.label}</span>
-                  <span className="truncate text-muted">{results.get(m.id)!.summary}</span>
+            {attention.map((r) => (
+              <li key={r.memberId}>
+                <button type="button" className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-2" onClick={() => onPick(r.memberId)}>
+                  <StatusDot status={r.status} />
+                  <span className="font-semibold">{r.mark}</span>
+                  <span className="truncate text-muted">{r.summary}</span>
                 </button>
               </li>
             ))}
@@ -353,9 +735,10 @@ export function Overview({ model, results, onPick }: { model: DesignModel; resul
       <Section title="Getting started">
         <ol className="list-decimal space-y-1.5 pl-4 text-sm text-text">
           <li>Under <b>Levels &amp; plans</b>, upload the architect&apos;s PDF and pick the page for each level.</li>
-          <li>Choose <b>Scale</b> and click both ends of a dimension you know, then type it in.</li>
-          <li>Choose <b>Origin</b> and click the same corner on every level so the levels line up.</li>
-          <li>Pick a member type and click on the plan: two clicks for beams and walls, one for posts and footings.</li>
+          <li>Choose <b>Scale</b> and click both ends of a dimension you know, then <b>Origin</b> on the same corner on every level.</li>
+          <li>Draw <b>Walls</b>, then use <b>Opening</b> on each door and window: every opening gets its own lintel, sized automatically.</li>
+          <li>Add beams, posts and <b>Joist zones</b>; set what each beam carries. Sections are picked SG8 → hySPAN → steel.</li>
+          <li>Set the job&apos;s loads under <b>Design loads</b>, and bracing demand per level there too.</li>
           <li>Each level holds that storey&apos;s posts and walls and the framing at its top. Ground floor joists and bearers go on <b>Foundation</b>.</li>
         </ol>
       </Section>
@@ -365,13 +748,13 @@ export function Overview({ model, results, onPick }: { model: DesignModel; resul
             ["V", "Select and move"],
             ["H / Space", "Pan (or drag empty space)"],
             ...(Object.keys(MEMBER_INFO) as MemberType[]).map((t) => [MEMBER_INFO[t].key.toUpperCase(), MEMBER_INFO[t].label]),
+            ["N", "Opening (door or window) on a wall"],
             ["S / O", "Scale / origin"],
             ["Shift", "15° steps while drawing"],
             ["Del", "Delete selected"],
             ["Ctrl+D", "Duplicate"],
             ["Ctrl+C / V", "Copy / paste"],
             ["Ctrl+Z / Y", "Undo / redo"],
-            ["Wheel", "Zoom"],
           ].map(([k, v]) => (
             <div key={k} className="contents">
               <dt>
@@ -386,42 +769,16 @@ export function Overview({ model, results, onPick }: { model: DesignModel; resul
   );
 }
 
-// ---------------------------------------------------------------- schedule
+// ---------------------------------------------------------------- schedule (side panel)
 
-export function SchedulePanel({ model, results, selectedId, onPick }: { model: DesignModel; results: Map<string, Result>; selectedId: string | null; onPick: (id: string) => void }) {
+export function SchedulePanel({ model, calcs, selectedId, onPick }: { model: DesignModel; calcs: Calcs; selectedId: string | null; onPick: (id: string) => void }) {
   const levelName = (id: string) => model.levels.find((l) => l.id === id)?.name ?? "";
-  const rows = [...model.members].sort(byLabel);
-
-  const download = () => {
-    const esc = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-    const lines = [
-      ["Label", "Type", "Level", "Member", "Length (mm)", "Status", "Utilisation", "Notes"].join(","),
-      ...rows.map((m) => {
-        const r = results.get(m.id);
-        return [m.label, MEMBER_INFO[m.type].label, levelName(m.levelId), describeMember(m), m.b ? Math.round(memberLength(m) * 1000) : "", r ? STATUS_LABEL[r.status] : "", r?.ratio != null ? `${Math.round(r.ratio * 100)}%` : "", m.notes ?? ""]
-          .map((v) => esc(String(v)))
-          .join(",");
-      }),
-    ];
-    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "member-schedule.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
+  const rows = [
+    ...model.members.map((m) => ({ id: m.id, label: m.label, desc: describeMember(m), level: m.levelId, len: m.b && m.type !== "joistzone" ? memberLength(m) : 0 })),
+    ...calcs.lintels.map((l) => ({ id: l.id, label: l.opening.label, desc: `Lintel in ${l.wall.label}`, level: l.wall.levelId, len: memberLength(l.member) })),
+  ].sort(byLabel);
   return (
-    <Section
-      title={`Member schedule · ${rows.length}`}
-      aside={
-        rows.length ? (
-          <button type="button" className="btn btn-quiet px-2 py-1 text-xs" onClick={download}>
-            CSV
-          </button>
-        ) : null
-      }
-    >
+    <Section title={`Members · ${rows.length}`}>
       {rows.length === 0 ? (
         <p className="text-sm text-muted">No members yet.</p>
       ) : (
@@ -429,14 +786,13 @@ export function SchedulePanel({ model, results, selectedId, onPick }: { model: D
           <thead className="text-left text-muted">
             <tr>
               <th className="py-1 font-semibold">Mark</th>
-              <th className="py-1 font-semibold">Member</th>
-              <th className="py-1 text-right font-semibold">Length</th>
+              <th className="py-1 font-semibold">Section</th>
               <th className="py-1 text-right font-semibold">Use</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {rows.map((m) => {
-              const r = results.get(m.id);
+              const r = calcs.results.get(m.id);
               return (
                 <tr key={m.id} className={`cursor-pointer hover:bg-surface-2 ${m.id === selectedId ? "bg-accent-100" : ""}`} onClick={() => onPick(m.id)}>
                   <td className="py-1.5 pr-2 font-semibold">
@@ -446,11 +802,15 @@ export function SchedulePanel({ model, results, selectedId, onPick }: { model: D
                     </span>
                   </td>
                   <td className="py-1.5 pr-2">
-                    {describeMember(m)}
-                    <span className="block text-muted">{levelName(m.levelId)}</span>
+                    {r?.sec?.name ?? m.desc}
+                    <span className="block text-muted">
+                      {levelName(m.level)}
+                      {m.len ? ` · ${Math.round(m.len * 1000)}` : ""}
+                    </span>
                   </td>
-                  <td className="py-1.5 text-right">{m.b ? Math.round(memberLength(m) * 1000) : "–"}</td>
-                  <td className="py-1.5 text-right">{r?.ratio != null ? `${Math.round(r.ratio * 100)}%` : "–"}</td>
+                  <td className="py-1.5 text-right">
+                    <UtilPill u={r?.ratio ?? null} />
+                  </td>
                 </tr>
               );
             })}
@@ -474,7 +834,6 @@ export function LevelsPanel({
   onAddLevel,
   onDeleteLevel,
   onUpload,
-  onLoads,
 }: {
   model: DesignModel;
   plans: PlanFile[];
@@ -486,7 +845,6 @@ export function LevelsPanel({
   onAddLevel: () => void;
   onDeleteLevel: (id: string) => void;
   onUpload: (file: File) => void;
-  onLoads: (kind: "floor" | "roof", key: "G" | "Q", v: number) => void;
 }) {
   const levels = [...model.levels].sort((a, b) => b.elevation - a.elevation);
   return (
@@ -549,7 +907,17 @@ export function LevelsPanel({
                     onChange={(v) => onUpdateLevel(l.id, { kind: v }, `${l.name} is a ${v}`)}
                   />
                   <NumberField label="Level" unit="m" value={l.elevation} onCommit={(v) => v !== undefined && onUpdateLevel(l.id, { elevation: v }, `${l.name} level ${v} m`)} />
-                  <NumberField label="Height" unit="m" value={l.height} min={0} onCommit={(v) => v !== undefined && onUpdateLevel(l.id, { height: v }, `${l.name} height ${v} m`)} />
+                  <NumberField label="Stud height" unit="m" value={l.height} min={0} onCommit={(v) => v !== undefined && onUpdateLevel(l.id, { height: v }, `${l.name} height ${v} m`)} />
+                  <Select<Level["floor"]>
+                    label="Walls stand on"
+                    value={l.floor}
+                    wide
+                    options={[
+                      { value: "slab", label: "Concrete slab (bracing cap 150 BU/m)" },
+                      { value: "timber", label: "Timber floor (bracing cap 120 BU/m)" },
+                    ]}
+                    onChange={(v) => onUpdateLevel(l.id, { floor: v }, `${l.name} on ${v}`)}
+                  />
                   <label className="col-span-2 flex flex-col gap-1">
                     <span className="text-xs font-semibold text-muted">Plan</span>
                     <select
@@ -598,15 +966,87 @@ export function LevelsPanel({
           })}
         </ul>
       </Section>
+    </div>
+  );
+}
 
-      <Section title="Area loads">
-        <fieldset disabled={locked} className="grid grid-cols-2 gap-2">
-          <NumberField label="Floor G" unit="kPa" value={model.loads.floor.G} min={0} onCommit={(v) => v !== undefined && onLoads("floor", "G", v)} />
-          <NumberField label="Floor Q" unit="kPa" value={model.loads.floor.Q} min={0} onCommit={(v) => v !== undefined && onLoads("floor", "Q", v)} />
-          <NumberField label="Roof G" unit="kPa" value={model.loads.roof.G} min={0} onCommit={(v) => v !== undefined && onLoads("roof", "G", v)} />
-          <NumberField label="Roof Q" unit="kPa" value={model.loads.roof.Q} min={0} onCommit={(v) => v !== undefined && onLoads("roof", "Q", v)} />
+// ---------------------------------------------------------------- design loads
+
+const PARAM_META: [keyof DesignParams, string, string, string][] = [
+  ["Gf", "Floor dead G", "kPa", "incl. joists, flooring, ceiling, services, light partitions"],
+  ["Gwet", "Tiled wet-area G", "kPa", "bathroom and ensuite"],
+  ["Qf", "Floor live Q", "kPa", "residential, AS/NZS 1170.1 Table 3.1"],
+  ["Groof", "Roof dead G (plan)", "kPa", "cladding, framing, insulation, ceiling"],
+  ["Qroof", "Roof live Q", "kPa", "non-trafficable roof"],
+  ["Su", "Roof snow Su", "kPa", "0 where the site has no snow"],
+  ["gWallExt", "External wall", "kPa", "cladding, framing, lining"],
+  ["gWallInt", "Internal wall", "kPa", "framing and linings"],
+  ["wallHeight", "Height of walls above", "m", "for the weight of walls carried"],
+  ["Ppt", "Point load at midspan", "kN", "imposed, every beam and lintel; 0 = off"],
+  ["dPlim", "Deflection under that point load", "mm", "PL³/48EI"],
+  ["dAbs", "Long-term deflection cap", "mm", "applies with span/300"],
+  ["beamMaxD", "Max depth, auto floor beams", "mm", "250 keeps them near flush with 240 joists; 0 = no limit"],
+  ["k1Roof", "k1 for roof live combinations", "", "0.97 in the 26121 basis, 1.0 in Lot 6"],
+];
+
+export function ParamsPanel({
+  model,
+  locked,
+  onParam,
+  onDemand,
+  onNotes,
+}: {
+  model: DesignModel;
+  locked: boolean;
+  onParam: (k: keyof DesignParams, v: number) => void;
+  onDemand: (levelId: string, k: "windAlong" | "windAcross" | "eq", v: number) => void;
+  onNotes: (notes: string[]) => void;
+}) {
+  const [notes, setNotes] = useState(model.notes.join("\n"));
+  const levels = [...model.levels].sort((a, b) => b.elevation - a.elevation).filter((l) => model.members.some((m) => m.type === "bracing" && m.levelId === l.id) || model.bracing[l.id]);
+  return (
+    <div>
+      <Section title="Design loads" aside={<span className="text-[11px] text-muted">AS/NZS 1170</span>}>
+        <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+          {PARAM_META.map(([k, label, unit, help]) => (
+            <div key={k} title={help}>
+              <NumberField label={label} unit={unit || undefined} value={model.params[k]} min={0} placeholder={String(DEFAULT_PARAMS[k])} onCommit={(v) => onParam(k, v ?? DEFAULT_PARAMS[k])} />
+            </div>
+          ))}
         </fieldset>
-        <p className="mt-2 text-xs text-muted">Floors default to AS/NZS 1170.1 domestic (1.5 kPa); roofs to a light roof with 0.25 kPa imposed.</p>
+        <p className="mt-2 text-xs text-muted">Combinations 1.35G; 1.2G+1.5Q (k1 0.8); 1.2G+1.5Qr+0.4Q; 1.2G+Su+0.4Q. Long-term δ = k2(G+0.4Q), k2 2.0 timber, 1.0 steel; short-term 0.7Q ≤ span/360.</p>
+      </Section>
+      <Section title="Bracing demand (BU)">
+        {levels.length ? (
+          <fieldset disabled={locked} className="flex flex-col gap-3">
+            {levels.map((l) => {
+              const d = model.bracing[l.id] ?? { windAlong: 0, windAcross: 0, eq: 0 };
+              return (
+                <div key={l.id}>
+                  <p className="mb-1 text-sm font-semibold">{l.name}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <NumberField label="Wind along" value={d.windAlong} min={0} onCommit={(v) => onDemand(l.id, "windAlong", v ?? 0)} />
+                    <NumberField label="Wind across" value={d.windAcross} min={0} onCommit={(v) => onDemand(l.id, "windAcross", v ?? 0)} />
+                    <NumberField label="Earthquake" value={d.eq} min={0} onCommit={(v) => onDemand(l.id, "eq", v ?? 0)} />
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-xs text-muted">From NZS 3604:2011 Tables 5.6–5.10 or a GIB EzyBrace® demand sheet. Along = east–west lines, across = north–south.</p>
+          </fieldset>
+        ) : (
+          <p className="text-sm text-muted">Add bracing elements (G) to a level to enter its demand.</p>
+        )}
+      </Section>
+      <Section title="Assumptions to confirm">
+        <textarea
+          disabled={locked}
+          className="field min-h-28 w-full py-1.5 text-sm"
+          value={notes}
+          placeholder="One per line, e.g. Garage door scaled at 2.8 m: confirm with the architect."
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={() => onNotes(notes.split("\n").map((n) => n.trim()).filter(Boolean))}
+        />
       </Section>
     </div>
   );
@@ -703,7 +1143,13 @@ function DeleteJob({ id, title }: { id: string; title: string }) {
     >
       <input type="hidden" name="id" value={id} />
       <button type="submit" disabled={pending} className="btn btn-quiet px-2.5 py-1 text-xs text-bad">
-        {pending ? <><Spinner /> Deleting…</> : "Delete this job"}
+        {pending ? (
+          <>
+            <Spinner /> Deleting…
+          </>
+        ) : (
+          "Delete this job"
+        )}
       </button>
       {state && !state.ok ? <p className="mt-2 text-xs font-semibold text-bad">{state.message}</p> : null}
     </form>
