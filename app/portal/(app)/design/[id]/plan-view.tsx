@@ -68,6 +68,7 @@ export function PlanView(props: Props) {
   const frame = useMemo(() => frameFor(level, page), [level, page]);
   const box = useRef<HTMLDivElement>(null);
   const canvasHost = useRef<HTMLDivElement>(null);
+  const sheet = useRef<HTMLDivElement>(null); // the transformed page; its screen box is the truth for clicks
   const [size, setSize] = useState({ w: 800, h: 600 });
   const [view, setView] = useState({ zoom: 1, pan: { x: 0, y: 0 } });
   const [cursor, setCursor] = useState<Pt | null>(null); // PDF space, snapped
@@ -147,9 +148,12 @@ export function PlanView(props: Props) {
     };
   }, []);
 
+  // Measured from where the page actually is on screen, so a scrolled box
+  // (focus or find-in-page can scroll even an overflow-hidden element) can't
+  // put clicks somewhere other than where the drawing shows them.
   const pdfFromEvent = (e: { clientX: number; clientY: number }): Pt => {
-    const r = box.current!.getBoundingClientRect();
-    return { x: (e.clientX - r.left - view.pan.x) / view.zoom, y: (e.clientY - r.top - view.pan.y) / view.zoom };
+    const r = sheet.current!.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / view.zoom, y: (e.clientY - r.top) / view.zoom };
   };
 
   // Member geometry in PDF space, with any drag in progress applied.
@@ -413,9 +417,15 @@ export function PlanView(props: Props) {
         props.onCursor(null);
       }}
       onWheel={onWheel}
+      onScroll={(e) => {
+        // pan and zoom move the page; the box itself never scrolls
+        e.currentTarget.scrollLeft = 0;
+        e.currentTarget.scrollTop = 0;
+      }}
       onContextMenu={(e) => e.preventDefault()}
     >
       <div
+        ref={sheet}
         className="absolute top-0 left-0 origin-top-left bg-white shadow-[0_2px_18px_rgba(12,30,51,0.18)]"
         style={{ width: frame.w, height: frame.h, transform: `translate(${view.pan.x}px, ${view.pan.y}px) scale(${view.zoom})` }}
       >
