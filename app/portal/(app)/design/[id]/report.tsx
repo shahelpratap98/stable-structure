@@ -202,7 +202,7 @@ function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImag
   const fails = items.filter((i) => calcs.results.get(i.id)?.status === "fail").length;
   const shownRev = status === "signed" && signoff?.signedRevision ? signoff.signedRevision : revision;
   const n = (t: string) => sections.indexOf(t) + 1;
-  const sections = ["Design basis", "Member schedule", ...(calcs.bracing.length ? ["Bracing"] : []), ...(planImages.length ? ["Framing plans"] : []), ...(view3d ? ["3D view"] : []), "Calculations"];
+  const sections = ["Design basis", "Member schedule", ...(calcs.bracing.length ? ["Bracing"] : []), ...(calcs.connections.length ? ["Connections"] : []), ...(planImages.length ? ["Framing plans"] : []), ...(view3d ? ["3D view"] : []), "Calculations"];
 
   return (
     <Document title={`${job.jobNo ? job.jobNo + " " : ""}${job.title} – structural calculations`} author={company} creator={company}>
@@ -336,6 +336,19 @@ function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImag
               ))}
             </View>
           ))}
+        </Frame>
+      ) : null}
+
+      {calcs.connections.length ? (
+        <Frame input={input}>
+          <Text style={s.h1}>{n("Connections")}. Connections</Text>
+          <Text style={s.p}>Steel to AS 4100 / NZS 3404.1 chapter 9 (bolts φ 0.8, ply bearing φ 0.9, SP fillet welds φ 0.8, fuw 490 MPa); concrete bearing to NZS 3101 cl 16.3.1; timber bearing to NZS 3603. Proprietary connectors must be rated for at least the force shown.</Text>
+          <View style={s.table}>
+            <Row head widths={["20%", "17%", "12%", "51%"]} cells={["Where", "Connection", "Force", "Detail"]} />
+            {calcs.connections.map((c, i) => (
+              <Row key={i} widths={["20%", "17%", "12%", "51%"]} cells={[c.at, c.kind, `${c.demand.toFixed(1)} ${c.unit}`, `${c.detail}${c.ok ? "" : " — CHECK"}`]} />
+            ))}
+          </View>
         </Frame>
       ) : null}
 

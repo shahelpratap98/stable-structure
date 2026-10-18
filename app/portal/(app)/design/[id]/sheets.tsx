@@ -353,6 +353,30 @@ export function Sheets({ model, calcs, job, onPick }: { model: DesignModel; calc
           )}
         </Sheet>
 
+        <Sheet
+          id="s-connections"
+          title="Connection schedule"
+          lede="Steel ends and base plates to AS 4100 ch 9 (bolts φ 0.8, ply bearing φ 0.9, SP fillet welds φ 0.8) and NZS 3101 bearing; timber bearing to NZS 3603. Proprietary connectors are listed with the force they must be rated for."
+        >
+          {calcs.connections.length ? (
+            <Table head={["Where", "Connection", "Design force", "Detail", ""]}>
+              {calcs.connections.map((c, i) => (
+                <tr key={i}>
+                  <td className={`${td} font-mono font-semibold`}>{c.at}</td>
+                  <td className={td}>{c.kind}</td>
+                  <td className={num}>
+                    {c.demand.toFixed(1)} {c.unit}
+                  </td>
+                  <td className={td}>{c.detail}</td>
+                  <td className={`${td} font-semibold ${c.ok ? "text-ok" : "text-bad"}`}>{c.ok ? "OK" : "Check"}</td>
+                </tr>
+              ))}
+            </Table>
+          ) : (
+            <p className="text-sm text-muted">No connections yet: they come from the beams, posts and joist zones.</p>
+          )}
+        </Sheet>
+
         <Sheet id="s-basis" title="Basis and assumptions">
           <p className="max-w-[95ch] border-l-[3px] border-warn bg-warn-bg px-3.5 py-2.5 text-sm">
             <b className="text-warn">Preliminary design.</b> {DRAFT_NOTE.replace(/^Preliminary design\.\s*/, "")}

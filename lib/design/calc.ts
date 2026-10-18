@@ -14,8 +14,9 @@ import { braceCalcs, type BracingSheet } from "./bracing";
 import { DEFAULT_SITE, windBasis } from "./site";
 import { designPad, designStrip, slabPunch } from "./foundations";
 import { designPortal } from "./lateral";
+import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
 import { solveBeam } from "./frame";
-import { candidates, fixedCandidate, FAMILY_LABEL, FY, ES, SG8, type Candidate, type SteelSec } from "./materials";
+import { candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
 
@@ -53,6 +54,7 @@ export type Result = {
   supportLoads?: { at: number; loads: Loads }[]; // beams over more than two supports: reaction at each (m from end 1)
   bu?: { W: number; E: number; line: string; dir: "along" | "across" };
   baseMoment?: number; // kN·m at the base of a cantilever post, for its footing
+  upliftEnd?: number; // kN hold-down needed at each end (wind uplift on roof framing)
 };
 
 // A lintel made by an opening in a wall. Its id is "<wall id>#<opening id>".
@@ -62,6 +64,7 @@ export type Calcs = {
   results: Map<string, Result>;
   lintels: VirtualLintel[];
   bracing: BracingSheet[];
+  connections: Connection[];
 };
 
 const fmt = (n: number, dp = 2) => (Number.isFinite(n) ? n.toFixed(dp) : "–");
@@ -542,6 +545,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
         : [`${c.sec.mat.note}${c.sec.mat.size ? ` (fb ${fmt(c.sec.mat.fb, 1)} MPa at ${c.sec.d} deep)` : ""}; k4 = k5 = k8 = 1.0 (compression edge restrained).`, ...upliftNotes(upNet, spec.span)],
     ends: { a: c.endA, b: c.endB },
     supportLoads: c.reactions,
+    upliftEnd: upNet > 0 ? (upNet * spec.span) / 2 : undefined,
     carried: spec.points?.length ? spec.points : undefined,
   };
 }
@@ -1288,7 +1292,52 @@ export function runCalcs(model: DesignModel): Calcs {
       notes: [],
     });
   }
-  return { results, lintels, bracing };
+  // ---------------------------------------------------------------- connection schedule
+  const connections: Connection[] = [];
+  const post = (lid: string, q: Pt) => posts.find((x) => x.type === "post" && x.levelId === lid && near(x.a, q));
+  for (const m of beamLike) {
+    const r = results.get(m.id);
+    if (!r?.sec || !m.b) continue;
+    const sups = r.supportLoads ?? [
+      ...(m.free === "a" ? [] : [{ at: 0, loads: r.ends?.a ?? ZERO }]),
+      ...(m.free === "b" ? [] : [{ at: memberLength(m), loads: r.ends?.b ?? ZERO }]),
+    ];
+    const steel = findSteel(r.sec.name);
+    for (const sp of sups) {
+      const R = rStar(sp.loads);
+      if (R <= 0) continue;
+      const where = sp.at < 1e-6 ? "end 1" : Math.abs(sp.at - memberLength(m)) < 1e-6 ? "end 2" : `at ${fmt(sp.at)} m`;
+      const under = post(m.levelId, along(m, sp.at));
+      if (steel) connections.push(beamEnd(r.mark, where, R, steel));
+      else if (under && isTimberFam(r.sec.fam)) {
+        const ps = results.get(under.id)?.sec;
+        if (ps && ps.fam !== "SHS") connections.push(timberBearing(`${r.mark} ${where} on ${results.get(under.id)!.mark}`, R, r.sec.b, Math.min(ps.b, ps.d), TIMBER[r.sec.fam].fp));
+        else connections.push(rated(`${r.mark} ${where} on ${results.get(under.id)?.mark ?? "post"}`, "Beam to post", R, "Cap plate or bracket"));
+      } else if (!steel) connections.push(rated(`${r.mark} ${where}`, "Beam support", R, "Hanger or bearing"));
+    }
+    if (r.upliftEnd) connections.push(rated(`${r.mark} each end`, "Wind uplift tie-down", r.upliftEnd, "Strap or bolted tie-down"));
+  }
+  for (const z of model.members) {
+    if (z.type !== "joistzone") continue;
+    const hv = results.get(z.id)?.kv.find((k) => k.label.startsWith("Hanger"));
+    const R = hv ? parseFloat(hv.value) : 0;
+    if (R > 0) connections.push(rated(results.get(z.id)!.mark, "Joist hangers", R, "Joist hanger at every joist"));
+  }
+  for (const s of posts) {
+    const r = results.get(s.id);
+    if (!r?.sec || s.type !== "post") continue;
+    const N = r.kv.find((k) => k.label.startsWith("N*"));
+    const Nv = N ? parseFloat(N.value) : 0;
+    if (r.sec.fam === "SHS") connections.push(basePlate(r.mark, Nv, r.sec.b, r.baseMoment ?? 0));
+  }
+  for (const r of results.values()) {
+    if (!r.summary.startsWith("Portal") || !r.sec) continue;
+    const bm = r.kv.find((k) => k.label.startsWith("Base M"));
+    const [M, , up] = bm ? bm.value.split("/").map((v) => parseFloat(v)) : [0, 0, 0];
+    connections.push(basePlate(`${r.mark} legs`, 0, r.sec.d, M || 0, up || 0));
+  }
+
+  return { results, lintels, bracing, connections };
 }
 
 export const STATUS_COLOUR: Record<Status, string> = {
