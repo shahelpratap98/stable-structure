@@ -397,7 +397,36 @@ function k12(S: number) {
   return x <= 10 ? 1 : x <= 20 ? 1.5 - 0.05 * x : 200 / (x * x);
 }
 
-type PostCand = { name: string; fam: "SG8" | "SHS"; b: number; d: number; phiN?: number };
+type PostCand = { name: string; fam: "SG8" | "SHS"; b: number; d: number; phiN?: number; A?: number; I?: number };
+
+// C350L0 square hollow sections: b (mm), t (mm), A (mm2), I (mm4), from the
+// published tables. Every one listed is fully effective (kf = 1) at fy 350.
+const SHS: [number, number, number, number][] = [
+  [89, 5, 1590, 1.82e6],
+  [89, 6, 1870, 2.06e6],
+  [100, 6, 2130, 3.04e6],
+  [125, 6, 2730, 6.29e6],
+  [100, 9, 3000, 3.91e6],
+  [150, 6, 3330, 11.3e6],
+  [125, 9, 3900, 8.38e6],
+  [150, 9, 4800, 15.4e6],
+  [150, 10, 5260, 16.5e6],
+];
+
+// AS 4100 cl 6.3.3 member capacity of a pin-ended SHS post of height h (m):
+// cold-formed, so alpha_b = -0.5; phi 0.9, fy 350.
+function shsCapacity(A: number, I: number, h: number) {
+  const fy = 350;
+  const r = Math.sqrt(I / A);
+  const ln = ((h * 1000) / r) * Math.sqrt(fy / 250);
+  const aa = (2100 * (ln - 13.5)) / (ln * ln - 15.3 * ln + 2050);
+  const l = ln + aa * -0.5;
+  const eta = Math.max(0, 0.00326 * (l - 13.5));
+  const q = (l / 90) ** 2;
+  const xi = (q + 1 + eta) / (2 * q);
+  const ac = Math.min(1, xi * (1 - Math.sqrt(Math.max(0, 1 - (90 / (xi * l)) ** 2))));
+  return (0.9 * ac * A * fy) / 1e3;
+}
 
 function designPost(loads: Loads, h: number, p: DesignParams, fixed: PostCand | null) {
   const cs = combos(loads, p, false);
@@ -405,7 +434,8 @@ function designPost(loads: Loads, h: number, p: DesignParams, fixed: PostCand | 
     ? [fixed]
     : [
         ...[2, 3, 4].map((n): PostCand => ({ name: `${n}/90×45 SG8`, fam: "SG8", b: 45 * n, d: 90 })),
-        { name: "89×89×5.0 SHS", fam: "SHS", b: 89, d: 89, phiN: 290 },
+        // the 89 SHS keeps the 290 kN of the Lot 6 model as a ceiling
+        ...SHS.map(([b, t, A, I]): PostCand => ({ name: `${b}×${b}×${t.toFixed(1)} SHS`, fam: "SHS", b, d: b, A, I, ...(b === 89 && t === 5 ? { phiN: 290 } : {}) })),
       ];
   let out: { sec: PostCand; util: number; ok: boolean; N: number; cap: number; gov: string; k12: number | null } | null = null;
   for (const c of cands) {
@@ -417,7 +447,7 @@ function designPost(loads: Loads, h: number, p: DesignParams, fixed: PostCand | 
     for (const r of cs) {
       const n = r.G * loads.G + r.Qf * loads.Qf + r.Qr * loads.Qr + r.S * loads.S;
       let phiN: number;
-      if (c.fam === "SHS") phiN = c.phiN ?? 290;
+      if (c.fam === "SHS") phiN = Math.min(c.phiN ?? Infinity, c.A && c.I ? shsCapacity(c.A, c.I, h) : (c.phiN ?? 290));
       else {
         k = k12((h * 1000) / Math.min(c.b, c.d));
         const A = c.b * c.d;
@@ -490,27 +520,45 @@ export function runCalcs(model: DesignModel): Calcs {
   };
   beamLike.forEach(visit);
 
-  // Where a post on the level above stands part-way along a beam (and not on
-  // a post below), its load is a point load on that beam.
-  const postLanding = (m: Member) => {
-    if (!m.b) return [];
-    const above = levelAbove(model, levelOf(model, m.levelId));
-    if (!above) return [];
+  // What each post stands on: the first thing below it, searching down level
+  // by level - a pile or footing on its own level, then on each lower level a
+  // post, pile or footing (stacked) or a beam part-way along (a point load).
+  // A post can pass down through a double-height space this way.
+  type Seat = { kind: "support"; id: string; levelId: string } | { kind: "beam"; id: string; levelId: string; at: number };
+  const seats = new Map<string, Seat>();
+  const downFrom = (l: Level) => model.levels.filter((x) => x.elevation < l.elevation - 1e-6).sort((a, b) => b.elevation - a.elevation);
+  const partway = (m: Member, q: Pt) => {
+    if (!m.b) return null;
     const L = memberLength(m);
-    const out: { post: Member; at: number }[] = [];
-    for (const q of posts) {
-      if (q.type !== "post" || q.levelId !== above.id) continue;
-      if (posts.some((s) => s.levelId === m.levelId && near(s.a, q.a))) continue;
-      const t = ((q.a.x - m.a.x) * (m.b.x - m.a.x) + (q.a.y - m.a.y) * (m.b.y - m.a.y)) / (L * L || 1);
-      const foot = { x: m.a.x + t * (m.b.x - m.a.x), y: m.a.y + t * (m.b.y - m.a.y) };
-      if (t * L > 0.15 && t * L < L - 0.15 && near(foot, q.a)) out.push({ post: q, at: t * L });
-    }
-    return out;
+    const t = ((q.x - m.a.x) * (m.b.x - m.a.x) + (q.y - m.a.y) * (m.b.y - m.a.y)) / (L * L || 1);
+    const foot = { x: m.a.x + t * (m.b.x - m.a.x), y: m.a.y + t * (m.b.y - m.a.y) };
+    return t * L > 0.15 && t * L < L - 0.15 && near(foot, q) ? t * L : null;
   };
-  const landed = new Set<string>(); // posts whose load went into a beam below
+  for (const q of posts) {
+    if (q.type !== "post") continue;
+    const ql = levelOf(model, q.levelId);
+    if (!ql) continue;
+    const base = posts.find((x) => x.type !== "post" && x.levelId === ql.id && near(x.a, q.a));
+    if (base) {
+      seats.set(q.id, { kind: "support", id: base.id, levelId: ql.id });
+      continue;
+    }
+    for (const v of downFrom(ql)) {
+      const under = posts.filter((x) => x.levelId === v.id && near(x.a, q.a)).sort((a, b) => Number(b.type === "post") - Number(a.type === "post"))[0];
+      if (under) {
+        seats.set(q.id, { kind: "support", id: under.id, levelId: v.id });
+        break;
+      }
+      const beam = beamLike.find((m) => m.levelId === v.id && partway(m, q.a) !== null);
+      if (beam) {
+        seats.set(q.id, { kind: "beam", id: beam.id, levelId: v.id, at: partway(beam, q.a)! });
+        break;
+      }
+    }
+  }
 
   // A post, pile or footing: beam ends on its own level (and roof beams for a
-  // top-storey post), plus posts standing directly on it from the level above.
+  // top-storey post), plus the posts standing on it.
   const designSupport = (s: Member) => {
     const level = levelOf(model, s.levelId);
     const above = levelAbove(model, level);
@@ -527,15 +575,10 @@ export function runCalcs(model: DesignModel): Calcs {
       if (atB) loads = add(loads, e.b);
       if (atA || atB) from.push(m.label);
     }
-    // A footing or pile takes the post on its own level; only where there is
-    // none does a post from the level above stand on it directly.
-    const ownPost = s.type !== "post" && model.members.some((o) => o.type === "post" && o.levelId === s.levelId && near(o.a, s.a));
-    for (const o of model.members) {
-      if (o.type !== "post" || o.id === s.id || !near(o.a, s.a)) continue;
-      const ol = levelOf(model, o.levelId);
-      const stacked = (s.type === "post" ? ol?.id === above?.id : ownPost ? ol?.id === s.levelId : ol?.id === above?.id) && !landed.has(o.id);
+    for (const o of posts) {
+      const seat = seats.get(o.id);
       const e = results.get(o.id)?.ends;
-      if (stacked && e) {
+      if (seat?.kind === "support" && seat.id === s.id && e) {
         loads = add(loads, e.a);
         from.push(o.label);
       }
@@ -561,7 +604,12 @@ export function runCalcs(model: DesignModel): Calcs {
       // up to the underside of the deepest beam it carries
       const deepest = Math.max(0, ...beamLike.filter((m) => from.includes(m.label) && beamLevels.has(m.levelId)).map((m) => (results.get(m.id)?.sec?.d ?? 0) / 1000));
       const topOfPost = level ? (level.kind === "roof" ? level.elevation : framingTop(model, level)) - deepest : 2.4;
-      const h = s.height ?? Math.max(0.3, topOfPost - (level?.elevation ?? 0));
+      const seat = seats.get(s.id);
+      const seatLevel = seat ? levelOf(model, seat.levelId) : undefined;
+      const below = level ? downFrom(level)[0] : undefined;
+      // a post passing down through a double-height space stands on that lower framing
+      const bottom = seatLevel && below && seatLevel.elevation < below.elevation - 1e-6 ? framingTop(model, seatLevel) : (level?.elevation ?? 0);
+      const h = s.height ?? Math.max(0.3, topOfPost - bottom);
       const fixed: PostCand | null =
         s.sizing?.mode === "fixed"
           ? (() => {
@@ -611,12 +659,13 @@ export function runCalcs(model: DesignModel): Calcs {
           const e = r?.ends?.[b.end];
           if (e) points.push({ at: b.at, ...e, from: r!.mark });
         }
-      for (const { post, at } of postLanding(m)) {
-        const e = results.get(post.id)?.ends?.a;
-        if (!e) continue;
-        points.push({ at, ...e, from: `${results.get(post.id)!.mark} above` });
-        landed.add(post.id);
-        results.get(post.id)!.kv.push({ label: "Stands on", value: `${m.label}, ${(at).toFixed(2)} m from its end 1` });
+      for (const [qid, seat] of seats) {
+        if (seat.kind !== "beam" || seat.id !== m.id) continue;
+        const r = results.get(qid);
+        const e = r?.ends?.a;
+        if (!r || !e) continue;
+        points.push({ at: seat.at, ...e, from: `${r.mark} above` });
+        r.kv.push({ label: "Stands on", value: `${m.label}, ${fmt(seat.at)} m from its end 1` });
       }
       const spec: BeamSpec = {
         id: m.id,

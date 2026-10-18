@@ -108,8 +108,7 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   snow, 1 kN midspan point load, deflection caps; sections picked SG8 →
   hySPAN → PFC → UB → UC (the full Grade 300 range, lightest first; fy 280 over 17 mm flanges, Ze to AS 4100 5.2) within depth and width limits; a beam ending part-way
   along another passes its reaction on as a point load, and beams are
-  designed in that order; posts as SG8 stud packs then
-  SHS with k12; joist zones with the NZS 3604 span check and hanger R*; loads
+  designed in that order; posts as SG8 stud packs (k12) then SHS 89–150 (AS 4100 6.3.3 buckling over the post height), standing on the first post, footing or beam below them, passing down through empty levels; joist zones with the NZS 3604 span check and hanger R*; loads
   passed from beam ends to posts and footings), `materials.ts`,
   `bracing.ts` (NZS 3604 / GIB EzyBrace® 2016 lines, ratings, demand and line
   minimums), `retaining.ts` (pole bands and block walls). Wall openings make
