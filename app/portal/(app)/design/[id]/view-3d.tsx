@@ -245,7 +245,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       if (!geo) continue;
       const { c, o } = colourFor(b.id, b.tone);
       const selected = b.id === selectedId || (selectedId && b.id.startsWith(selectedId + "#"));
-      const steel = b.tone === "member" && /PFC|UB|SHS/.test(calcs.results.get(b.id)?.sec?.fam ?? "");
+      const steel = b.tone === "member" && /PFC|UB|UC|SHS/.test(calcs.results.get(b.id)?.sec?.fam ?? "");
       const material = new THREE.MeshStandardMaterial({
         color: c,
         roughness: steel ? 0.45 : 0.75,

@@ -210,7 +210,7 @@ function materialName(m: Member, fam?: string) {
   if (m.type === "retaining") return m.rw?.kind === "block" ? "Concrete masonry" : "H5 timber poles";
   if (m.type === "bracing") return "GIB bracing element";
   if (m.type === "pile") return "H5 timber";
-  if (fam === "PFC" || fam === "UB" || fam === "SHS" || m.material === "steel") return "Steel";
+  if (fam === "PFC" || fam === "UB" || fam === "UC" || fam === "SHS" || m.material === "steel") return "Steel";
   if (fam === "LVL" || m.grade === "hySPAN" || m.grade === "hy90") return "hySPAN LVL";
   return "SG8 timber";
 }

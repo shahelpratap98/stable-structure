@@ -189,7 +189,7 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
     const V = Math.max(RA, RB);
     let phiM: number, phiV: number;
     if ("steel" in sec) {
-      phiM = (0.9 * FY * sec.steel.Ze) / 1e6;
+      phiM = (0.9 * sec.steel.fy * sec.steel.Ze) / 1e6;
       phiV = (0.9 * 0.6 * FY * sec.steel.d * sec.steel.tw) / 1e3;
     } else {
       const t = sec.mat;
@@ -330,7 +330,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
     ],
     notes:
       "steel" in c.sec
-        ? [`Steel fy ${FY}, φ 0.9, top flange restrained by the joists. Bolt a timber packer to the web for joist hangers.`]
+        ? [`Steel fy ${c.sec.steel.fy} MPa (Grade 300 at tf ${c.sec.steel.tf} mm), Ze ${Math.round(c.sec.steel.Ze / 1e3)}×10³ mm³, φ 0.9; full lateral restraint assumed (top flange held by the joists). Bolt a timber packer to the web for joist hangers.`]
         : [`${c.sec.fam === "LVL" ? "hySPAN: fb 48, fs 5.3 MPa, E 13.2 GPa, φ 0.9" : "SG8 dry: fb 14, fs 3.8 MPa, E 8.0 GPa, φ 0.8"}; k4 = k5 = k8 = 1.0 (compression edge restrained).`],
     ends: { a: c.endA, b: c.endB },
     carried: spec.points?.length ? spec.points : undefined,

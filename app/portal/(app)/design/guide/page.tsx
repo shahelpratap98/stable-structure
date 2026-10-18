@@ -162,7 +162,7 @@ export default async function DesignGuidePage() {
       <Card>
         <H id="sizing">6. How members are sized</H>
         <p className="mt-2">
-          Beams, lintels and posts are <T>automatic</T> unless you fix a size. The app tries sections in order (SG8 timber, then hySPAN LVL, then steel PFC and UB) and picks the first
+          Beams, lintels and posts are <T>automatic</T> unless you fix a size. The app tries sections in order (SG8 timber, then hySPAN LVL, then steel PFC, UB and UC, lightest first within each) and picks the first
           that passes every check. Limit the families, the depth or the width on the member&apos;s sizing panel, for example to keep a floor beam flush with 240 joists.
         </p>
         <Points>

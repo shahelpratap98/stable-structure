@@ -52,7 +52,7 @@ export async function planImage(model: DesignModel, calcs: Calcs, level: Level, 
       const ratio = page.canvas.width / page.width; // image px per PDF point
       const s = level.plan.scale; // m per point
       const o = level.plan.origin;
-      ctx.globalAlpha = 0.45;
+      ctx.globalAlpha = 0.35;
       ctx.drawImage(page.canvas, (o.x + b.x0 / s) * ratio, (o.y + b.y0 / s) * ratio, (wm / s) * ratio, (hm / s) * ratio, 0, 0, W, H);
       ctx.globalAlpha = 1;
     } catch {
@@ -89,7 +89,8 @@ export async function planImage(model: DesignModel, calcs: Calcs, level: Level, 
     ctx.setLineDash([]);
   };
   const tags: { at: Pt; text: string; colour: string; round?: boolean }[] = [];
-  const px = Math.max(1.5, k * 0.012); // a line weight that reads at any scale
+  // weights and text sized to the image, so a whole house reads as well as a deck
+  const px = Math.max(2, Math.max(W, H) / 650);
 
   // joist zones first, then walls, then framing members on top
   for (const m of members.filter((x) => x.type === "joistzone" && x.b)) {
@@ -117,18 +118,21 @@ export async function planImage(model: DesignModel, calcs: Calcs, level: Level, 
   for (const l of lintels) {
     const m = l.member;
     if (!m.b) continue;
+    line(m.a, m.b, "#ffffff", px * 4.2);
     line(m.a, m.b, fail(l.id) ? "#b8342a" : MEMBER_INFO.lintel.colour, px * 2.2);
     tags.push({ at: { x: (m.a.x + m.b.x) / 2, y: (m.a.y + m.b.y) / 2 }, text: calcs.results.get(l.id)?.mark ?? m.label, colour: MEMBER_INFO.lintel.colour });
   }
   for (const m of members.filter((x) => x.b && ["beam", "lintel", "joist", "rafter", "bracing"].includes(x.type))) {
     const colour = fail(m.id) ? "#b8342a" : MEMBER_INFO[m.type].colour;
-    line(m.a, m.b!, colour, m.type === "bracing" ? px * 1.6 : px * 2.2, m.type === "bracing" ? [px * 4, px * 2] : []);
+    const w = m.type === "bracing" ? px * 1.6 : px * 2.2;
+    line(m.a, m.b!, "#ffffff", w + px * 2); // halo, so members stand clear of the underlay
+    line(m.a, m.b!, colour, w, m.type === "bracing" ? [px * 4, px * 2] : []);
     tags.push({ at: { x: (m.a.x + m.b!.x) / 2, y: (m.a.y + m.b!.y) / 2 }, text: m.label, colour });
   }
   for (const m of members.filter((x) => x.type === "post" || x.type === "pile" || x.type === "footing")) {
     const p = P(m.a);
     const colour = fail(m.id) ? "#b8342a" : MEMBER_INFO[m.type].colour;
-    const r = Math.max(5, (m.type === "footing" ? 0.3 : 0.09) * k);
+    const r = Math.max(px * 2.5, (m.type === "footing" ? 0.3 : 0.09) * k);
     ctx.fillStyle = m.type === "footing" ? colour + "33" : colour;
     ctx.strokeStyle = colour;
     ctx.lineWidth = px;
@@ -141,7 +145,7 @@ export async function planImage(model: DesignModel, calcs: Calcs, level: Level, 
   }
 
   // labels
-  const fs = Math.round(Math.max(13, Math.min(22, k * 0.16)));
+  const fs = Math.round(Math.max(16, Math.max(W, H) / 80));
   ctx.font = `600 ${fs}px Consolas, ui-monospace, monospace`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -151,23 +155,23 @@ export async function planImage(model: DesignModel, calcs: Calcs, level: Level, 
     const h = fs * 1.35;
     ctx.fillStyle = "#fff";
     ctx.strokeStyle = t.colour;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = px * 0.8;
     ctx.beginPath();
     if (t.round) ctx.roundRect(p.x - w / 2, p.y - h / 2, w, h, h / 2);
     else ctx.rect(p.x - w / 2, p.y - h / 2, w, h);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = "#1b2530";
+    ctx.fillStyle = t.colour === "#b8342a" ? "#b8342a" : "#1b2530";
     ctx.fillText(t.text, p.x, p.y + 1);
   }
 
   // scale bar
   const bar = wm > 25 ? 10 : wm > 10 ? 5 : 2;
   ctx.fillStyle = "#1b2530";
-  ctx.fillRect(20, H - 28, bar * k, 6);
+  ctx.fillRect(20, H - fs * 1.4, bar * k, px * 2);
   ctx.font = `600 ${fs}px Arial, sans-serif`;
   ctx.textAlign = "left";
-  ctx.fillText(`${bar} m`, 26 + bar * k, H - 25);
+  ctx.fillText(`${bar} m`, 26 + bar * k, H - fs * 1.4 + px);
 
   return { url: canvas.toDataURL("image/png"), w: W, h: H };
 }

@@ -106,7 +106,7 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   26121), and were checked against them member by member:
   `lib/design/calc.ts` (tributary loads, combinations incl. roof live and
   snow, 1 kN midspan point load, deflection caps; sections picked SG8 →
-  hySPAN → PFC/UB within depth and width limits; a beam ending part-way
+  hySPAN → PFC → UB → UC (the full Grade 300 range, lightest first; fy 280 over 17 mm flanges, Ze to AS 4100 5.2) within depth and width limits; a beam ending part-way
   along another passes its reaction on as a point load, and beams are
   designed in that order; posts as SG8 stud packs then
   SHS with k12; joist zones with the NZS 3604 span check and hanger R*; loads

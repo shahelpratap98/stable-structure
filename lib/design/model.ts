@@ -27,7 +27,7 @@ export type MemberType =
   | "retaining";
 export type Material = "timber" | "steel";
 export type TimberGrade = "SG8" | "hySPAN" | "hy90";
-export type Family = "SG8" | "LVL" | "PFC" | "UB";
+export type Family = "SG8" | "LVL" | "PFC" | "UB" | "UC";
 
 export type PlanPlacement = {
   planId: string;
@@ -52,7 +52,7 @@ export type Trib = { floor?: number; wet?: number; roof?: number; wallExt?: numb
 
 export type Sizing = {
   mode: "auto" | "fixed";
-  families?: Family[]; // order tried; default SG8, LVL, PFC, UB
+  families?: Family[]; // order tried; default SG8, LVL, PFC, UB, UC
   minD?: number; // mm
   maxD?: number; // mm, e.g. 250 to stay near flush with 240 joists
   maxB?: number; // mm, e.g. 90 to fit in a 90 wall
