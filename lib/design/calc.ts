@@ -98,6 +98,7 @@ export function lineLoads(t: Trib, p: DesignParams, extraG = 0, extraQ = 0): Loa
   if (t.wet) G += t.wet * (p.Gwet - p.Gf);
   if (t.wallExt) G += t.wallExt * p.gWallExt * p.wallHeight;
   if (t.wallInt) G += t.wallInt * p.gWallInt * p.wallHeight;
+  if (t.wallBlock) G += t.wallBlock * p.gWallBlock * p.wallHeight;
   if (t.roof) {
     G += t.roof * p.Groof;
     Qr += t.roof * p.Qroof;
@@ -466,7 +467,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
     notes:
       "steel" in c.sec
         ? [`Steel fy ${c.sec.steel.fy} MPa (Grade 300 at tf ${c.sec.steel.tf} mm), Ze ${Math.round(c.sec.steel.Ze / 1e3)}×10³ mm³, φ 0.9; full lateral restraint assumed (top flange held by the joists). Bolt a timber packer to the web for joist hangers.`]
-        : [`${c.sec.fam === "LVL" ? "hySPAN: fb 48, fs 5.3 MPa, E 13.2 GPa, φ 0.9" : "SG8 dry: fb 14, fs 3.8 MPa, E 8.0 GPa, φ 0.8"}; k4 = k5 = k8 = 1.0 (compression edge restrained).`],
+        : [`${c.sec.mat.note}${c.sec.mat.size ? ` (fb ${fmt(c.sec.mat.fb, 1)} MPa at ${c.sec.d} deep)` : ""}; k4 = k5 = k8 = 1.0 (compression edge restrained).`],
     ends: { a: c.endA, b: c.endB },
     supportLoads: c.reactions,
     carried: spec.points?.length ? spec.points : undefined,
@@ -480,6 +481,7 @@ export function tribText(t: Trib) {
     t.roof ? `roof ${t.roof} m` : "",
     t.wallExt ? `${t.wallExt} ext wall` : "",
     t.wallInt ? `${t.wallInt} int wall` : "",
+    t.wallBlock ? `${t.wallBlock} block wall` : "",
   ]
     .filter(Boolean)
     .join(" · ");
@@ -882,6 +884,25 @@ export function runCalcs(model: DesignModel): Calcs {
       if (uT > r.ratio) {
         r.ratio = uT;
         r.govName = "NZS 3604 span";
+      }
+      r.status = statusFor(r.ratio);
+    }
+    // Floor vibration, BRANZ SR57: fo = 17.7 / √δ (mm) for a simply supported
+    // span under a UDL, δ here under G + 0.3Q; at least 8 Hz.
+    const jc = fixedCandidate(z.section, z.material, z.grade);
+    if (jc && !("steel" in jc) && r.ratio !== null) {
+      const EIj = (jc.mat.E * jc.b * jc.d ** 3) / 12;
+      const wq = s * ((z.zone.wet ? p.Gwet : p.Gf) + 0.3 * p.Qf); // kN/m = N/mm
+      const dv = (5 * wq * (span * 1000) ** 4) / (384 * EIj);
+      const fo = 17.7 / Math.sqrt(Math.max(dv, 1e-6));
+      const uf = 8 / fo;
+      r.utils.push({ label: "Vibration", u: uf });
+      r.kv.push({ label: "Floor frequency fo = 17.7/√δ", value: `${fmt(fo, 1)} Hz (≥ 8)` });
+      r.checks.push({ name: "Floor vibration (SR57, ≥ 8 Hz)", demand: 8, capacity: fo, unit: "Hz", ratio: uf });
+      r.notes.push("Vibration: fo = 17.7/√δ with δ the midspan deflection under G + 0.3Q (BRANZ SR57). Long spans or light, lively floors may also need the 1 kN point-load check with load sharing between joists.");
+      if (uf > r.ratio) {
+        r.ratio = uf;
+        r.govName = "Vibration";
       }
       r.status = statusFor(r.ratio);
     }

@@ -26,8 +26,8 @@ export type MemberType =
   | "pile"
   | "retaining";
 export type Material = "timber" | "steel";
-export type TimberGrade = "SG8" | "hySPAN" | "hy90";
-export type Family = "SG8" | "LVL" | "PFC" | "UB" | "UC";
+export type TimberGrade = "SG8" | "SG10" | "GL8" | "GL10" | "GL12" | "hySPAN" | "hyONE" | "hy90" | "LVL11";
+export type Family = "SG8" | "SG10" | "GL8" | "GL10" | "GL12" | "LVL" | "HYONE" | "HY90" | "LVL11" | "PFC" | "UB" | "UC";
 
 export type PlanPlacement = {
   planId: string;
@@ -48,7 +48,7 @@ export type Level = {
 
 // What a beam or lintel carries: loaded widths (m) of floor, wet area (extra
 // over floor), roof on plan, and how many first-floor walls sit on it.
-export type Trib = { floor?: number; wet?: number; roof?: number; wallExt?: number; wallInt?: number };
+export type Trib = { floor?: number; wet?: number; roof?: number; wallExt?: number; wallInt?: number; wallBlock?: number };
 
 export type Sizing = {
   mode: "auto" | "fixed";
@@ -126,6 +126,7 @@ export type DesignParams = {
   Su: number; // snow
   gWallExt: number; // external wall, per m2
   gWallInt: number; // internal wall
+  gWallBlock: number; // concrete block wall, per m2
   wallHeight: number; // m, height of walls above (for their weight)
   Ppt: number; // kN, imposed point load at midspan of every beam / lintel
   dPlim: number; // mm, deflection under that point load alone
@@ -184,6 +185,7 @@ export const DEFAULT_PARAMS: DesignParams = {
   Su: 0,
   gWallExt: 0.45,
   gWallInt: 0.3,
+  gWallBlock: 3.0,
   wallHeight: 2.42,
   Ppt: 1.0,
   dPlim: 0.7,

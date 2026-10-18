@@ -829,6 +829,10 @@ export function DesignEditor({
                 onAddLevel={addLevel}
                 onDeleteLevel={deleteLevel}
                 onUpload={upload}
+                onSheetScale={(id, ratio) => {
+                  const l = modelRef.current.levels.find((x) => x.id === id);
+                  if (l?.plan) replacePlacement(l, (ratio * 25.4) / 72 / 1000, l.plan.origin, `${l.name} scale set to 1:${ratio}`);
+                }}
               />
             ) : null}
             {tab === "signoff" ? (

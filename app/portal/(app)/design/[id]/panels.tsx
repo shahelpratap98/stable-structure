@@ -5,7 +5,7 @@ import { ActionForm } from "@/components/action-form";
 import { Spinner } from "@/components/spinner";
 import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
 import { DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
-import { DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
+import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
   BRACE_NAME,
   byLabel,
@@ -170,6 +170,7 @@ function TribEditor({ trib, onChange, locked }: { trib: Trib | undefined; onChan
       <span />
       <NumberField label="Ext. walls above" unit="no." value={t.wallExt} min={0} onCommit={(v) => set("wallExt", v)} />
       <NumberField label="Int. walls above" unit="no." value={t.wallInt} min={0} onCommit={(v) => set("wallInt", v)} />
+      <NumberField label="Block walls above" unit="no." value={t.wallBlock} min={0} onCommit={(v) => set("wallBlock", v)} />
     </fieldset>
   );
 }
@@ -177,7 +178,7 @@ function TribEditor({ trib, onChange, locked }: { trib: Trib | undefined; onChan
 function SizingEditor({ sizing, onChange, locked, fixedSection }: { sizing: Sizing; onChange: (s: Sizing) => void; locked: boolean; fixedSection?: ReactNode }) {
   const fams = sizing.families?.length ? sizing.families : DEFAULT_FAMILIES;
   const toggle = (f: Family, on: boolean) => {
-    const next = DEFAULT_FAMILIES.filter((x) => (x === f ? on : fams.includes(x)));
+    const next = ALL_FAMILIES.filter((x) => (x === f ? on : fams.includes(x)));
     onChange({ ...sizing, families: next.length ? next : fams });
   };
   return (
@@ -196,6 +197,14 @@ function SizingEditor({ sizing, onChange, locked, fixedSection }: { sizing: Sizi
               <Check key={f} label={FAMILY_LABEL[f]} checked={fams.includes(f)} onChange={(v) => toggle(f, v)} />
             ))}
           </div>
+          <details className="text-xs" open={MORE_FAMILIES.some((f) => fams.includes(f))}>
+            <summary className="cursor-pointer font-semibold text-muted">More materials</summary>
+            <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+              {MORE_FAMILIES.map((f) => (
+                <Check key={f} label={FAMILY_LABEL[f]} checked={fams.includes(f)} onChange={(v) => toggle(f, v)} />
+              ))}
+            </div>
+          </details>
           <div className="grid grid-cols-2 gap-2.5">
             <NumberField label="Min depth" unit="mm" value={sizing.minD} min={0} onCommit={(v) => onChange({ ...sizing, minD: v })} />
             <NumberField label="Max depth" unit="mm" value={sizing.maxD} min={0} onCommit={(v) => onChange({ ...sizing, maxD: v })} />
@@ -266,8 +275,14 @@ export function MemberPanel({
           value={m.grade ?? "SG8"}
           options={[
             { value: "SG8", label: "SG8 sawn" },
+            { value: "SG10", label: "SG10 sawn" },
+            { value: "GL8", label: "GL8 glulam" },
+            { value: "GL10", label: "GL10 glulam" },
+            { value: "GL12", label: "GL12 glulam" },
             { value: "hySPAN", label: "hySPAN LVL" },
+            { value: "hyONE", label: "hyONE LVL" },
             { value: "hy90", label: "hy90 LVL" },
+            { value: "LVL11", label: "NelsonPine LVL11" },
           ]}
           onChange={(v) => set({ grade: v }, `grade ${v}`)}
         />
@@ -841,6 +856,35 @@ export function SchedulePanel({ model, calcs, selectedId, onPick }: { model: Des
 
 // ---------------------------------------------------------------- levels and plans
 
+// Most framing plans are drawn to a stated scale: 1:100 on A3 and so on. One
+// PDF point is 1/72 inch, so 1:N is N × 0.3528 mm of real length per point.
+const MM_PER_PT = 25.4 / 72;
+function SheetScale({ scale, locked, onApply }: { scale: number | null; locked: boolean; onApply: (ratio: number) => void }) {
+  const [v, setV] = useState(scale ? String(Math.round(scale / (MM_PER_PT / 1000))) : "");
+  const n = Number(v);
+  return (
+    <form
+      className="mt-2 flex items-end gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (n >= 1 && n <= 5000) onApply(n);
+      }}
+    >
+      <label className="flex flex-col gap-1">
+        <span className="text-xs font-semibold text-muted">Sheet scale</span>
+        <span className="flex items-center gap-1 text-sm">
+          1:
+          <input className="field w-20 py-1 text-sm tabular-nums" inputMode="numeric" value={v} disabled={locked} onChange={(e) => setV(e.target.value)} placeholder="100" aria-label="Sheet scale ratio" />
+        </span>
+      </label>
+      <button type="submit" className="btn btn-quiet px-2.5 py-1 text-xs" disabled={locked || !(n >= 1 && n <= 5000)}>
+        Set
+      </button>
+      <span className="pb-1.5 text-xs text-muted">as printed on the plan, for sheets at their true size</span>
+    </form>
+  );
+}
+
 export function LevelsPanel({
   model,
   plans,
@@ -852,7 +896,9 @@ export function LevelsPanel({
   onAddLevel,
   onDeleteLevel,
   onUpload,
+  onSheetScale,
 }: {
+  onSheetScale: (levelId: string, ratio: number) => void;
   model: DesignModel;
   plans: PlanFile[];
   activeLevelId: string;
@@ -961,6 +1007,7 @@ export function LevelsPanel({
                     </select>
                   </label>
                 </fieldset>
+                {plan && l.plan ? <SheetScale key={`${l.id}:${l.plan.scale ?? 0}`} scale={l.plan.scale} locked={locked} onApply={(n) => onSheetScale(l.id, n)} /> : null}
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
                   <span>
                     {count} {count === 1 ? "member" : "members"}
@@ -999,6 +1046,7 @@ export const PARAM_META: [keyof DesignParams, string, string, string][] = [
   ["Su", "Roof snow Su", "kPa", "0 where the site has no snow"],
   ["gWallExt", "External wall", "kPa", "cladding, framing, lining"],
   ["gWallInt", "Internal wall", "kPa", "framing and linings"],
+  ["gWallBlock", "Block wall", "kPa", "15 series fully grouted ≈ 0.14 m × 22 kN/m³; less if partly filled"],
   ["wallHeight", "Height of walls above", "m", "for the weight of walls carried"],
   ["Ppt", "Point load at midspan", "kN", "imposed, every beam and lintel; 0 = off"],
   ["dPlim", "Deflection under that point load", "mm", "PL³/48EI"],

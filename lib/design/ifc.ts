@@ -10,6 +10,7 @@
 
 import type { Calcs } from "./calc";
 import { allParts, type Part } from "./geometry";
+import { FAMILY_LABEL } from "./materials";
 import { describeMember, MEMBER_INFO, type DesignModel, type Member } from "./model";
 
 const B64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
@@ -211,6 +212,6 @@ function materialName(m: Member, fam?: string) {
   if (m.type === "bracing") return "GIB bracing element";
   if (m.type === "pile") return "H5 timber";
   if (fam === "PFC" || fam === "UB" || fam === "UC" || fam === "SHS" || m.material === "steel") return "Steel";
-  if (fam === "LVL" || m.grade === "hySPAN" || m.grade === "hy90") return "hySPAN LVL";
-  return "SG8 timber";
+  if (fam && fam in FAMILY_LABEL) return FAMILY_LABEL[fam as keyof typeof FAMILY_LABEL];
+  return m.grade && m.grade !== "SG8" ? `${m.grade} timber` : "SG8 timber";
 }
