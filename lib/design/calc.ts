@@ -17,7 +17,7 @@ import { designPortal } from "./lateral";
 import { designConcreteBeam } from "./concrete";
 import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
 import { solveBeam } from "./frame";
-import { candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
+import { ALL_FAMILIES, candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, KEY_GRADE, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
 
@@ -806,7 +806,45 @@ const SUPPORT = new Set(["post", "pile", "footing"]);
 const add = (a: Loads, b: Loads, k = 1): Loads => ({ G: a.G + k * b.G, Qf: a.Qf + k * b.Qf, Qr: a.Qr + k * b.Qr, S: a.S + k * b.S });
 const ZERO: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 };
 
+// Members sharing a mark (a typical beam B2.8 drawn as several spans) take
+// one section: the largest any of them needs. The model is calculated once,
+// the governing section of each group fixed on its members, then again.
 export function runCalcs(model: DesignModel): Calcs {
+  const first = runCalcsOnce(model);
+  const groups = new Map<string, Member[]>();
+  for (const m of model.members)
+    if ((m.type === "beam" || m.type === "lintel") && m.material !== "concrete" && (m.sizing?.mode ?? "auto") === "auto") groups.set(`${m.type}|${m.label}`, [...(groups.get(`${m.type}|${m.label}`) ?? []), m]);
+  const size = (r: Result | undefined) => {
+    const sec = r?.sec;
+    if (!sec) return -1;
+    const steel = findSteel(sec.name);
+    return steel ? 1e6 + steel.kgm : (isTimberFam(sec.fam) ? ALL_FAMILIES.indexOf(sec.fam) * 1e5 : 0) + sec.d * 100 + sec.b;
+  };
+  const fix = new Map<string, Partial<Member>>();
+  for (const ms of groups.values()) {
+    if (ms.length < 2) continue;
+    const rs = ms.map((m) => first.results.get(m.id));
+    const top = rs.reduce((best, r) => (size(r) > size(best) ? r : best), rs[0]);
+    if (!top?.sec || rs.every((r) => r?.sec?.name === top.sec!.name)) continue;
+    const steel = findSteel(top.sec.name);
+    const patch: Partial<Member> = steel
+      ? { material: "steel", section: steel.name, sizing: { mode: "fixed" } }
+      : isTimberFam(top.sec.fam)
+        ? { material: "timber", grade: KEY_GRADE[top.sec.fam] as Member["grade"], section: top.sec.name.split(" ")[0].replace(/×/g, "x"), sizing: { mode: "fixed" } }
+        : {};
+    if (!patch.section) continue;
+    for (const m of ms) if (first.results.get(m.id)?.sec?.name !== top.sec.name) fix.set(m.id, { ...patch, sizing: { ...(m.sizing ?? { mode: "auto" }), mode: "fixed", dlim: m.sizing?.dlim } });
+  }
+  if (!fix.size) return first;
+  const second = runCalcsOnce({ ...model, members: model.members.map((m) => (fix.has(m.id) ? { ...m, ...fix.get(m.id) } : m)) });
+  for (const id of fix.keys()) {
+    const r = second.results.get(id);
+    if (r) r.notes.push(`Typical mark: sized with the other ${r.mark} members, which need ${r.sec?.name ?? "this section"}.`);
+  }
+  return second;
+}
+
+function runCalcsOnce(model: DesignModel): Calcs {
   const p = model.params;
   const results = new Map<string, Result>();
   const lintels = wallLintels(model);

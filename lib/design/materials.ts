@@ -235,6 +235,8 @@ export const findSteel = (section: string) => {
 
 // member grade (as stored) -> material
 const GRADE_KEY: Record<string, TimberKey> = { SG8: "SG8", SG10: "SG10", GL8: "GL8", GL10: "GL10", GL12: "GL12", hySPAN: "LVL", hyONE: "HYONE", hy90: "HY90", LVL11: "LVL11" };
+// material key -> the grade stored on a member
+export const KEY_GRADE: Record<TimberKey, string> = { SG8: "SG8", SG10: "SG10", GL8: "GL8", GL10: "GL10", GL12: "GL12", LVL: "hySPAN", HYONE: "hyONE", HY90: "hy90", LVL11: "LVL11" };
 
 // A fixed (user-chosen) section as a candidate, or null if it isn't in the library.
 export function fixedCandidate(section: string, material: "timber" | "steel" | "concrete", grade?: string): Candidate | null {
