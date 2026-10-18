@@ -12,7 +12,7 @@
 
 import { braceCalcs, type BracingSheet } from "./bracing";
 import { solveBeam } from "./frame";
-import { candidates, fixedCandidate, FAMILY_LABEL, FY, ES, SG8, type Candidate } from "./materials";
+import { candidates, fixedCandidate, FAMILY_LABEL, FY, ES, SG8, type Candidate, type SteelSec } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
 
@@ -145,6 +145,7 @@ type BeamCheck = {
   endA: Loads; // unfactored reactions, the midspan point load included as Qf
   endB: Loads;
   reactions?: { at: number; loads: Loads }[]; // every support, for beams over more than two
+  ltb?: { phiMb: number; Mo: number; as: number; am: number } | null; // when lateral-torsional buckling governs the steel capacity
 };
 
 function selfWeight(sec: Candidate) {
@@ -153,7 +154,7 @@ function selfWeight(sec: Candidate) {
 
 const pointComp = (c: Combo, q: PointLoad) => c.G * q.G + c.Qf * q.Qf + c.Qr * q.Qr + c.S * q.S;
 
-function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; supports?: number[] }): BeamCheck {
+function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; supports?: number[]; restraint?: "full" | "ends"; segment?: number }): BeamCheck {
   if (opts.supports && !(opts.supports.length === 2 && opts.supports[0] < 1e-6 && Math.abs(opts.supports[1] - span) < 1e-6)) return checkMulti(span, opts.supports, base, sec, p, opts);
   const L = span;
   const Lmm = L * 1000;
@@ -183,6 +184,8 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
     phiMg = 0,
     Vg = 0,
     phiVg = 0;
+  let ltb: LtbInfo | null = null,
+    ltbGov: LtbInfo | null = null;
   for (const c of cs) {
     let M = 0;
     for (const x of xs) {
@@ -196,6 +199,13 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
     if ("steel" in sec) {
       phiM = (0.9 * sec.steel.fy * sec.steel.Ze) / 1e6;
       phiV = (0.9 * 0.6 * FY * sec.steel.d * sec.steel.tw) / 1e3;
+      if (opts.restraint === "ends") {
+        // compression flange free between restraints: le = 1.4 × segment (gravity load on the top flange)
+        const mAt = (x: number) => (c.w * x * (L - x)) / 2 + c.pf * P * mPt(x, L / 2) + pts.reduce((acc, q) => acc + pointComp(c, q) * mPt(x, q.at), 0);
+        const am = opts.segment ? 1 : alphaM(M, mAt(L / 4), mAt(L / 2), mAt((3 * L) / 4));
+        ltb = steelPhiMb(sec.steel, 1.4 * (opts.segment || L), am);
+        phiM = Math.min(phiM, ltb.phiMb);
+      }
     } else {
       const t = sec.mat;
       phiM = (t.phi * c.k1 * t.fb * sec.b * sec.d * sec.d) / 6 / 1e6;
@@ -206,6 +216,7 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
       gov = c.name;
       Mg = M;
       phiMg = phiM;
+      ltbGov = ltb;
     }
     if (V / phiV > uV) {
       uV = V / phiV;
@@ -235,7 +246,7 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
     pts.reduce((a, q) => ({ G: a.G + q.G * frac(q), Qf: a.Qf + q.Qf * frac(q), Qr: a.Qr + q.Qr * frac(q), S: a.S + q.S * frac(q) }), { ...half });
   const endA = share((q) => (L - q.at) / L);
   const endB = share((q) => q.at / L);
-  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB };
+  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB, ltb: ltbGov };
 }
 
 // Beams over more than two supports, or with an overhang: solved with the
@@ -243,7 +254,7 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
 // unit load case is solved once (EI = 1) and combined per combination; live
 // load is patterned (all spans, odd spans, even spans).
 type MultiCase = { M: number[]; V: number[]; d: number[]; R: number[] };
-function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[] }): BeamCheck {
+function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; restraint?: "full" | "ends"; segment?: number }): BeamCheck {
   const sup = [...new Set(supports.map((s) => Math.round(s * 1e4) / 1e4))].sort((a, b) => a - b);
   const sw = opts.selfWeight === false ? 0 : selfWeight(sec);
   const l = { ...base, G: base.G + sw };
@@ -286,20 +297,38 @@ function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, 
     phiMg = 0,
     Vg = 0,
     phiVg = 0;
+  let ltb: LtbInfo | null = null,
+    ltbGov: LtbInfo | null = null;
   for (const c of cs) {
     const q = c.Qf * l.Qf + c.Qr * l.Qr + c.S * l.S;
     let M = 0,
-      V = 0;
+      V = 0,
+      worstPhi = 1e12;
     for (const pat of patterns)
       for (let at = c.pf && P ? 0 : -1; at < (c.pf && P ? mids.length : 0); at++) {
         const m = field("M", c.G * l.G, q, pat, (qq) => pointComp(c, qq), c.pf * P, at);
         const v = field("V", c.G * l.G, q, pat, (qq) => pointComp(c, qq), c.pf * P, at);
-        M = Math.max(M, ...m.map(Math.abs));
         V = Math.max(V, ...v.map(Math.abs));
+        if ("steel" in sec && opts.restraint === "ends") {
+          // each span between supports is a segment; overhangs are cantilevers (kl 2.0, am 1.25)
+          regions.forEach((r) => {
+            const idx = xs.map((x, i) => [x, i] as const).filter(([x]) => x >= r.x0 - 1e-9 && x <= r.x1 + 1e-9);
+            const Mk = Math.max(0, ...idx.map(([, i]) => Math.abs(m[i])));
+            const at = (f: number) => Math.abs(m[idx.reduce((b, [x, i]) => (Math.abs(x - (r.x0 + f * (r.x1 - r.x0))) < Math.abs(xs[b] - (r.x0 + f * (r.x1 - r.x0))) ? i : b), idx[0][1])]);
+            const len = r.x1 - r.x0;
+            const cap = r.cant ? steelPhiMb(sec.steel, 2.0 * len, 1.25) : steelPhiMb(sec.steel, 1.4 * (opts.segment || len), opts.segment ? 1 : alphaM(Mk, at(0.25), at(0.5), at(0.75)));
+            const phi = Math.min((0.9 * sec.steel.fy * sec.steel.Ze) / 1e6, cap.phiMb);
+            if (Mk / phi > M / Math.max(1e-9, worstPhi)) {
+              M = Mk;
+              worstPhi = phi;
+              ltb = cap;
+            }
+          });
+        } else M = Math.max(M, ...m.map(Math.abs));
       }
     let phiM: number, phiV: number;
     if ("steel" in sec) {
-      phiM = (0.9 * sec.steel.fy * sec.steel.Ze) / 1e6;
+      phiM = opts.restraint === "ends" && worstPhi < 1e12 ? worstPhi : (0.9 * sec.steel.fy * sec.steel.Ze) / 1e6;
       phiV = (0.9 * 0.6 * FY * sec.steel.d * sec.steel.tw) / 1e3;
     } else {
       const t = sec.mat;
@@ -311,6 +340,7 @@ function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, 
       gov = c.name;
       Mg = M;
       phiMg = phiM;
+      ltbGov = ltb;
     }
     if (V / phiV > uV) {
       uV = V / phiV;
@@ -362,7 +392,7 @@ function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, 
   const zero: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 };
   const endA = reactions.find((r) => r.at < 1e-6)?.loads ?? zero;
   const endB = reactions.find((r) => Math.abs(r.at - L) < 1e-6)?.loads ?? zero;
-  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB, reactions };
+  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB, reactions, ltb: ltbGov };
 }
 
 export const rStar = (e: Loads) => Math.max(1.35 * e.G, 1.2 * e.G + 1.5 * e.Qf, 1.2 * e.G + 1.5 * e.Qr + 0.4 * e.Qf, 1.2 * e.G + e.S + 0.4 * e.Qf);
@@ -371,7 +401,7 @@ function secInfo(c: Candidate): SecInfo {
   return "steel" in c ? { name: c.name, fam: c.fam, b: c.b, d: c.d, tw: c.steel.tw, tf: c.steel.tf } : { name: c.name, fam: c.fam, b: c.b, d: c.d };
 }
 
-type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[]; supports?: number[] };
+type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[]; supports?: number[]; restraint?: "full" | "ends"; segment?: number };
 
 function designBeam(spec: BeamSpec, p: DesignParams): Result {
   const base: Result = { memberId: spec.id, mark: spec.mark, status: "none", ratio: null, summary: "", utils: [], kv: [], inputs: [], loads: [], checks: [], notes: [] };
@@ -382,7 +412,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
   let seq: SeqRow[] | undefined;
   if (spec.sizing.mode === "fixed") {
     if (!spec.fixed) return { ...base, summary: "Section not in the library (use e.g. 2/240x45, or 250PFC for steel)." };
-    chosen = checkBeam(spec.span, loads, spec.fixed, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports });
+    chosen = checkBeam(spec.span, loads, spec.fixed, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports, restraint: spec.restraint, segment: spec.segment });
   } else {
     const all = candidates(spec.sizing, spec.fallbackMaxD);
     const fams = [...new Set(all.map((c) => c.fam))];
@@ -393,7 +423,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       let best: BeamCheck | null = null;
       let pass: BeamCheck | null = null;
       for (const c of all.filter((x) => x.fam === f)) {
-        const r = checkBeam(spec.span, loads, c, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports });
+        const r = checkBeam(spec.span, loads, c, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports, restraint: spec.restraint, segment: spec.segment });
         if (!best || r.util < best.util) best = r;
         if (r.ok) {
           pass = r;
@@ -413,6 +443,29 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
 
   const c = chosen;
   const status = statusFor(c.util);
+  // web bearing at each support and point load (cl 5.13), assuming 90 mm stiff bearing at supports and 50 mm under point loads
+  const webChecks: Check[] = [];
+  const webNotes: string[] = [];
+  if ("steel" in c.sec) {
+    const st = c.sec.steel;
+    const sups = c.reactions ?? [
+      { at: 0, loads: c.endA },
+      { at: spec.span, loads: c.endB },
+    ];
+    for (const r of sups) {
+      const end = r.at < 1e-6 || Math.abs(r.at - spec.span) < 1e-6;
+      const R = rStar(r.loads);
+      const cap = webBearing(st, 90, end);
+      webChecks.push({ name: `Web bearing at ${fmt(r.at)} m`, demand: R, capacity: cap, unit: "kN", ratio: R / cap });
+      if (R > cap) webNotes.push(`Web bearing at ${fmt(r.at)} m: R* ${fmt(R, 1)} kN > φRb ${fmt(cap, 1)} kN; fit load-bearing stiffeners (AS 4100 cl 5.14).`);
+    }
+    for (const q of spec.points ?? []) {
+      const R = rStar(q);
+      const cap = webBearing(st, 50, false);
+      webChecks.push({ name: `Web bearing under ${q.from}`, demand: R, capacity: cap, unit: "kN", ratio: R / cap });
+      if (R > cap) webNotes.push(`Web bearing under ${q.from}: R* ${fmt(R, 1)} kN > φRb ${fmt(cap, 1)} kN; fit stiffeners or a bearing plate.`);
+    }
+  }
   const downstand = spec.flush ? Math.max(0, c.sec.d - 240) : null;
   return {
     ...base,
@@ -431,7 +484,8 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
     ],
     kv: [
       { label: `M* (${c.gov})`, value: `${fmt(c.M, 1)} kNm` },
-      { label: "φMn", value: `${fmt(c.phiM, 1)} kNm` },
+      { label: c.ltb ? "φMb (lateral-torsional buckling)" : "φMn", value: `${fmt(c.phiM, 1)} kNm` },
+      ...(c.ltb ? [{ label: "Mo / αs / αm", value: `${fmt(c.ltb.Mo, 1)} kNm / ${fmt(c.ltb.as)} / ${fmt(c.ltb.am)}` }] : []),
       { label: "V*", value: `${fmt(c.V, 1)} kN` },
       { label: "φVn", value: `${fmt(c.phiV, 1)} kN` },
       { label: "δ long-term", value: `${fmt(c.dl, 1)} / ${fmt(c.limL, 1)} mm` },
@@ -463,10 +517,18 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       { name: "Deflection, long term", demand: c.dl, capacity: c.limL, unit: "mm", ratio: c.uDl },
       { name: "Deflection, short term", demand: c.ds, capacity: c.limS, unit: "mm", ratio: c.uDs },
       ...(spec.point && p.Ppt > 0 ? [{ name: "Deflection, point load", demand: c.dP, capacity: p.dPlim, unit: "mm", ratio: c.uDp }] : []),
+      ...webChecks,
     ],
     notes:
       "steel" in c.sec
-        ? [`Steel fy ${c.sec.steel.fy} MPa (Grade 300 at tf ${c.sec.steel.tf} mm), Ze ${Math.round(c.sec.steel.Ze / 1e3)}×10³ mm³, φ 0.9; full lateral restraint assumed (top flange held by the joists). Bolt a timber packer to the web for joist hangers.`]
+        ? [
+            `Steel fy ${c.sec.steel.fy} MPa (Grade 300 at tf ${c.sec.steel.tf} mm), Ze ${Math.round(c.sec.steel.Ze / 1e3)}×10³ mm³, φ 0.9; ${
+              spec.restraint === "ends"
+                ? `compression flange restrained at ${spec.segment ? `${fmt(spec.segment)} m centres` : "supports only"}: AS 4100 cl 5.6.1 with le = 1.4 × segment (top-flange load), overhangs kl 2.0 and αm 1.25`
+                : `full lateral restraint assumed (top flange held by the joists)${c.reactions ? "; over intermediate supports the bottom flange is in compression: brace it at the posts" : ""}`
+            }. Bolt a timber packer to the web for joist hangers.`,
+            ...webNotes,
+          ]
         : [`${c.sec.mat.note}${c.sec.mat.size ? ` (fb ${fmt(c.sec.mat.fb, 1)} MPa at ${c.sec.d} deep)` : ""}; k4 = k5 = k8 = 1.0 (compression edge restrained).`],
     ends: { a: c.endA, b: c.endB },
     supportLoads: c.reactions,
@@ -620,6 +682,43 @@ const SHS: [number, number, number, number][] = [
 
 // AS 4100 cl 6.3.3 member capacity of a pin-ended SHS post of height h (m):
 // cold-formed, so alpha_b = -0.5; phi 0.9, fy 350.
+// ---------------------------------------------------------------- steel member checks (AS 4100 / NZS 3404.1)
+
+// Member slenderness reduction alpha_c (cl 6.3.3) for modified slenderness ln and section constant ab.
+function alphaC(ln: number, ab: number) {
+  const aa = (2100 * (ln - 13.5)) / (ln * ln - 15.3 * ln + 2050);
+  const l = ln + aa * ab;
+  const eta = Math.max(0, 0.00326 * (l - 13.5));
+  const q = (l / 90) ** 2;
+  const xi = (q + 1 + eta) / (2 * q);
+  return Math.min(1, xi * (1 - Math.sqrt(Math.max(0, 1 - (90 / (xi * l)) ** 2))));
+}
+
+const GS = 80000; // MPa
+type LtbInfo = { phiMb: number; Mo: number; as: number; am: number };
+// Lateral-torsional buckling, cl 5.6.1.1: phi·Mb = phi·am·as·Ms <= phi·Ms (kN·m), le in m.
+function steelPhiMb(s: SteelSec, le: number, am: number) {
+  const L = le * 1000;
+  const Ms = s.fy * s.Ze;
+  const Mo = Math.sqrt(((Math.PI ** 2 * ES * s.Iy) / L ** 2) * (GS * s.J + (Math.PI ** 2 * ES * s.Iw) / L ** 2));
+  const as = 0.6 * (Math.sqrt((Ms / Mo) ** 2 + 3) - Ms / Mo);
+  return { phiMb: (0.9 * Math.min(Ms, am * as * Ms)) / 1e6, Mo: Mo / 1e6, as, am };
+}
+// Moment modification factor, cl 5.6.1.1(a)(iii), from the peak and quarter-point moments.
+const alphaM = (Mm: number, M2: number, M3: number, M4: number) => Math.min(2.5, (1.7 * Mm) / Math.max(1e-9, Math.sqrt(M2 * M2 + M3 * M3 + M4 * M4)));
+
+// Web bearing under a concentrated load or reaction, cl 5.13: bearing yield and buckling.
+// bs = stiff bearing length (mm); end = at the end of the member.
+function webBearing(s: SteelSec, bs: number, end: boolean) {
+  const bbf = end ? bs + 2.5 * s.tf : bs + 5 * s.tf;
+  const d1 = s.d - 2 * s.tf;
+  const yieldCap = (0.9 * 1.25 * bbf * s.tw * s.fy) / 1e3;
+  const bb = end ? bbf + 0.5 * d1 : bbf + d1;
+  const ln = ((2.5 * d1) / s.tw) * Math.sqrt(s.fy / 250);
+  const buckle = (0.9 * alphaC(ln, 0.5) * bb * s.tw * s.fy) / 1e3;
+  return Math.min(yieldCap, buckle);
+}
+
 function shsCapacity(A: number, I: number, h: number) {
   const fy = 350;
   const r = Math.sqrt(I / A);
@@ -921,6 +1020,8 @@ export function runCalcs(model: DesignModel): Calcs {
         flush: m.type === "beam" && loadKind(model, level) === "floor",
         points,
         supports: beamSupports(m),
+        restraint: m.restraint,
+        segment: m.segment,
       };
       const res = designBeam(spec, p);
       const tn = tribOf(m).note;

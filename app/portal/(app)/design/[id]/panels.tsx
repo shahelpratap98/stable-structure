@@ -330,6 +330,20 @@ export function MemberPanel({
               onChange={(v) => set({ free: v === "both" ? undefined : v }, v === "both" ? "supported both ends" : `end ${v === "a" ? 1 : 2} free`)}
             />
           ) : null}
+          {m.type === "beam" || m.type === "lintel" ? (
+            <Select
+              label="Steel: lateral restraint"
+              value={m.restraint ?? "full"}
+              options={[
+                { value: "full", label: "Top flange held by joists" },
+                { value: "ends", label: "At supports only" },
+              ]}
+              onChange={(v) => set({ restraint: v === "full" ? undefined : v }, v === "full" ? "fully restrained" : "restrained at supports")}
+            />
+          ) : null}
+          {(m.type === "beam" || m.type === "lintel") && m.restraint === "ends" ? (
+            <NumberField label="Restraints at" unit="m" value={m.segment} min={0.3} placeholder="supports only" onCommit={(v) => set({ segment: v }, `restraint spacing ${v ?? "supports"}`)} />
+          ) : null}
           {m.type === "joist" || m.type === "rafter" ? <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} /> : null}
           {m.type === "post" ? <NumberField label="Height" unit="m" value={m.height} min={0.1} placeholder="storey height" onCommit={(v) => set({ height: v }, "height")} /> : null}
           {m.type === "footing" || m.type === "pile" ? sectionField : null}

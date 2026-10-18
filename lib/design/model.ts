@@ -113,6 +113,8 @@ export type Member = {
   rw?: RetainSpec;
   height?: number; // m, post height override
   free?: "a" | "b"; // beams: this end is unsupported (a cantilever)
+  restraint?: "full" | "ends"; // steel beams: compression flange held continuously (default) or only at supports
+  segment?: number; // m, spacing of intermediate lateral restraints when restraint is "ends"
   notes?: string;
 };
 
