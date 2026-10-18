@@ -498,6 +498,73 @@ function defaultTrib(model: DesignModel, m: Member): Trib {
   return roof ? { roof: 1.0 } : { floor: 1.0 };
 }
 
+// Loads read off the drawing, for a beam or lintel with nothing typed in:
+// joist zones on its own level whose joists land on it (half their span; a
+// zone on roof framing counts as roof), and walls on the level above standing
+// along it. A zone or wall covering only part of the beam is averaged over its
+// length.
+export function autoTrib(model: DesignModel, m: Member): { trib: Trib; from: string[]; partial: boolean } | null {
+  if (!m.b) return null;
+  const L = memberLength(m);
+  if (L < 0.1) return null;
+  const ux = (m.b.x - m.a.x) / L,
+    uy = (m.b.y - m.a.y) / L;
+  const level = levelOf(model, m.levelId);
+  const roof = loadKind(model, level) === "roof";
+  const t: Required<Trib> = { floor: 0, wet: 0, roof: 0, wallExt: 0, wallInt: 0, wallBlock: 0 };
+  const from: string[] = [];
+  let partial = false;
+  const TOL = 0.3;
+  const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, Math.min(Math.max(a0, a1), Math.max(b0, b1)) - Math.max(Math.min(a0, a1), Math.min(b0, b1)));
+  for (const z of model.members) {
+    if (z.type !== "joistzone" || !z.b || !z.zone || z.levelId !== m.levelId) continue;
+    const x0 = Math.min(z.a.x, z.b.x),
+      x1 = Math.max(z.a.x, z.b.x),
+      y0 = Math.min(z.a.y, z.b.y),
+      y1 = Math.max(z.a.y, z.b.y);
+    // joists running along y bear on the zone's top and bottom edges (lines of constant y)
+    const alongY = z.zone.dir === "y";
+    if (alongY ? Math.abs(uy) > 0.1 : Math.abs(ux) > 0.1) continue; // beam must run across the joists
+    const c = alongY ? (m.a.y + m.b.y) / 2 : (m.a.x + m.b.x) / 2;
+    const edges = alongY ? [y0, y1] : [x0, x1];
+    if (!edges.some((e) => Math.abs(c - e) <= TOL)) continue;
+    const ov = alongY ? overlap(m.a.x, m.b.x, x0, x1) : overlap(m.a.y, m.b.y, y0, y1);
+    if (ov < 0.1) continue;
+    const frac = Math.min(1, ov / L);
+    if (frac < 0.98) partial = true;
+    const half = ((alongY ? y1 - y0 : x1 - x0) / 2) * frac;
+    if (roof) t.roof += half;
+    else {
+      t.floor += half;
+      if (z.zone.wet) t.wet += half;
+    }
+    from.push(z.label);
+  }
+  const above = levelAbove(model, level);
+  if (above)
+    for (const w of model.members) {
+      if (w.type !== "wall" || !w.b || w.levelId !== above.id) continue;
+      // both ends of the wall on the beam's line
+      const off = (q: Pt) => Math.abs((q.x - m.a.x) * uy - (q.y - m.a.y) * ux);
+      if (off(w.a) > 0.15 || off(w.b) > 0.15) continue;
+      const s0 = (w.a.x - m.a.x) * ux + (w.a.y - m.a.y) * uy,
+        s1 = (w.b.x - m.a.x) * ux + (w.b.y - m.a.y) * uy;
+      const ov = overlap(s0, s1, 0, L);
+      if (ov < 0.1) continue;
+      const frac = Math.min(1, ov / L);
+      if (frac < 0.98) partial = true;
+      const kind = w.wall?.kind ?? "ext";
+      if (kind === "block") t.wallBlock += frac;
+      else if (kind === "int") t.wallInt += frac;
+      else t.wallExt += frac;
+      from.push(w.label);
+    }
+  if (!from.length) return null;
+  const r = (v: number) => Math.round(v * 100) / 100;
+  const trib: Trib = Object.fromEntries(Object.entries(t).filter(([, v]) => v > 1e-6).map(([k, v]) => [k, r(v)]));
+  return { trib, from, partial };
+}
+
 // ---------------------------------------------------------------- wall openings
 
 export function wallLintels(model: DesignModel): VirtualLintel[] {
@@ -805,6 +872,16 @@ export function runCalcs(model: DesignModel): Calcs {
     return inner.length || m.free ? at : undefined;
   };
 
+  // typed-in loads win; otherwise read them off the drawing; otherwise 1 m of floor or roof
+  const tribOf = (m: Member): { trib: Trib; note?: string } => {
+    if (m.trib && Object.values(m.trib).some((v) => v)) return { trib: m.trib };
+    if (m.type !== "joist" && m.type !== "rafter") {
+      const a = autoTrib(model, m);
+      if (a) return { trib: a.trib, note: `from the drawing: ${a.from.join(", ")}${a.partial ? " (part-length loads averaged over the span)" : ""}` };
+    }
+    return { trib: defaultTrib(model, m), note: "assumed: nothing typed in or found on the drawing" };
+  };
+
   const levelsDown = [...model.levels].sort((a, b) => b.elevation - a.elevation);
   const onLevel = (m: Member, l: Level) => m.levelId === l.id || (l === levelsDown[levelsDown.length - 1] && !levelOf(model, m.levelId));
   for (const lvl of levelsDown) {
@@ -833,7 +910,7 @@ export function runCalcs(model: DesignModel): Calcs {
         mark: m.label,
         role: m.role || `${MEMBER_INFO[m.type].label}${level ? ` · ${level.name}` : ""}`,
         span: memberLength(m),
-        trib: m.trib && Object.values(m.trib).some((v) => v) ? m.trib : defaultTrib(model, m),
+        trib: tribOf(m).trib,
         extraG: m.extraG,
         extraQ: m.extraQ,
         sizing,
@@ -846,6 +923,8 @@ export function runCalcs(model: DesignModel): Calcs {
         supports: beamSupports(m),
       };
       const res = designBeam(spec, p);
+      const tn = tribOf(m).note;
+      if (tn) res.loads = res.loads.map((l) => (l.label === "Tributary" ? { ...l, note: tn } : l));
       // ends resting on another beam don't also load a post
       for (const b of bearings.get(m.id) ?? []) res.kv.push({ label: `End ${b.end === "a" ? "1" : "2"} bears on`, value: results.get(b.carrier)?.mark ?? byId.get(b.carrier)?.label ?? "" });
       results.set(m.id, res);

@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState, type ReactNode } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Spinner } from "@/components/spinner";
 import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
-import { DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
+import { autoTrib, DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
 import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
   BRACE_NAME,
@@ -364,7 +364,7 @@ export function MemberPanel({
             {single ? (
               <p className="mb-2 text-xs text-muted">Leave blank to use the member spacing on the {loadSurface(model, m)}.</p>
             ) : (
-              <p className="mb-2 text-xs text-muted">Loaded widths each side added together. Blank uses 1 m of {loadSurface(model, m)}.</p>
+              <AutoTribHint model={model} m={m} surface={loadSurface(model, m)} />
             )}
             <TribEditor trib={m.trib} locked={locked} onChange={(t) => set({ trib: t }, `loads ${tribText(t) || "default"}`)} />
             <fieldset disabled={locked} className="mt-2.5 grid grid-cols-2 gap-2.5">
@@ -433,6 +433,26 @@ export function MemberPanel({
 
       {result ? <CalcSheet result={result} /> : null}
     </div>
+  );
+}
+
+// What the beam will carry if nothing is typed in: read off the drawing.
+function AutoTribHint({ model, m, surface }: { model: DesignModel; m: Member; surface: string }) {
+  const typed = m.trib && Object.values(m.trib).some((v) => v);
+  const a = typed ? null : autoTrib(model, m);
+  return (
+    <p className="mb-2 text-xs text-muted">
+      Loaded widths each side added together.{" "}
+      {typed ? (
+        "Clear them to read the loads off the drawing instead."
+      ) : a ? (
+        <>
+          Blank, so taken from the drawing: <span className="font-semibold text-ink">{tribText(a.trib)}</span> ({a.from.join(", ")}){a.partial ? ", part-length loads averaged" : ""}.
+        </>
+      ) : (
+        <>Blank, and no joist zones or walls above found on it, so 1 m of {surface} is assumed.</>
+      )}
+    </p>
   );
 }
 
@@ -672,7 +692,10 @@ export function CalcSheet({ result }: { result: Result }) {
             {result.loads.map((l) => (
               <div key={l.label} className="contents">
                 <dt className="text-muted">{l.label}</dt>
-                <dd className="text-right font-mono tabular-nums">{l.value}</dd>
+                <dd className="text-right font-mono tabular-nums">
+                  {l.value}
+                  {l.note ? <span className="block font-sans text-[11px] text-muted">{l.note}</span> : null}
+                </dd>
               </div>
             ))}
           </dl>
