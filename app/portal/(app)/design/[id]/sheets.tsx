@@ -59,7 +59,7 @@ export function Sheets({ model, calcs, job, onPick }: { model: DesignModel; calc
   const zones = model.members.filter((m) => m.type === "joistzone").sort(byLabel);
   const walls = model.members.filter((m) => m.type === "wall").sort(byLabel);
   const rws = model.members.filter((m) => m.type === "retaining").sort(byLabel);
-  const supports = model.members.filter((m) => m.type === "pile" || m.type === "footing").sort(byLabel);
+  const supports = model.members.filter((m) => m.type === "pile" || m.type === "footing" || m.type === "raft").sort(byLabel);
   const p = model.params;
 
   return (
@@ -208,7 +208,7 @@ export function Sheets({ model, calcs, job, onPick }: { model: DesignModel; calc
                     <td className={`${td} font-mono font-bold`}>{m.label}</td>
                     <td className={td}>{levelName(m.levelId)}</td>
                     <td className={`${td} font-mono text-xs`}>{r?.sec?.name ?? describeMember(m)}</td>
-                    <td className={td}>{r?.loads.find((l) => l.label === "Carries")?.value ?? "–"}</td>
+                    <td className={td}>{[...(r?.loads ?? []), ...(r?.inputs ?? [])].find((l) => l.label === "Carries")?.value ?? "–"}</td>
                     <td className={num}>{r?.kv.find((k) => k.label === "Height")?.value ?? "–"}</td>
                     <td className={num}>{r?.kv.find((k) => k.label.startsWith("N*"))?.value ?? "–"}</td>
                     <td className={num}>

@@ -202,11 +202,13 @@ function entityFor(m: Member, head: string) {
       return `IFCFOOTING(${head},.PAD_FOOTING.)`;
     case "pile":
       return `IFCPILE(${head},.NOTDEFINED.,$)`;
+    case "raft":
+      return `IFCSLAB(${head},.BASESLAB.)`;
   }
 }
 
 function materialName(m: Member, fam?: string) {
-  if (m.type === "footing") return "Concrete";
+  if (m.type === "footing" || m.type === "raft") return "Concrete";
   if (m.type === "wall") return m.wall?.kind === "block" ? "Concrete masonry" : "Timber framed wall";
   if (m.type === "retaining") return m.rw?.kind === "block" ? "Concrete masonry" : "H5 timber poles";
   if (m.type === "bracing") return "GIB bracing element";

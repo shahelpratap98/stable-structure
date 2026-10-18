@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { runCalcs, type Calcs } from "@/lib/design/calc";
 import { cloudsOn, diffModels } from "@/lib/design/diff";
+import { defaultRaft } from "@/lib/design/raft";
 import { exportIfc } from "@/lib/design/ifc";
 import { FAMILY_COLOUR, FAMILY_LABEL } from "@/lib/design/materials";
 import {
@@ -64,10 +65,11 @@ function newMember(model: DesignModel, type: MemberType, levelId: string, a: Pt,
     ...(type === "wall" ? { wall: defaultWall() } : {}),
     ...(type === "bracing" ? { brace: { system: "GS2N" as const } } : {}),
     ...(type === "retaining" ? { rw: { kind: "pole" as const, h0: 1, h1: 1 } } : {}),
+    ...(type === "raft" ? { material: "concrete" as const, raft: defaultRaft() } : {}),
   };
-  if (type === "joistzone" && b) {
+  if (MEMBER_INFO[type].area && b) {
     // joists span the shorter way across the zone
-    m.zone = { ...defaultZone(), dir: Math.abs(b.y - a.y) <= Math.abs(b.x - a.x) ? "y" : "x" };
+    if (type === "joistzone") m.zone = { ...defaultZone(), dir: Math.abs(b.y - a.y) <= Math.abs(b.x - a.x) ? "y" : "x" };
     m.a = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) };
     m.b = { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) };
   }

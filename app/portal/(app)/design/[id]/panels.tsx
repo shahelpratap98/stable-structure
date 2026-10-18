@@ -7,6 +7,7 @@ import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
 import { autoTrib, DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
 import { DEFAULT_SITE, demandFromSite, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
 import type { Change } from "@/lib/design/diff";
+import { defaultRaft, lossOfSupport, type RaftSpec } from "@/lib/design/raft";
 import { DEFAULT_PAPERWORK, drawingsFromText, drawingsToText, MONITORING, type Monitoring, type Paperwork } from "@/lib/design/paperwork";
 import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
@@ -358,7 +359,7 @@ export function MemberPanel({
           {m.type === "joist" || m.type === "rafter" ? <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} /> : null}
           {m.type === "post" ? <NumberField label="Height" unit="m" value={m.height} min={0.1} placeholder="storey height" onCommit={(v) => set({ height: v }, "height")} /> : null}
           {m.type === "post" ? <NumberField label="Lateral at top (ULS)" unit="kN" value={m.lateral} min={0} placeholder="none" onCommit={(v) => set({ lateral: v || undefined }, v ? `cantilever post, ${v} kN at the top` : "no lateral load")} /> : null}
-          {m.type !== "joistzone" ? <NumberField label="Height offset" unit="m" value={m.dz} placeholder="on the level" onCommit={(v) => set({ dz: v || undefined }, `height offset ${v ?? 0} m`)} /> : null}
+          {!MEMBER_INFO[m.type].area ? <NumberField label="Height offset" unit="m" value={m.dz} placeholder="on the level" onCommit={(v) => set({ dz: v || undefined }, `height offset ${v ?? 0} m`)} /> : null}
           {m.type === "footing" || m.type === "pile" ? sectionField : null}
         </fieldset>
         <datalist id="design-sections">
@@ -367,7 +368,7 @@ export function MemberPanel({
           ))}
         </datalist>
         <p className="mt-2.5 text-xs text-muted tabular-nums">
-          {m.b && m.type !== "joistzone" ? `Length ${formatLength(memberLength(m))} · ` : ""}
+          {m.b && !MEMBER_INFO[m.type].area ? `Length ${formatLength(memberLength(m))} · ` : m.b ? `${Math.abs(m.b.x - m.a.x).toFixed(2)} × ${Math.abs(m.b.y - m.a.y).toFixed(2)} m · ` : ""}
           {m.b ? `(${m.a.x.toFixed(2)}, ${m.a.y.toFixed(2)}) → (${m.b.x.toFixed(2)}, ${m.b.y.toFixed(2)}) m` : `At (${m.a.x.toFixed(2)}, ${m.a.y.toFixed(2)}) m`}
         </p>
       </Section>
@@ -420,6 +421,7 @@ export function MemberPanel({
       ) : null}
 
       {m.type === "joistzone" && m.zone ? <ZoneEditor m={m} locked={locked} set={set} materialFields={materialFields} sectionField={sectionField} /> : null}
+      {m.type === "raft" ? <RaftEditor m={m} site={model.site} locked={locked} set={set} /> : null}
       {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} /> : null}
       {m.type === "bracing" ? (
         <Section title="Bracing element">
@@ -509,6 +511,49 @@ function loadSurface(model: DesignModel, m: Member) {
   if (!level) return "floor";
   const above = [...model.levels].filter((l) => l.elevation > level.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation)[0];
   return level.kind === "roof" || above?.kind === "roof" ? "roof" : "floor";
+}
+
+function RaftEditor({ m, site, locked, set }: { m: Member; site: SiteData | undefined; locked: boolean; set: (p: Partial<Member>, w: string) => void }) {
+  const r = m.raft ?? defaultRaft();
+  const upd = (p: Partial<RaftSpec>, w: string) => set({ raft: { ...r, ...p } }, w);
+  const los = lossOfSupport({ ...r, span: undefined, cant: undefined }, site ?? DEFAULT_SITE);
+  return (
+    <Section title="Rib raft">
+      <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+        <Select<"220" | "300">
+          label="Pod height"
+          value={r.pod === 300 ? "300" : "220"}
+          options={[
+            { value: "220", label: "220 pods" },
+            { value: "300", label: "300 pods" },
+          ]}
+          onChange={(v) => upd({ pod: Number(v) }, `${v} pods`)}
+        />
+        <NumberField label="Topping" unit="mm" value={r.topping} min={65} onCommit={(v) => v && upd({ topping: v }, `topping ${v}`)} />
+        <NumberField label="Rib spacing" unit="mm" value={r.ribSpacing} min={600} onCommit={(v) => v && upd({ ribSpacing: v }, `ribs @ ${v}`)} />
+        <NumberField label="Rib width" unit="mm" value={r.ribWidth} min={75} onCommit={(v) => v && upd({ ribWidth: v }, `ribs ${v} wide`)} />
+        <NumberField label="Edge beam width" unit="mm" value={r.edgeWidth} min={150} onCommit={(v) => v && upd({ edgeWidth: v }, `edge beam ${v} wide`)} />
+        <NumberField label="Edge beam depth" unit="mm" value={r.edgeDepth} min={r.pod + r.topping} placeholder={`${r.pod + r.topping}`} onCommit={(v) => upd({ edgeDepth: v || undefined }, `edge beam ${v ?? "raft"} deep`)} />
+        <Select<"20" | "25" | "30">
+          label="Concrete f'c"
+          value={r.fc === 20 ? "20" : r.fc === 30 ? "30" : "25"}
+          options={[
+            { value: "20", label: "20 MPa" },
+            { value: "25", label: "25 MPa" },
+            { value: "30", label: "30 MPa" },
+          ]}
+          onChange={(v) => upd({ fc: Number(v) }, `f'c ${v} MPa`)}
+        />
+        <span />
+        <NumberField label="Loss of support: span" unit="m" value={r.span} min={0} placeholder={`${los.auto.span.toFixed(1)} (from site)`} onCommit={(v) => upd({ span: v }, `loss-of-support span ${v ?? "from site"}`)} />
+        <NumberField label="Loss of support: edge" unit="m" value={r.cant} min={0} placeholder={`${los.auto.cant.toFixed(1)} (from site)`} onCommit={(v) => upd({ cant: v }, `loss-of-support cantilever ${v ?? "from site"}`)} />
+      </fieldset>
+      <p className="mt-2 text-xs text-muted">
+        Draw the raft&apos;s outline; it carries the walls and posts standing on it (on its own level, or the storey above when it is on the foundation level). Enter the
+        loss-of-support span and edge cantilever from the geotechnical report; left blank, they follow the site&apos;s expansive soil setting.
+      </p>
+    </Section>
+  );
 }
 
 function ZoneEditor({ m, locked, set, materialFields, sectionField }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void; materialFields: ReactNode; sectionField: ReactNode }) {
@@ -878,7 +923,7 @@ export function Overview({ model, calcs, onPick }: { model: DesignModel; calcs: 
 export function SchedulePanel({ model, calcs, selectedId, onPick }: { model: DesignModel; calcs: Calcs; selectedId: string | null; onPick: (id: string) => void }) {
   const levelName = (id: string) => model.levels.find((l) => l.id === id)?.name ?? "";
   const rows = [
-    ...model.members.map((m) => ({ id: m.id, label: m.label, desc: describeMember(m), level: m.levelId, len: m.b && m.type !== "joistzone" ? memberLength(m) : 0 })),
+    ...model.members.map((m) => ({ id: m.id, label: m.label, desc: describeMember(m), level: m.levelId, len: m.b && !MEMBER_INFO[m.type].area ? memberLength(m) : 0 })),
     ...calcs.lintels.map((l) => ({ id: l.id, label: l.opening.label, desc: `Lintel in ${l.wall.label}`, level: l.wall.levelId, len: memberLength(l.member) })),
   ].sort(byLabel);
   return (

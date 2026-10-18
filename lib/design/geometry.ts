@@ -9,6 +9,7 @@ import type { Calcs, Result } from "./calc";
 import { parseTimberSection, STEEL } from "./materials";
 import { along, framingTop, memberLength, type DesignModel, type Level, type Member, type Pt } from "./model";
 import { poleLayout } from "./retaining";
+import { defaultRaft } from "./raft";
 
 export type Layer = "walls" | "framing" | "glass" | "joists" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining";
 export type Tone =
@@ -197,6 +198,31 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
     case "pile": {
       const dia = (Number.parseFloat(m.section) || 125) / 1000;
       return [{ kind: "col", id: m.id, layer: "foundations", tone: "member", x: m.a.x, y: m.a.y, z0: base - 0.9, z1: base + Math.max(0, level.height - 0.15), w: dia, d: dia, round: true }];
+    }
+    case "raft": {
+      if (!m.b) return [];
+      const rs = m.raft ?? defaultRaft();
+      const x0 = Math.min(m.a.x, m.b.x),
+        x1 = Math.max(m.a.x, m.b.x),
+        y0 = Math.min(m.a.y, m.b.y),
+        y1 = Math.max(m.a.y, m.b.y);
+      // top of the slab: this level's floor, or the floor above a foundation level
+      const t = level.kind === "foundation" ? (levelAbove(model, level)?.elevation ?? top) : base;
+      const tp = rs.topping / 1000,
+        D = (rs.pod + rs.topping) / 1000,
+        De = (rs.edgeDepth ?? rs.pod + rs.topping) / 1000,
+        sp = rs.ribSpacing / 1000,
+        rw = rs.ribWidth / 1000,
+        ew = rs.edgeWidth / 1000;
+      const ym = (y0 + y1) / 2;
+      const bar = (a: Pt, b: Pt, z0: number, w: number): Part => ({ kind: "bar", id: m.id, layer: "foundations", tone: "concrete", a, b, z0, z1: t - tp, w });
+      out.push({ kind: "bar", id: m.id, layer: "foundations", tone: "concrete", a: { x: x0, y: ym }, b: { x: x1, y: ym }, z0: t - tp, z1: t, w: y1 - y0 });
+      out.push(bar({ x: x0, y: y0 + ew / 2 }, { x: x1, y: y0 + ew / 2 }, t - De, ew), bar({ x: x0, y: y1 - ew / 2 }, { x: x1, y: y1 - ew / 2 }, t - De, ew));
+      out.push(bar({ x: x0 + ew / 2, y: y0 }, { x: x0 + ew / 2, y: y1 }, t - De, ew), bar({ x: x1 - ew / 2, y: y0 }, { x: x1 - ew / 2, y: y1 }, t - De, ew));
+      let n = 0;
+      for (let x = x0 + ew + sp - rw / 2; x < x1 - ew - rw && n < 150; x += sp, n++) out.push(bar({ x, y: y0 + ew }, { x, y: y1 - ew }, t - D, rw));
+      for (let y = y0 + ew + sp - rw / 2; y < y1 - ew - rw && n < 300; y += sp, n++) out.push(bar({ x: x0 + ew, y }, { x: x1 - ew, y }, t - D, rw));
+      return out;
     }
     case "footing": {
       const [w, l, t] = m.section.split(/x/i).map((n) => Number(n) / 1000);

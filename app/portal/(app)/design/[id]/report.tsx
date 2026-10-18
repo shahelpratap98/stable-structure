@@ -366,8 +366,8 @@ function ReportDoc({ input, planImages, view3d, checks }: { input: ReportInput; 
           <Row head widths={["8%", "15%", "15%", "9%", "29%", "14%", "10%"]} cells={["Mark", "Type", "Level", "Span / ht", "Section", "Governs", "Util."]} />
           {items.map(({ id, m }) => {
             const r = calcs.results.get(id)!;
-            const span = m.type === "joistzone" && m.b ? Math.abs(m.zone?.dir === "x" ? m.b.x - m.a.x : m.b.y - m.a.y) : m.b ? memberLength(m) : null;
-            const len = span !== null ? `${fmt(span)} m` : (r.kv.find((k) => k.label.startsWith("Height"))?.value ?? "");
+            const span = m.type === "joistzone" && m.b ? Math.abs(m.zone?.dir === "x" ? m.b.x - m.a.x : m.b.y - m.a.y) : m.b && m.type !== "raft" ? memberLength(m) : null;
+            const len = m.type === "raft" && m.b ? `${fmt(Math.abs(m.b.x - m.a.x), 1)} × ${fmt(Math.abs(m.b.y - m.a.y), 1)} m` : span !== null ? `${fmt(span)} m` : (r.kv.find((k) => k.label.startsWith("Height"))?.value ?? "");
             return (
               <Row
                 key={id}

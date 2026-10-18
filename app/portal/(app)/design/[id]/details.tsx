@@ -15,7 +15,7 @@ const CONC = "#c9cdd1";
 const TIMBER = "#d9b27c";
 const NOTE = "#b8342a";
 
-export type DetailKey = "cleat" | "base" | "portalBase" | "hanger" | "postCap" | "tieDown" | "pad" | "strip";
+export type DetailKey = "cleat" | "base" | "portalBase" | "hanger" | "postCap" | "tieDown" | "pad" | "strip" | "raft";
 
 // small helpers so each sketch reads as a drawing, not as markup
 const T = ({ x, y, children, anchor = "start", bold }: { x: number; y: number; children: string; anchor?: "start" | "middle" | "end"; bold?: boolean }) => (
@@ -289,6 +289,48 @@ function Strip() {
   );
 }
 
+function Raft() {
+  return (
+    <G>
+      <Line x1={10} y1={128} x2={250} y2={128} stroke={INK} strokeWidth={0.5} strokeDasharray="3 2" />
+      {/* topping, edge beam and one rib */}
+      <Polygon points="20,40 250,40 250,56 168,56 168,118 150,118 150,56 64,56 64,128 20,128" fill={CONC} stroke={INK} strokeWidth={0.8} />
+      <Rect x={66} y={58} width={82} height={58} fill="#fff" stroke={INK} strokeWidth={0.6} strokeDasharray="2 1.5" />
+      <Rect x={170} y={58} width={80} height={58} fill="#fff" stroke={INK} strokeWidth={0.6} strokeDasharray="2 1.5" />
+      <T x={107} y={90} anchor="middle">
+        pod
+      </T>
+      <T x={210} y={90} anchor="middle">
+        pod
+      </T>
+      <Line x1={24} y1={46} x2={248} y2={46} stroke={INK} strokeWidth={0.7} strokeDasharray="4 1.5" />
+      {[30, 54].map((x) => (
+        <G key={x}>
+          <Circle cx={x} cy={50} r={1.8} fill={INK} />
+          <Circle cx={x} cy={120} r={1.8} fill={INK} />
+        </G>
+      ))}
+      <Circle cx={159} cy={50} r={1.8} fill={INK} />
+      <Circle cx={159} cy={110} r={1.8} fill={INK} />
+      <Leader from={[200, 22]} to={[200, 46]} />
+      <T x={170} y={18}>
+        topping with mesh per calcs
+      </T>
+      <Leader from={[120, 142]} to={[158, 111]} />
+      <T x={62} y={148}>
+        rib bars top and bottom per calcs
+      </T>
+      <Leader from={[6, 22]} to={[40, 52]} />
+      <T x={4} y={18}>
+        edge beam bars per calcs
+      </T>
+      <T x={150} y={136}>
+        DPM on compacted hardfill
+      </T>
+    </G>
+  );
+}
+
 const DETAILS: Record<DetailKey, { title: string; draw: () => ReactNode; notes: string[] }> = {
   cleat: { title: "Steel beam end: web cleat", draw: () => <Cleat />, notes: ["Bolts, cleat thickness and length per the connection schedule.", "Grade 300 plate; bolts 8.8/S snug-tight in bearing."] },
   base: { title: "Steel post base", draw: () => <Base />, notes: ["Plate thickness and hold-downs per the connection schedule.", "Hot-dip galvanise where buried or in contact with concrete."] },
@@ -297,6 +339,7 @@ const DETAILS: Record<DetailKey, { title: string; draw: () => ReactNode; notes: 
   postCap: { title: "Beam on post", draw: () => <PostCap />, notes: ["Bracket or plates rated for the reaction in the schedule.", "Full bearing of the beam on the post."] },
   tieDown: { title: "Wind uplift tie-down", draw: () => <TieDown />, notes: ["Rated for the uplift in the connection schedule.", "Carry the uplift down every storey to the foundation."] },
   pad: { title: "Pad footing", draw: () => <Pad />, notes: ["Size, depth and bars per the footing calculations.", "Confirm the ground bearing before pouring."] },
+  raft: { title: "Rib raft: edge beam and rib", draw: () => <Raft />, notes: ["Pods, ribs, edge beam and bars per the raft calculation.", "Confirm with the pod supplier's details; 75 cover to the ground."] },
   strip: { title: "Strip footing under a loadbearing wall", draw: () => <Strip />, notes: ["Width and depth per the footing calculations.", "Starters to suit the wall; 75 cover cast against ground."] },
 };
 
@@ -312,6 +355,7 @@ export function detailsFor(calcs: Calcs): DetailKey[] {
   if (kinds.has("Wind uplift tie-down")) out.push("tieDown");
   if (res.some((r) => / pad\b/.test(r.summary))) out.push("pad");
   if (res.some((r) => r.summary.includes(" strip "))) out.push("strip");
+  if (res.some((r) => r.summary.startsWith("Rib raft"))) out.push("raft");
   return out;
 }
 

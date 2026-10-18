@@ -133,6 +133,12 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   same area) checked for axial load to NZS 3603, on a 350 × 350 × 200 footing
   or larger, sized from the site bearing. Gravity only: braced and anchor
   piles follow NZS 3604 Section 6.
+- **Rib rafts**: `lib/design/raft.ts`. Drawn as a rectangle; carries the
+  walls and posts on its level (or the storey above, when drawn on the
+  foundation level). Average, edge beam and under-wall bearing, post
+  thickenings, ribs as T-beams for loss of support (span and edge cantilever
+  from the geotechnical report, else assumed from the site's expansive soil
+  setting), rib stirrups where shear needs them, topping mesh.
 - **Verification**: `lib/design/verify.ts` holds the known-answer cases
   (textbook frame results, AS 4100 capacity tables, hand checks, Lot 6 and
   26121 results). `npm test` runs them with Vitest, `/portal/design/verification`

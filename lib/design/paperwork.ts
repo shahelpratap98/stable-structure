@@ -203,6 +203,7 @@ export function designFeatures(model: DesignModel, calcs: Calcs): PaperSection[]
     plural(n((m) => m.type === "post"), "post", "posts"),
     plural(n((m) => m.type === "footing"), "pad footing", "pad footings"),
     plural(n((m) => m.type === "pile"), "pile", "piles"),
+    plural(n((m) => m.type === "raft"), "rib raft slab", "rib raft slabs"),
     plural(n((m) => m.type === "bracing"), "bracing element", "bracing elements"),
     plural(n((m) => m.type === "retaining"), "retaining wall", "retaining walls"),
   ].filter((t) => !t.startsWith("0 "));
@@ -211,6 +212,7 @@ export function designFeatures(model: DesignModel, calcs: Calcs): PaperSection[]
   const foundations = [
     ...(n((m) => m.type === "footing") ? ["pad footings sized for bearing, punching and one-way shear (NZS 3101)"] : []),
     ...(n((m) => m.type === "pile") ? ["ordinary timber piles on concrete footings (gravity only; bracing and anchor piles to NZS 3604 Section 6)"] : []),
+    ...(n((m) => m.type === "raft") ? ["rib raft slab on pods, ribs designed as T-beams for loss of support, with an edge beam, wider ribs under loadbearing walls and thickenings under posts"] : []),
     ...(strips ? ["strip footings under loadbearing walls on the lowest level"] : []),
     ...(slabPosts ? ["posts on the ground slab checked for punching"] : []),
   ];

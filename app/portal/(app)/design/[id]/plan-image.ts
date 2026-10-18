@@ -124,6 +124,35 @@ export async function planImage(
   // weights and text sized to the image, so a whole house reads as well as a deck
   const px = Math.max(2, Math.max(W, H) / 650);
 
+  // rafts, then joist zones, then walls, then framing members on top
+  for (const m of members.filter((x) => x.type === "raft" && x.b)) {
+    const a = P({ x: Math.min(m.a.x, m.b!.x), y: Math.min(m.a.y, m.b!.y) }),
+      c = P({ x: Math.max(m.a.x, m.b!.x), y: Math.max(m.a.y, m.b!.y) });
+    const colour = fail(m.id) ? "#b8342a" : MEMBER_INFO.raft.colour;
+    ctx.fillStyle = colour + "14";
+    ctx.fillRect(a.x, a.y, c.x - a.x, c.y - a.y);
+    const s = ((m.raft?.ribSpacing ?? 1200) / 1000) * k;
+    ctx.strokeStyle = colour + "55";
+    ctx.lineWidth = Math.max(0.75, px * 0.4);
+    ctx.setLineDash([px * 2, px * 2]);
+    for (let x = a.x + s; x < c.x - s / 4; x += s) {
+      ctx.beginPath();
+      ctx.moveTo(x, a.y);
+      ctx.lineTo(x, c.y);
+      ctx.stroke();
+    }
+    for (let y = a.y + s; y < c.y - s / 4; y += s) {
+      ctx.beginPath();
+      ctx.moveTo(a.x, y);
+      ctx.lineTo(c.x, y);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = px * 1.4;
+    ctx.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y);
+    tags.push({ at: { x: Math.min(m.a.x, m.b!.x) + 0.8, y: Math.max(m.a.y, m.b!.y) - 0.4 }, text: m.label, colour });
+  }
   // joist zones first, then walls, then framing members on top
   for (const m of members.filter((x) => x.type === "joistzone" && x.b)) {
     const a = P(m.a),

@@ -123,7 +123,8 @@ export default async function DesignGuidePage() {
             <T>Posts</T> (P) sit under beam ends. The app works out what lands on each post, including beams and posts on the levels above.
           </li>
           <li>
-            <T>Bracing elements</T> (G), <T>pad footings</T> (F), <T>timber piles</T> (I) and <T>retaining walls</T> (T) work the same way.
+            <T>Bracing elements</T> (G), <T>pad footings</T> (F), <T>timber piles</T> (I) and <T>retaining walls</T> (T) work the same way. A{" "}
+            <T>rib raft slab</T> (K) is drawn like a joist zone, corner to corner, and carries the walls and posts standing on it.
           </li>
           <li>
             <T>Select</T> (V) to pick, drag to move, or drag an end to stretch. <T>Del</T> deletes, <T>Ctrl+D</T> duplicates, <T>Ctrl+C / V</T> copy and paste, <T>Ctrl+Z / Y</T> undo and redo.

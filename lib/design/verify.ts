@@ -14,6 +14,7 @@ import { solveBeam, solveFrame } from "./frame";
 import { designPortal } from "./lateral";
 import { fbAt, LVL, STEEL } from "./materials";
 import { emptyModel, type Level, type Member } from "./model";
+import { defaultRaft, designRaft, raftSelfWeight } from "./raft";
 import { DEFAULT_SITE, quakeBasis, windBasis } from "./site";
 
 export type VCase = {
@@ -116,6 +117,17 @@ const FDN: VCase[] = [
   { name: "Slab punching under a 135 post, 100 slab: φVc = 0.75·(1/3)√25·4(c+d)·d", want: (0.75 * (1 / 3) * 5 * 4 * (135 + 65) * 65) / 1e3, tol: 1e-6, unit: "kN", source: "NZS 3101 cl 12.7, hand", run: () => slabPunch(40, 135).cap },
 ].map((c) => ({ ...c, group: "Foundations (NZS 3101)" }));
 
+// ---------------------------------------------------------------- rib raft
+// 10 × 10 m raft, 220 pods + 85 topping, ribs 100 @ 1200, Q 1.5 kPa, good ground, loss of support 2.0 m span
+const raft = once(() => designRaft({ ...defaultRaft(), span: 2, cant: 0 }, { Lx: 10, Ly: 10, Gsup: 0, Q: 1.5, walls: [], posts: [{ mark: "P1", Nstar: 200 }] }, DEFAULT_SITE));
+const raftLine = (label: string) => raft().lines.find((l) => l.label.startsWith(label))!.value;
+const RAFT: VCase[] = [
+  { name: "Self-weight: 24 × (0.085 + 0.22 × (2 × 100/1200 − (100/1200)²))", want: 2.8833, tol: 0.001, unit: "kPa", source: "Hand", run: () => raftSelfWeight(defaultRaft()) },
+  { name: "Rib M* over a 2 m loss of support: (1.2 × 3.18 + 1.5 × 1.5) × 1.2 × 2²/8", want: 3.642, tol: 0.002, unit: "kNm", source: "Hand (finishes 0.3 kPa)", run: () => raft().Msag },
+  { name: "Edge beam bearing: (1.2 × 24 × 0.3 × 0.305 + 6.07 × 0.6) / 0.3", want: 20.9, tol: 0.01, unit: "kPa", source: "Hand", run: () => parseFloat(raftLine("Edge beam q*")) },
+  { name: "Thickening under a 200 kN post: √(200 / (150 − 1.2 × 24 × 0.305)), 50 mm steps", want: 1200, tol: 0, unit: "mm", source: "Hand", run: () => raft().thick[0].side },
+].map((c) => ({ ...c, group: "Rib raft (NZS 3101)" }));
+
 // ---------------------------------------------------------------- concrete beam
 // SS 6 m, 300 × 500, f'c 30, G 10 + self-weight 3.6, Q 10: w* = 1.2×13.6 + 1.5×10 = 31.32 kN/m
 const rc = once(() => designConcreteBeam({ L: 6, supports: [0, 6], b: 300, D: 500, fc: 30, G: 10, Q: 10, points: [] }));
@@ -205,7 +217,7 @@ const BRACE: VCase[] = (
   })),
 );
 
-export const VERIFICATION_CASES: VCase[] = [...FRAME, ...STEELCASES, ...TIMBERCASES, ...SITE, ...FDN, ...CONC, ...CONN, ...LATERAL, ...LOT6, ...BRACE];
+export const VERIFICATION_CASES: VCase[] = [...FRAME, ...STEELCASES, ...TIMBERCASES, ...SITE, ...FDN, ...RAFT, ...CONC, ...CONN, ...LATERAL, ...LOT6, ...BRACE];
 
 export function checkCase(c: VCase): VResult {
   const { run, ...rest } = c;

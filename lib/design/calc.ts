@@ -20,6 +20,7 @@ import { solveBeam } from "./frame";
 import { ALL_FAMILIES, candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, KEY_GRADE, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
+import { defaultRaft, designRaft, type RaftPost, type RaftWall } from "./raft";
 
 export { parseTimberSection, SG8_DEPTHS } from "./materials";
 
@@ -896,6 +897,18 @@ function runCalcsOnce(model: DesignModel): Calcs {
   // post, pile or footing (stacked) or a beam part-way along (a point load).
   // A post can pass down through a double-height space this way.
   type Seat = { kind: "support"; id: string; levelId: string } | { kind: "beam"; id: string; levelId: string; at: number };
+  // rib rafts: a raft carries the walls and posts on its own level, and on the
+  // storey above when it is drawn on a foundation level
+  const rafts = model.members.filter((z) => z.type === "raft" && z.b);
+  const raftLevels = (z: Member) => {
+    const l = levelOf(model, z.levelId);
+    const up = l?.kind === "foundation" ? levelAbove(model, l) : undefined;
+    return new Set([z.levelId, ...(up ? [up.id] : [])]);
+  };
+  const inRect = (z: Member, q: Pt, tol = 0.05) =>
+    !!z.b && q.x >= Math.min(z.a.x, z.b.x) - tol && q.x <= Math.max(z.a.x, z.b.x) + tol && q.y >= Math.min(z.a.y, z.b.y) - tol && q.y <= Math.max(z.a.y, z.b.y) + tol;
+  const raftUnder = (levelId: string, q: Pt) => rafts.find((z) => raftLevels(z).has(levelId) && inRect(z, q));
+
   const seats = new Map<string, Seat>();
   const downFrom = (l: Level) => model.levels.filter((x) => x.elevation < l.elevation - 1e-6).sort((a, b) => b.elevation - a.elevation);
   // Levels are traced from separate sheets, so between levels allow 300 mm.
@@ -1051,7 +1064,7 @@ function runCalcsOnce(model: DesignModel): Calcs {
         }
       }
       // a post standing straight on a ground slab: punching through the slab
-      if (from.length && !seats.get(s.id) && level?.floor === "slab") {
+      if (from.length && !seats.get(s.id) && level?.floor === "slab" && !raftUnder(s.levelId, s.a)) {
         const Nst = d.N;
         const sp = slabPunch(Nst, Math.max(d.sec.b, d.sec.d, d.sec.fam === "SHS" ? 200 : 0));
         res.kv.push({ label: "Slab punching (100 mm slab)", value: `${fmt(Nst, 1)} / ${fmt(sp.cap, 1)} kN` });
@@ -1366,15 +1379,81 @@ function runCalcsOnce(model: DesignModel): Calcs {
         }
       }
 
-  // walls on the lowest level: a strip footing for what they carry
-  const lowest = [...model.levels].sort((a, b) => a.elevation - b.elevation)[0];
-  for (const w of model.members) {
-    if (w.type !== "wall" || !w.b || w.levelId !== lowest?.id || results.has(w.id)) continue;
+  // what a wall standing on the ground brings down, per metre
+  const wallLine = (w: Member) => {
     const a = autoTrib(model, w);
     const lvl = levelOf(model, w.levelId);
     const self = (w.wall?.kind === "block" ? p.gWallBlock : w.wall?.kind === "int" ? p.gWallInt : p.gWallExt) * (lvl?.height ?? 2.4);
     const ll = lineLoads(a?.trib ?? {}, p, self);
     const wStar = Math.max(1.35 * ll.G, 1.2 * ll.G + 1.5 * ll.Qf, 1.2 * ll.G + 1.5 * ll.Qr + 0.4 * ll.Qf);
+    return { a, ll, wStar };
+  };
+
+  // rib rafts
+  for (const z of rafts) {
+    const spec = z.raft ?? defaultRaft();
+    const lv = raftLevels(z);
+    const x0 = Math.min(z.a.x, z.b!.x),
+      x1 = Math.max(z.a.x, z.b!.x),
+      y0 = Math.min(z.a.y, z.b!.y),
+      y1 = Math.max(z.a.y, z.b!.y);
+    const nearEdge = (q: Pt) => Math.min(q.x - x0, x1 - q.x, q.y - y0, y1 - q.y) <= 0.4;
+    const walls: RaftWall[] = [];
+    for (const w of model.members) {
+      if (w.type !== "wall" || !w.b || !lv.has(w.levelId) || !inRect(z, along(w, memberLength(w) / 2))) continue;
+      const { a, ll, wStar } = wallLine(w);
+      const edge = nearEdge(w.a) && nearEdge(w.b) && nearEdge(along(w, memberLength(w) / 2));
+      walls.push({ mark: w.label, edge, length: memberLength(w), wStar, G: ll.G, Q: ll.Qf + ll.Qr });
+      results.set(w.id, {
+        memberId: w.id,
+        mark: w.label,
+        status: "none",
+        ratio: null,
+        summary: `${describeMember(w)} · on rib raft ${z.label} · w* ${fmt(wStar, 1)} kN/m`,
+        utils: [],
+        kv: [{ label: "Line load w* on the raft", value: `${fmt(wStar, 1)} kN/m${edge ? " (edge beam)" : ""}` }],
+        inputs: [{ label: "Carries", value: a ? `${tribText(a.trib)} (${a.from.join(", ")})` : "its own weight only" }],
+        loads: [
+          { label: "G (incl. wall)", value: `${fmt(ll.G)} kN/m` },
+          { label: "Q", value: `${fmt(ll.Qf + ll.Qr)} kN/m` },
+        ],
+        checks: [],
+        notes: [`Stands on rib raft ${z.label}, which is designed for it.`],
+      });
+    }
+    const ps: RaftPost[] = posts
+      .filter((s) => s.type === "post" && lv.has(s.levelId) && !seats.get(s.id) && inRect(z, s.a))
+      .map((s) => ({ mark: results.get(s.id)?.mark ?? s.label, Nstar: rStar(results.get(s.id)?.ends?.a ?? ZERO) }))
+      .filter((q) => q.Nstar > 0);
+    const d = designRaft(spec, { Lx: x1 - x0, Ly: y1 - y0, Gsup: 0, Q: p.Qf, walls, posts: ps }, site);
+    results.set(z.id, {
+      memberId: z.id,
+      mark: z.label,
+      status: statusFor(d.util),
+      ratio: d.util,
+      govName: d.gov,
+      sec: { name: `Rib raft ${d.D} (${spec.pod} pods)`, fam: "other", b: spec.ribWidth, d: d.D },
+      summary: `Rib raft ${d.D} deep, ribs ${spec.ribWidth} @ ${spec.ribSpacing}${d.bot ? `, ${d.bot.text} bottom` : ""}${d.top ? ` / ${d.top.text} top` : ""} · ${Math.round(d.util * 100)}%`,
+      utils: d.utils,
+      kv: d.lines,
+      inputs: [
+        { label: "Carries", value: [...walls.map((w) => w.mark), ...ps.map((q) => q.mark)].join(", ") || "floor loads only" },
+        { label: "Floor live load", value: `${p.Qf} kPa` },
+      ],
+      loads: [
+        { label: "Self-weight", value: `${fmt(d.sw)} kPa` },
+        { label: "Walls on it", value: walls.length ? walls.map((w) => `${w.mark} ${fmt(w.wStar, 1)}${w.edge ? " (edge)" : ""}`).join(", ") + " kN/m" : "none" },
+      ],
+      checks: d.checks,
+      notes: [...d.notes, ...(model.site ? [] : ["No site data entered: good ground (300 kPa ultimate, φ 0.5) and non-expansive soil assumed."])],
+    });
+  }
+
+  // walls on the lowest level: a strip footing for what they carry
+  const lowest = [...model.levels].sort((a, b) => a.elevation - b.elevation)[0];
+  for (const w of model.members) {
+    if (w.type !== "wall" || !w.b || w.levelId !== lowest?.id || results.has(w.id)) continue;
+    const { a, ll, wStar } = wallLine(w);
     const f = designStrip(wStar, site, w.wall?.thickness ?? 90);
     results.set(w.id, {
       memberId: w.id,

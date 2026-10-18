@@ -238,7 +238,7 @@ export function PlanView(props: Props) {
     let best: { id: string; d: number } | null = null;
     // Points first (they sit on top of lines in the drawing)
     for (const s of shapes) {
-      if (s.m.type === "joistzone") continue;
+      if (MEMBER_INFO[s.m.type].area) continue;
       const d = s.b ? Math.max(0, distToSegment(p, s.a, s.b) - half(s.m)) : Math.hypot(s.a.x - p.x, s.a.y - p.y) * 0.7;
       if (d < tol && (!best || d < best.d)) best = { id: s.m.id, d };
     }
@@ -252,9 +252,9 @@ export function PlanView(props: Props) {
       }
       return { id: best.id };
     }
-    // joist zones last: anywhere inside the rectangle
-    for (const s of [...shapes].reverse()) {
-      if (s.m.type !== "joistzone" || !s.b) continue;
+    // joist zones and rafts last: anywhere inside the rectangle (zones over rafts)
+    for (const s of [...shapes].reverse().sort((p, q) => Number(q.m.type === "joistzone") - Number(p.m.type === "joistzone"))) {
+      if (!MEMBER_INFO[s.m.type].area || !s.b) continue;
       if (p.x >= Math.min(s.a.x, s.b.x) && p.x <= Math.max(s.a.x, s.b.x) && p.y >= Math.min(s.a.y, s.b.y) && p.y <= Math.max(s.a.y, s.b.y)) return { id: s.m.id };
     }
     return null;
@@ -479,13 +479,53 @@ export function PlanView(props: Props) {
           {/* level below, faint */}
           <g opacity={0.35}>
             {ghostShapes.map(({ m, a, b }) =>
-              m.type === "joistzone" ? null : b ? (
+              MEMBER_INFO[m.type].area ? null : b ? (
                 <line key={m.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#475569" strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
               ) : (
                 <rect key={m.id} x={a.x - px(4)} y={a.y - px(4)} width={px(8)} height={px(8)} fill="#475569" />
               ),
             )}
           </g>
+
+          {/* rafts, then joist zones, under everything else */}
+          {shapes.map(({ m, a, b }) => {
+            if (m.type !== "raft" || !b) return null;
+            const r = m.raft;
+            const x0 = Math.min(a.x, b.x),
+              x1 = Math.max(a.x, b.x),
+              y0 = Math.min(a.y, b.y),
+              y1 = Math.max(a.y, b.y);
+            const step = Math.max(px(4), (r?.ribSpacing ?? 1200) / 1000 / scaleK);
+            const xs: number[] = [],
+              ys: number[] = [];
+            for (let v = x0 + step; v < x1 - step / 4 && xs.length < 200; v += step) xs.push(v);
+            for (let v = y0 + step; v < y1 - step / 4 && ys.length < 200; v += step) ys.push(v);
+            const colour = colourOf(m);
+            const selected = isSel(m.id);
+            return (
+              <g key={m.id}>
+                <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={colour} fillOpacity={selected ? 0.14 : 0.05} stroke={colour} strokeWidth={selected ? 3 : 2} vectorEffect="non-scaling-stroke" />
+                <g stroke={colour} strokeOpacity={0.3} strokeWidth={1} strokeDasharray="3 3" vectorEffect="non-scaling-stroke">
+                  {xs.map((v, i) => (
+                    <line key={`x${i}`} x1={v} y1={y0} x2={v} y2={y1} vectorEffect="non-scaling-stroke" />
+                  ))}
+                  {ys.map((v, i) => (
+                    <line key={`y${i}`} x1={x0} y1={v} x2={x1} y2={v} vectorEffect="non-scaling-stroke" />
+                  ))}
+                </g>
+                <text x={x0 + px(6)} y={y1 - px(6)} fontSize={px(11)} fontWeight={700} fill={colour} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                  {m.label} · rib raft {(r?.pod ?? 220) + (r?.topping ?? 85)}
+                  {results.get(m.id)?.status === "fail" ? " ✕" : ""}
+                </text>
+                {selected ? (
+                  <>
+                    <circle cx={a.x} cy={a.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                    <circle cx={b.x} cy={b.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  </>
+                ) : null}
+              </g>
+            );
+          })}
 
           {/* joist zones under everything else */}
           {shapes.map(({ m, a, b }) => {
@@ -591,7 +631,7 @@ export function PlanView(props: Props) {
           })}
 
           {shapes.map(({ m, a, b }) => {
-            if (m.type === "joistzone" || m.type === "wall") return null;
+            if (MEMBER_INFO[m.type].area || m.type === "wall") return null;
             const colour = colourOf(m);
             const selected = isSel(m.id);
             const res = results.get(m.id);

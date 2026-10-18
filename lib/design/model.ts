@@ -13,6 +13,7 @@
 
 import { normaliseSite, type SiteData } from "./site";
 import { normalisePaperwork, type Paperwork } from "./paperwork";
+import { defaultRaft, type RaftSpec } from "./raft";
 export type Pt = { x: number; y: number };
 
 export type MemberType =
@@ -21,6 +22,7 @@ export type MemberType =
   | "joist"
   | "rafter"
   | "joistzone"
+  | "raft"
   | "wall"
   | "post"
   | "bracing"
@@ -111,6 +113,7 @@ export type Member = {
   extraQ?: number; // kN/m
   wall?: WallSpec;
   zone?: ZoneSpec;
+  raft?: RaftSpec;
   brace?: { system: BraceSystem; line?: string; bu?: number; base?: "fixed" | "pinned" }; // bu: rating for specifically designed elements; base: portal leg bases
   rw?: RetainSpec;
   height?: number; // m, post height override
@@ -155,7 +158,7 @@ export type DesignModel = {
   paperwork?: Paperwork; // PS1 and design features report details
 };
 
-export const MEMBER_TYPES: MemberType[] = ["beam", "lintel", "joist", "rafter", "joistzone", "wall", "post", "bracing", "footing", "pile", "retaining"];
+export const MEMBER_TYPES: MemberType[] = ["beam", "lintel", "joist", "rafter", "joistzone", "wall", "post", "bracing", "footing", "pile", "raft", "retaining"];
 
 export const MEMBER_INFO: Record<MemberType, { label: string; prefix: string; line: boolean; colour: string; key: string; area?: boolean }> = {
   beam: { label: "Beam", prefix: "B", line: true, colour: "#2563eb", key: "b" },
@@ -168,6 +171,7 @@ export const MEMBER_INFO: Record<MemberType, { label: string; prefix: string; li
   bracing: { label: "Bracing element", prefix: "BR", line: true, colour: "#65a30d", key: "g" },
   footing: { label: "Pad footing", prefix: "F", line: false, colour: "#57534e", key: "f" },
   pile: { label: "Timber pile", prefix: "PL", line: false, colour: "#a16207", key: "i" },
+  raft: { label: "Rib raft slab", prefix: "RF", line: true, colour: "#0f766e", key: "k", area: true },
   retaining: { label: "Retaining wall", prefix: "RW", line: true, colour: "#7c5a35", key: "t" },
 };
 
@@ -182,6 +186,7 @@ export const DEFAULT_SECTION: Record<MemberType, string> = {
   bracing: "",
   footing: "600x600x300",
   pile: "125",
+  raft: "",
   retaining: "",
 };
 
@@ -260,6 +265,7 @@ export function normaliseModel(raw: unknown): DesignModel {
       if (out.type === "bracing" && !out.brace) out.brace = { system: "GS2N" };
       if (out.type === "wall") out.wall = { ...defaultWall(), ...(out.wall ?? {}), openings: Array.isArray(out.wall?.openings) ? out.wall!.openings : [] };
       if (out.type === "joistzone") out.zone = { ...defaultZone(), ...(out.zone ?? {}) };
+      if (out.type === "raft") out.raft = { ...defaultRaft(), ...(out.raft ?? {}) };
       if (out.type === "retaining") out.rw = { kind: "pole", h0: 1, h1: 1, ...(out.rw ?? {}) };
       // v1 loaded width -> tributaries on whatever surface the level carries
       if (!out.trib && out.tribWidth !== undefined && (out.type === "beam" || out.type === "lintel")) {
@@ -349,6 +355,10 @@ export function describeMember(m: Member) {
       return `${m.section} mm pad`;
     case "pile":
       return `${m.section} mm pile`;
+    case "raft": {
+      const r = m.raft ?? defaultRaft();
+      return `Rib raft, ${r.pod + r.topping} deep, ribs ${r.ribWidth} @ ${r.ribSpacing}`;
+    }
     default:
       return m.material === "steel" ? m.section : `${m.section} ${m.grade ?? "SG8"}`;
   }
