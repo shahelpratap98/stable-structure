@@ -30,7 +30,8 @@ export const toWorld = (f: Pick<Frame, "scale" | "origin">, p: Pt): Pt => ({ x: 
 type Drag =
   | { kind: "pan"; startX: number; startY: number; pan: Pt }
   | { kind: "move"; id: string; from: Pt; delta: Pt }
-  | { kind: "end"; id: string; end: "a" | "b"; to: Pt };
+  | { kind: "end"; id: string; end: "a" | "b"; to: Pt }
+  | { kind: "box"; from: Pt; to: Pt };
 
 type Props = {
   level: Level;
@@ -50,6 +51,10 @@ type Props = {
   onOrigin: (p: Pt) => void; // PDF point
   onCursor: (p: Pt | null) => void; // metres
   focus: { id: string; n: number } | null; // centre the view on this member
+  multi?: string[]; // several members selected (shift-click, shift-drag a box)
+  suggest?: { a: Pt; b: Pt; colour: string; label?: string }[]; // lines found on the sheet (PDF points), previewed
+  onToggle?: (id: string) => void;
+  onBox?: (ids: string[]) => void;
 };
 
 const HIT_PX = 7;
@@ -65,6 +70,7 @@ function distToSegment(p: Pt, a: Pt, b: Pt) {
 export function PlanView(props: Props) {
   const { level, members, ghosts, page, tool, selectedId, calcs, colourBy } = props;
   const results = calcs.results;
+  const isSel = (id: string) => id === selectedId || !!props.multi?.includes(id);
   const frame = useMemo(() => frameFor(level, page), [level, page]);
   const box = useRef<HTMLDivElement>(null);
   const canvasHost = useRef<HTMLDivElement>(null);
@@ -314,8 +320,13 @@ export function PlanView(props: Props) {
       props.onCreate(tool as MemberType, toWorld(frame, snap(raw, null)));
       return;
     }
-    // select
+    // select: shift adds to the selection, or drags a box
     const hit = hitTest(raw);
+    if (e.shiftKey && tool === "select") {
+      if (hit && props.onToggle) props.onToggle(hit.id);
+      else if (!hit) setDrag({ kind: "box", from: raw, to: raw });
+      return;
+    }
     if (!hit) {
       props.onSelect(null);
       setDrag({ kind: "pan", startX: e.clientX, startY: e.clientY, pan: view.pan });
@@ -337,6 +348,10 @@ export function PlanView(props: Props) {
       setDrag({ ...drag, delta: { x: raw.x - drag.from.x, y: raw.y - drag.from.y } });
       return;
     }
+    if (drag?.kind === "box") {
+      setDrag({ ...drag, to: raw });
+      return;
+    }
     if (drag?.kind === "end") {
       const s = shapes.find((x) => x.m.id === drag.id);
       const other = s ? (drag.end === "a" ? s.b : s.a) ?? null : null;
@@ -349,6 +364,17 @@ export function PlanView(props: Props) {
   };
 
   const onPointerUp = () => {
+    if (drag?.kind === "box") {
+      const x0 = Math.min(drag.from.x, drag.to.x),
+        x1 = Math.max(drag.from.x, drag.to.x),
+        y0 = Math.min(drag.from.y, drag.to.y),
+        y1 = Math.max(drag.from.y, drag.to.y);
+      const inside = (q: Pt) => q.x >= x0 && q.x <= x1 && q.y >= y0 && q.y <= y1;
+      const ids = shapes.filter((sh) => inside(sh.a) && (!sh.b || inside(sh.b))).map((sh) => sh.m.id);
+      props.onBox?.(ids);
+      setDrag(null);
+      return;
+    }
     if (drag?.kind === "move" && (drag.delta.x || drag.delta.y)) {
       const s = shapes.find((x) => x.m.id === drag.id);
       if (s) props.onMove(drag.id, toWorld(frame, s.a), s.b ? toWorld(frame, s.b) : undefined);
@@ -472,7 +498,7 @@ export function PlanView(props: Props) {
             const hatch: number[] = [];
             for (let v = (ns ? x0 : y0) + step / 2; v < (ns ? x1 : y1) && hatch.length < 300; v += step) hatch.push(v);
             const colour = colourOf(m);
-            const selected = m.id === selectedId;
+            const selected = isSel(m.id);
             return (
               <g key={m.id}>
                 <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={colour} fillOpacity={selected ? 0.16 : 0.07} stroke={colour} strokeWidth={selected ? 2.5 : 1.5} strokeDasharray="8 4" vectorEffect="non-scaling-stroke" />
@@ -519,7 +545,7 @@ export function PlanView(props: Props) {
               cur = o.offset + o.width;
             }
             segs.push([cur, L]);
-            const selected = m.id === selectedId;
+            const selected = isSel(m.id);
             const fill = m.wall.kind === "block" ? "#9b948a" : m.wall.kind === "int" ? "#cbd5e1" : "#64748b";
             const ang = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
             const upright = ang > 90 || ang < -90 ? ang + 180 : ang;
@@ -566,7 +592,7 @@ export function PlanView(props: Props) {
           {shapes.map(({ m, a, b }) => {
             if (m.type === "joistzone" || m.type === "wall") return null;
             const colour = colourOf(m);
-            const selected = m.id === selectedId;
+            const selected = isSel(m.id);
             const res = results.get(m.id);
             if (b) {
               const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -632,6 +658,29 @@ export function PlanView(props: Props) {
           ) : null}
           {cursor && tool !== "select" && tool !== "pan" ? (
             <circle cx={cursor.x} cy={cursor.y} r={px(4)} fill="none" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+          ) : null}
+                  {(props.suggest ?? []).map((l, i) => (
+            <g key={`sg${i}`}>
+              <line x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y} stroke={l.colour} strokeWidth={6} strokeOpacity={0.45} strokeDasharray="10 6" vectorEffect="non-scaling-stroke" />
+              {l.label ? (
+                <text x={(l.a.x + l.b.x) / 2} y={(l.a.y + l.b.y) / 2 - px(6)} textAnchor="middle" fontSize={px(10)} fontWeight={700} fill={l.colour} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                  {l.label}
+                </text>
+              ) : null}
+            </g>
+          ))}
+          {drag?.kind === "box" ? (
+            <rect
+              x={Math.min(drag.from.x, drag.to.x)}
+              y={Math.min(drag.from.y, drag.to.y)}
+              width={Math.abs(drag.to.x - drag.from.x)}
+              height={Math.abs(drag.to.y - drag.from.y)}
+              fill="#2563eb"
+              fillOpacity={0.06}
+              stroke="#2563eb"
+              strokeDasharray="6 4"
+              vectorEffect="non-scaling-stroke"
+            />
           ) : null}
         </svg>
       </div>

@@ -25,8 +25,8 @@ import {
 } from "@/lib/design/model";
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
-import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, Overview, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
-import { countPages, loadPdf, renderPage, type RenderedPage } from "./pdf";
+import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, Overview, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
+import { countPages, findLines, labelLines, loadPdf, pageWords, renderPage, type FoundLine, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
 import { SignoffPanel, type Signoff } from "./signoff";
@@ -111,6 +111,7 @@ export function DesignEditor({
   const [activeLevelId, setActiveLevelId] = useState(() => (initialModel.levels.find((l) => l.kind === "floor") ?? initialModel.levels[0]).id);
   const [tool, setTool] = useState<Tool>("select");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [multi, setMulti] = useState<string[]>([]); // several members selected for a bulk change
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
   const [tab, setTab] = useState<Tab>("member");
   const [panelOpen, setPanelOpen] = useState(false); // side panel drawer on narrow screens
@@ -167,6 +168,26 @@ export function DesignEditor({
     setSave("dirty");
     syncStacks();
   }, [locked]);
+
+  // bulk changes to several members in one step (one undo, one history entry)
+  const patchMany = useCallback(
+    (ids: string[], patch: (m: Member) => Partial<Member> | null, summary: string) => {
+      const m = modelRef.current;
+      const set = new Set(ids);
+      commit({ ...m, members: m.members.map((x) => (set.has(x.id) ? { ...x, ...(patch(x) ?? {}) } : x)) }, summary);
+    },
+    [commit],
+  );
+  const removeMany = useCallback(
+    (ids: string[]) => {
+      const m = modelRef.current;
+      const set = new Set(ids);
+      commit({ ...m, members: m.members.filter((x) => !set.has(x.id)) }, `Deleted ${ids.length} members`);
+      setSelectedId(null);
+      setMulti([]);
+    },
+    [commit],
+  );
 
   const updateMember = useCallback(
     (id: string, patch: Partial<Member>, summary: string) => {
@@ -291,6 +312,7 @@ export function DesignEditor({
 
   const pick = (id: string | null, fromElsewhere = false) => {
     setSelectedId(id);
+    setMulti([]);
     if (!id) return;
     setTab("member");
     const mem = modelRef.current.members.find((x) => x.id === id.split("#")[0]);
@@ -390,6 +412,47 @@ export function DesignEditor({
 
   const page = rendered && rendered.key === planKey ? rendered.page : null;
 
+  // Members found on the sheet's linework: previewed on the plan, added by colour.
+  const [found, setFound] = useState<{ levelId: string; lines: FoundLine[] } | null>(null);
+  const [finding, setFinding] = useState(false);
+  const findOnSheet = async () => {
+    if (!page || !level.plan?.scale) return setNotice("Place the plan and set its scale first (Levels tab), then find beams on it.");
+    const file = plans.find((p) => p.id === level.plan!.planId);
+    setFinding(true);
+    try {
+      const s = level.plan.scale;
+      let lines = findLines(page, 1.0 / s); // at least 1 m long
+      if (file) lines = labelLines(lines, await pageWords(await loadPdf(file.id, file.url), level.plan.page));
+      // skip lines already drawn as members
+      const mine = modelRef.current.members.filter((m) => m.levelId === level.id && m.b);
+      const frameNow = { scale: s, origin: level.plan.origin };
+      lines = lines.filter((l) => {
+        const a = toWorld(frameNow, l.a),
+          b = toWorld(frameNow, l.b);
+        return !mine.some((m) => Math.hypot(m.a.x - a.x, m.a.y - a.y) + Math.hypot(m.b!.x - b.x, m.b!.y - b.y) < 0.6 || Math.hypot(m.a.x - b.x, m.a.y - b.y) + Math.hypot(m.b!.x - a.x, m.b!.y - a.y) < 0.6);
+      });
+      setFound({ levelId: level.id, lines });
+      if (!lines.length) setNotice("No long coloured lines found on this sheet.");
+    } finally {
+      setFinding(false);
+    }
+  };
+  const addFound = (hue: number) => {
+    if (!found || !level.plan?.scale) return;
+    const frameNow = { scale: level.plan.scale, origin: level.plan.origin };
+    let m = modelRef.current;
+    const add: Member[] = [];
+    for (const l of found.lines.filter((x) => x.hue === hue)) {
+      const mem = newMember({ ...m, members: [...m.members, ...add] }, "beam", level.id, toWorld(frameNow, l.a), toWorld(frameNow, l.b));
+      if (l.label) mem.label = l.label;
+      add.push(mem);
+    }
+    m = { ...m, members: [...m.members, ...add] };
+    commit(m, `Added ${add.length} beams found on the sheet`);
+    setFound({ ...found, lines: found.lines.filter((x) => x.hue !== hue) });
+  };
+  const foundHere = found && found.levelId === level.id ? found.lines : [];
+
   const upload = async (file: File) => {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) return setNotice("Plans must be PDF files.");
     if (file.size > 50 * 1024 * 1024) return setNotice("That PDF is over 50 MB.");
@@ -457,6 +520,11 @@ export function DesignEditor({
         return;
       }
       if (ctrl || e.altKey) return;
+      if ((k === "delete" || k === "backspace") && multi.length > 1) {
+        e.preventDefault();
+        removeMany(multi);
+        return;
+      }
       if ((k === "delete" || k === "backspace") && selected) {
         e.preventDefault();
         removeMember(selected.id);
@@ -464,6 +532,7 @@ export function DesignEditor({
       }
       if (k === "escape") {
         setSelectedId(null);
+        setMulti([]);
         return;
       }
       if (k === "v") setTool("select");
@@ -478,7 +547,7 @@ export function DesignEditor({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, selectedLintel, cursor, level.id, undo, redo, placeCopy, removeMember, removeOpening]);
+  }, [selected, selectedLintel, cursor, level.id, undo, redo, placeCopy, removeMember, removeOpening, multi, removeMany]);
 
   // ------------------------------------------------------------ export
 
@@ -656,6 +725,11 @@ export function DesignEditor({
                     <span className="ml-1 font-normal tabular-nums">{model.members.filter((m) => m.levelId === l.id).length}</span>
                   </button>
                 ))}
+                {level.plan?.scale && page ? (
+                  <button type="button" className="ml-2 rounded-md px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-accent-600 hover:bg-surface-2" onClick={findOnSheet} disabled={finding || locked} title="Find long coloured lines on this sheet and add them as beams">
+                    {finding ? "Looking…" : "Find beams on the sheet"}
+                  </button>
+                ) : null}
                 {/* mobile tool picker */}
                 <select className="field ml-auto py-1 text-xs md:hidden" value={tool} onChange={(e) => setTool(e.target.value as Tool)} aria-label="Tool">
                   <option value="select">Select</option>
@@ -670,6 +744,24 @@ export function DesignEditor({
                   <option value="origin">Origin</option>
                 </select>
               </div>
+              {foundHere.length ? (
+                <div className="flex flex-wrap items-center gap-2 border-b border-line bg-accent-100/60 px-3 py-1.5 text-xs">
+                  <span className="font-semibold">Found on the sheet:</span>
+                  {[...new Set(foundHere.map((l) => l.hue))].map((h) => {
+                    const ls = foundHere.filter((l) => l.hue === h);
+                    return (
+                      <button key={h} type="button" className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-0.5 font-semibold hover:border-accent" onClick={() => addFound(h)} disabled={locked}>
+                        <i className="inline-block h-2 w-4" style={{ background: ls[0].colour }} />
+                        Add {ls.length} as beams{ls.some((l) => l.label) ? ` (${ls.filter((l) => l.label).length} marked)` : ""}
+                      </button>
+                    );
+                  })}
+                  <span className="text-muted">Each colour is a set of lines; pick the colours that are beams (dashed on the plan).</span>
+                  <button type="button" className="ml-auto font-semibold text-muted hover:text-ink" onClick={() => setFound(null)}>
+                    Dismiss
+                  </button>
+                </div>
+              ) : null}
               <div className="min-h-0 flex-1">
                 <PlanView
                   level={level}
@@ -683,6 +775,20 @@ export function DesignEditor({
                   colourBy={colourBy}
                   focus={focus}
                   onSelect={(id) => pick(id)}
+                  multi={multi}
+                  suggest={foundHere}
+                  onToggle={(id) => {
+                    const base = multi.length ? multi : selectedId && !selectedId.includes("#") ? [selectedId] : [];
+                    const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+                    setMulti(next);
+                    setSelectedId(next.length === 1 ? next[0] : null);
+                    setTab("member");
+                  }}
+                  onBox={(ids) => {
+                    setMulti(ids);
+                    setSelectedId(ids.length === 1 ? ids[0] : null);
+                    setTab("member");
+                  }}
                   onCreate={createMember}
                   onOpening={addOpening}
                   onMove={(id, a, b) => {
@@ -773,7 +879,9 @@ export function DesignEditor({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {tab === "member" ? (
-              selectedLintel ? (
+              multi.length > 1 ? (
+                <BulkPanel model={model} ids={multi} locked={locked} onPatch={(patch, summary) => patchMany(multi, patch, summary)} onDelete={() => removeMany(multi)} onClear={() => setMulti([])} />
+              ) : selectedLintel ? (
                 <OpeningPanel
                   lintel={selectedLintel}
                   result={results.get(selectedLintel.id)}

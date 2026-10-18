@@ -1187,6 +1187,106 @@ export function ParamsPanel({
   );
 }
 
+// ---------------------------------------------------------------- several members at once
+
+export function BulkPanel({
+  model,
+  ids,
+  locked,
+  onPatch,
+  onDelete,
+  onClear,
+}: {
+  model: DesignModel;
+  ids: string[];
+  locked: boolean;
+  onPatch: (patch: (m: Member) => Partial<Member> | null, summary: string) => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) {
+  const ms = model.members.filter((m) => ids.includes(m.id));
+  const counts = new Map<string, number>();
+  for (const m of ms) counts.set(MEMBER_INFO[m.type].label, (counts.get(MEMBER_INFO[m.type].label) ?? 0) + 1);
+  const beams = ms.filter((m) => m.type === "beam" || m.type === "lintel");
+  const loaded = ms.filter((m) => BEAM_LIKE.includes(m.type));
+  const first = beams[0];
+  const onlyBeams = (fn: (m: Member) => Partial<Member>) => (m: Member) => (m.type === "beam" || m.type === "lintel" ? fn(m) : null);
+  const onlyLoaded = (fn: (m: Member) => Partial<Member>) => (m: Member) => (BEAM_LIKE.includes(m.type) ? fn(m) : null);
+  return (
+    <div>
+      <Section title={`${ms.length} selected`} aside={<button type="button" className="text-xs font-semibold text-muted hover:text-ink" onClick={onClear}>Clear</button>}>
+        <p className="text-sm text-muted">{[...counts].map(([k, n]) => `${n} ${k.toLowerCase()}${n === 1 ? "" : "s"}`).join(", ")}. Changes here apply to every one that takes them, as one step you can undo.</p>
+        <p className="mt-1 text-xs text-muted">Shift-click to add or remove a member; shift-drag on the plan to select by box.</p>
+      </Section>
+      <Section title="Mark">
+        <fieldset disabled={locked}>
+          <TextField label="Give them all one mark (a typical member)" value="" placeholder={first?.label ?? "B1"} onCommit={(v) => v && onPatch(() => ({ label: v }), `marked ${ms.length} members ${v}`)} />
+        </fieldset>
+        <p className="mt-1 text-xs text-muted">Beams sharing a mark are sized together for the worst of them.</p>
+      </Section>
+      {loaded.length ? (
+        <Section title="What they carry">
+          <p className="mb-2 text-xs text-muted">Sets the loaded widths on {loaded.length} beam{loaded.length === 1 ? "" : "s"}, joist{loaded.length === 1 ? "" : "s"} and rafters. Leave all blank to read the loads off the drawing.</p>
+          <TribEditor trib={loaded[0].trib} locked={locked} onChange={(t) => onPatch(onlyLoaded(() => ({ trib: t })), `loads on ${loaded.length} members: ${tribText(t) || "from the drawing"}`)} />
+        </Section>
+      ) : null}
+      {beams.length ? (
+        <>
+          <Section title="Section">
+            <SizingEditor
+              sizing={first.sizing ?? { mode: "auto" }}
+              locked={locked}
+              onChange={(sz) => onPatch(onlyBeams(() => ({ sizing: sz })), `sizing on ${beams.length} beams`)}
+              fixedSection={
+                <TextField label="Section" value={first.section} list="design-sections" onCommit={(v) => v && onPatch(onlyBeams(() => ({ section: v })), `section ${v} on ${beams.length} beams`)} />
+              }
+            />
+          </Section>
+          <Section title="Material">
+            <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+              <Select<Material>
+                label="Material"
+                value={first.material}
+                options={[
+                  { value: "timber", label: "Timber" },
+                  { value: "steel", label: "Steel" },
+                ]}
+                onChange={(v) => onPatch(onlyBeams(() => ({ material: v })), `${beams.length} beams ${v}`)}
+              />
+              <Select
+                label="Steel: lateral restraint"
+                value={first.restraint ?? "full"}
+                options={[
+                  { value: "full", label: "Top flange held by joists" },
+                  { value: "ends", label: "At supports only" },
+                ]}
+                onChange={(v) => onPatch(onlyBeams(() => ({ restraint: v === "full" ? undefined : v })), `${beams.length} beams restrained ${v}`)}
+              />
+            </fieldset>
+          </Section>
+        </>
+      ) : null}
+      <Section title="Height">
+        <fieldset disabled={locked}>
+          <NumberField label="Height offset for all" unit="m" value={undefined} placeholder="on the level" onCommit={(v) => onPatch(() => ({ dz: v || undefined }), `height offset ${v ?? 0} m on ${ms.length} members`)} />
+        </fieldset>
+      </Section>
+      <Section title="Remove">
+        <button
+          type="button"
+          className="btn btn-quiet px-2.5 py-1 text-xs text-bad"
+          disabled={locked}
+          onClick={() => {
+            if (window.confirm(`Delete these ${ms.length} members?`)) onDelete();
+          }}
+        >
+          Delete {ms.length} members
+        </button>
+      </Section>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- site
 
 export function SitePanel({ model, locked, onSite }: { model: DesignModel; locked: boolean; onSite: (s: SiteData | undefined, summary: string) => void }) {
