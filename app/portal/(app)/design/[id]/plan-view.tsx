@@ -53,6 +53,7 @@ type Props = {
   focus: { id: string; n: number } | null; // centre the view on this member
   multi?: string[]; // several members selected (shift-click, shift-drag a box)
   suggest?: { a: Pt; b: Pt; colour: string; label?: string }[]; // lines found on the sheet (PDF points), previewed
+  clouds?: Pt[][]; // members changed since a compared revision (metres), boxed
   onToggle?: (id: string) => void;
   onBox?: (ids: string[]) => void;
 };
@@ -659,7 +660,30 @@ export function PlanView(props: Props) {
           {cursor && tool !== "select" && tool !== "pan" ? (
             <circle cx={cursor.x} cy={cursor.y} r={px(4)} fill="none" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
           ) : null}
-                  {(props.suggest ?? []).map((l, i) => (
+                  {(props.clouds ?? []).map((ps, i) => {
+            const q = ps.map((p) => toPdf(frame, p));
+            const m = px(10);
+            const x0 = Math.min(...q.map((p) => p.x)) - m,
+              y0 = Math.min(...q.map((p) => p.y)) - m;
+            return (
+              <rect
+                key={`cl${i}`}
+                x={x0}
+                y={y0}
+                width={Math.max(...q.map((p) => p.x)) + m - x0}
+                height={Math.max(...q.map((p) => p.y)) + m - y0}
+                rx={px(8)}
+                fill="#c2410c"
+                fillOpacity={0.05}
+                stroke="#c2410c"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                vectorEffect="non-scaling-stroke"
+                pointerEvents="none"
+              />
+            );
+          })}
+          {(props.suggest ?? []).map((l, i) => (
             <g key={`sg${i}`}>
               <line x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y} stroke={l.colour} strokeWidth={6} strokeOpacity={0.45} strokeDasharray="10 6" vectorEffect="non-scaling-stroke" />
               {l.label ? (

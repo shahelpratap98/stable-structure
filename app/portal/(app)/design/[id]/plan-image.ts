@@ -4,6 +4,7 @@
 // placed and scaled) faded underneath, with every member drawn and labelled.
 
 import type { Calcs } from "@/lib/design/calc";
+import type { Change } from "@/lib/design/diff";
 import { MEMBER_INFO, type DesignModel, type Level, type Member, type Pt } from "@/lib/design/model";
 import { loadPdf, renderPage } from "./pdf";
 
@@ -26,11 +27,42 @@ function bounds(members: Member[]) {
   return { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + pad };
 }
 
-export async function planImage(model: DesignModel, calcs: Calcs, level: Level, plans: PlanSource[], maxW = 2200, maxH = 1500): Promise<{ url: string; w: number; h: number } | null> {
+// Revision cloud: scallops round a box, as drawn by hand on a marked-up sheet.
+function cloud(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, r: number) {
+  const edge = (ax: number, ay: number, bx: number, by: number) => {
+    const len = Math.hypot(bx - ax, by - ay);
+    const n = Math.max(1, Math.round(len / (2 * r)));
+    const ux = (bx - ax) / n,
+      uy = (by - ay) / n;
+    const ang = Math.atan2(uy, ux);
+    for (let i = 0; i < n; i++) {
+      const cx = ax + ux * (i + 0.5),
+        cy = ay + uy * (i + 0.5);
+      ctx.arc(cx, cy, Math.hypot(ux, uy) / 2, ang + Math.PI, ang + 2 * Math.PI);
+    }
+  };
+  ctx.beginPath();
+  edge(x0, y0, x1, y0);
+  edge(x1, y0, x1, y1);
+  edge(x1, y1, x0, y1);
+  edge(x0, y1, x0, y0);
+  ctx.stroke();
+}
+
+export async function planImage(
+  model: DesignModel,
+  calcs: Calcs,
+  level: Level,
+  plans: PlanSource[],
+  revs: { changes: Change[]; revision: number } | null = null,
+  maxW = 2200,
+  maxH = 1500,
+): Promise<{ url: string; w: number; h: number } | null> {
   const members = model.members.filter((m) => m.levelId === level.id);
   const lintels = calcs.lintels.filter((l) => l.wall.levelId === level.id);
   if (!members.length) return null;
-  const b = bounds(members);
+  const clouds = revs ? revs.changes.filter((c) => c.levelId === level.id && c.at.length) : [];
+  const b = bounds([...members, ...clouds.flatMap((c) => c.at.map((a) => ({ a }) as Member))]);
   const wm = b.x1 - b.x0,
     hm = b.y1 - b.y0;
   const k = Math.min(maxW / wm, maxH / hm); // px per metre
@@ -163,6 +195,34 @@ export async function planImage(model: DesignModel, calcs: Calcs, level: Level, 
     ctx.stroke();
     ctx.fillStyle = t.colour === "#b8342a" ? "#b8342a" : "#1b2530";
     ctx.fillText(t.text, p.x, p.y + 1);
+  }
+
+  // revision clouds, each with its revision triangle
+  if (clouds.length) {
+    const tri = fs * 1.5;
+    ctx.strokeStyle = "#c2410c";
+    ctx.lineWidth = px * 1.1;
+    for (const c of clouds) {
+      const ps = c.at.map(P);
+      const m = Math.max(0.35 * k, fs);
+      const x0 = Math.min(...ps.map((p) => p.x)) - m,
+        x1 = Math.max(...ps.map((p) => p.x)) + m,
+        y0 = Math.min(...ps.map((p) => p.y)) - m,
+        y1 = Math.max(...ps.map((p) => p.y)) + m;
+      cloud(ctx, x0, y0, x1, y1, Math.max(fs * 0.45, px * 3));
+      ctx.beginPath();
+      ctx.moveTo(x1, y0 - tri * 0.9);
+      ctx.lineTo(x1 + tri * 0.55, y0);
+      ctx.lineTo(x1 - tri * 0.55, y0);
+      ctx.closePath();
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#c2410c";
+      ctx.font = `700 ${Math.round(fs * 0.7)}px Arial, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(String(revs!.revision), x1, y0 - tri * 0.3);
+    }
   }
 
   // scale bar

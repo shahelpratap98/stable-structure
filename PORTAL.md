@@ -123,6 +123,20 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   @react-pdf/renderer (logo on every sheet, cover with sign-off, design basis,
   schedule, bracing, a marked-up plan per level from `plan-image.ts`, a 3D
   still from `snapshot3d`, every calc). Watermarked DRAFT until signed.
+  Also a design features report and PS1 details (`lib/design/paperwork.ts`,
+  entered under Consent paperwork on the Sign-off tab; the PS1 page is
+  information for the official form, never a signed statement), typical
+  details picked from the connection schedule (`[id]/details.tsx`), and,
+  when comparing with an earlier revision (History tab, `lib/design/diff.ts`),
+  a changes table with revision clouds on the plans.
+- **Piles**: ordinary H5 timber piles (square, or round as the square of the
+  same area) checked for axial load to NZS 3603, on a 350 × 350 × 200 footing
+  or larger, sized from the site bearing. Gravity only: braced and anchor
+  piles follow NZS 3604 Section 6.
+- **Verification**: `lib/design/verify.ts` holds the known-answer cases
+  (textbook frame results, AS 4100 capacity tables, hand checks, Lot 6 and
+  26121 results). `npm test` runs them with Vitest, `/portal/design/verification`
+  runs them live, and every report ends with the result.
 
 ## Environment
 

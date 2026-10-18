@@ -12,6 +12,7 @@
 // bracing lines and pole / block retaining walls.
 
 import { normaliseSite, type SiteData } from "./site";
+import { normalisePaperwork, type Paperwork } from "./paperwork";
 export type Pt = { x: number; y: number };
 
 export type MemberType =
@@ -151,6 +152,7 @@ export type DesignModel = {
   bracing: Record<string, BracingDemand>; // by level id
   notes: string[]; // assumptions to confirm before issue
   site?: SiteData; // wind, earthquake and ground data for specific design
+  paperwork?: Paperwork; // PS1 and design features report details
 };
 
 export const MEMBER_TYPES: MemberType[] = ["beam", "lintel", "joist", "rafter", "joistzone", "wall", "post", "bracing", "footing", "pile", "retaining"];
@@ -282,6 +284,7 @@ export function normaliseModel(raw: unknown): DesignModel {
     bracing,
     notes: Array.isArray(m.notes) ? m.notes.filter((n) => typeof n === "string").slice(0, 100) : [],
     site: normaliseSite(m.site),
+    paperwork: normalisePaperwork(m.paperwork),
   };
 }
 

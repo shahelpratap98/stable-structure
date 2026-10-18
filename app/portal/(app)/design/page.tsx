@@ -56,6 +56,10 @@ export default async function DesignPage() {
           <Link href="/portal/design/guide" className="font-semibold text-accent-600 hover:underline">
             How to use it
           </Link>
+          {" · "}
+          <Link href="/portal/design/verification" className="font-semibold text-accent-600 hover:underline">
+            Engine verification
+          </Link>
         </p>
       </div>
 

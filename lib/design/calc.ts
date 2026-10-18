@@ -12,7 +12,7 @@
 
 import { braceCalcs, type BracingSheet } from "./bracing";
 import { DEFAULT_SITE, windBasis } from "./site";
-import { designPad, designStrip, slabPunch } from "./foundations";
+import { designPad, designStrip, slabPunch, type FootingResult } from "./foundations";
 import { designPortal } from "./lateral";
 import { designConcreteBeam } from "./concrete";
 import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
@@ -713,7 +713,7 @@ export function steelPhiNc(A: number, fy: number, r: number, le: number, ab: num
 // ---------------------------------------------------------------- steel member checks (AS 4100 / NZS 3404.1)
 
 // Member slenderness reduction alpha_c (cl 6.3.3) for modified slenderness ln and section constant ab.
-function alphaC(ln: number, ab: number) {
+export function alphaC(ln: number, ab: number) {
   const aa = (2100 * (ln - 13.5)) / (ln * ln - 15.3 * ln + 2050);
   const l = ln + aa * ab;
   const eta = Math.max(0, 0.00326 * (l - 13.5));
@@ -725,7 +725,7 @@ function alphaC(ln: number, ab: number) {
 const GS = 80000; // MPa
 type LtbInfo = { phiMb: number; Mo: number; as: number; am: number };
 // Lateral-torsional buckling, cl 5.6.1.1: phi·Mb = phi·am·as·Ms <= phi·Ms (kN·m), le in m.
-function steelPhiMb(s: SteelSec, le: number, am: number) {
+export function steelPhiMb(s: SteelSec, le: number, am: number) {
   const L = le * 1000;
   const Ms = s.fy * s.Ze;
   const Mo = Math.sqrt(((Math.PI ** 2 * ES * s.Iy) / L ** 2) * (GS * s.J + (Math.PI ** 2 * ES * s.Iw) / L ** 2));
@@ -733,11 +733,11 @@ function steelPhiMb(s: SteelSec, le: number, am: number) {
   return { phiMb: (0.9 * Math.min(Ms, am * as * Ms)) / 1e6, Mo: Mo / 1e6, as, am };
 }
 // Moment modification factor, cl 5.6.1.1(a)(iii), from the peak and quarter-point moments.
-const alphaM = (Mm: number, M2: number, M3: number, M4: number) => Math.min(2.5, (1.7 * Mm) / Math.max(1e-9, Math.sqrt(M2 * M2 + M3 * M3 + M4 * M4)));
+export const alphaM = (Mm: number, M2: number, M3: number, M4: number) => Math.min(2.5, (1.7 * Mm) / Math.max(1e-9, Math.sqrt(M2 * M2 + M3 * M3 + M4 * M4)));
 
 // Web bearing under a concentrated load or reaction, cl 5.13: bearing yield and buckling.
 // bs = stiff bearing length (mm); end = at the end of the member.
-function webBearing(s: SteelSec, bs: number, end: boolean) {
+export function webBearing(s: SteelSec, bs: number, end: boolean) {
   const bbf = end ? bs + 2.5 * s.tf : bs + 5 * s.tf;
   const d1 = s.d - 2 * s.tf;
   const yieldCap = (0.9 * 1.25 * bbf * s.tw * s.fy) / 1e3;
@@ -1089,6 +1089,40 @@ function runCalcsOnce(model: DesignModel): Calcs {
         ];
         res.notes = [...f.notes, ...(model.site ? [] : ["No site data entered: good ground (300 kPa ultimate, φ 0.5) assumed."])];
         if (fixed) res.inputs.push({ label: "Size", value: `${fixed.B} × ${fixed.B} × ${fixed.D} (fixed; choose Pick the size to let the app size it)` });
+      } else if (s.type === "pile" && from.length) {
+        // an ordinary timber pile: axial in the pile above ground, then its concrete footing
+        const round = /d(ia)?\b|ø/i.test(s.section);
+        const size = parseFloat(s.section) || 125;
+        const side = round ? Math.round(size * 0.886) : size; // round pile as the square of the same area
+        const h = s.height ?? 0.6; // exposed height, ground to underside of bearer
+        const pd = designPost(loads, h + 0.15, p, { name: round ? `${size} dia H5 pile` : `${size}×${size} H5 pile`, fam: "SG8", b: side, d: side });
+        let f = designPad(N, side, site, { B: 350, D: 200 });
+        const fu = (x: FootingResult) => Math.max(x.uBearing, x.uPunch, x.uShear);
+        if (fu(f) > 1) f = designPad(N, side, site);
+        const u = Math.max(pd.util, fu(f));
+        res.status = statusFor(u);
+        res.ratio = u;
+        res.sec = { name: pd.sec.name, fam: "SG8", b: side, d: side };
+        res.summary = `${pd.sec.name} on ${f.B}×${f.B}×${f.D} footing · N* ${fmt(N, 1)} kN · ${Math.round(u * 100)}%`;
+        res.utils = [
+          { label: "Pile axial", u: pd.util },
+          { label: "Footing bearing", u: f.uBearing },
+          { label: "Footing punching", u: f.uPunch },
+        ];
+        res.kv.push(
+          { label: "Pile φN (le = exposed height + 0.15 m)", value: `${fmt(pd.cap, 1)} kN` },
+          { label: "Exposed height", value: `${fmt(h)} m${s.height === undefined ? " (assumed: set the height)" : ""}` },
+          { label: "Footing", value: `${f.B} × ${f.B} × ${f.D} deep` },
+          ...f.lines.filter((l) => l.label.startsWith("Bearing")),
+        );
+        res.checks = [
+          { name: "Pile axial (NZS 3603)", demand: N, capacity: pd.cap, unit: "kN", ratio: pd.util },
+          { name: "Footing bearing", demand: f.qStar, capacity: f.qCap, unit: "kPa", ratio: f.uBearing },
+        ];
+        res.notes = [
+          `H5 treated pile, SG8 properties assumed${round ? ", round pile checked as the square of the same area" : ""}. Ordinary pile: carries gravity only; bracing and anchor piles, embedment and fixings to NZS 3604 Section 6.`,
+          ...(model.site ? [] : ["No site data entered: good ground (300 kPa ultimate, φ 0.5) assumed."]),
+        ];
       } else res.notes = ["Check bearing against the site's geotechnical report."];
     }
     results.set(s.id, res);

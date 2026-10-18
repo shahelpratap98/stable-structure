@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { runCalcs } from "@/lib/design/calc";
+import { runCalcs, type Calcs } from "@/lib/design/calc";
+import { cloudsOn, diffModels } from "@/lib/design/diff";
 import { exportIfc } from "@/lib/design/ifc";
 import { FAMILY_COLOUR, FAMILY_LABEL } from "@/lib/design/materials";
 import {
@@ -25,7 +26,7 @@ import {
 } from "@/lib/design/model";
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
-import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, Overview, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
+import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, ChangesPanel, Overview, PaperworkPanel, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
 import { countPages, findLines, labelLines, loadPdf, pageWords, renderPage, type FoundLine, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
@@ -126,6 +127,10 @@ export function DesignEditor({
 
   const calcs = useMemo(() => runCalcs(model), [model]);
   const results = calcs.results;
+
+  // an earlier revision to compare against: its changes are boxed on the plan and clouded in the report
+  const [base, setBase] = useState<{ revision: number; model: DesignModel; calcs: Calcs } | null>(null);
+  const changes = useMemo(() => (base ? diffModels(base.model, base.calcs, model, calcs) : []), [base, model, calcs]);
   const level = model.levels.find((l) => l.id === activeLevelId) ?? model.levels[0];
   const selected = model.members.find((m) => m.id === selectedId) ?? null;
   const selectedLintel = selectedId?.includes("#") ? (calcs.lintels.find((l) => l.id === selectedId) ?? null) : null;
@@ -368,6 +373,13 @@ export function DesignEditor({
     return () => window.removeEventListener("beforeunload", warn);
   }, [save]);
 
+  const compareWith = async (rev: number | null) => {
+    if (rev === null) return setBase(null);
+    const old = await loadRevision(job.id, rev);
+    if (!old) return setNotice("That revision couldn't be loaded.");
+    setBase({ revision: rev, model: old, calcs: runCalcs(old) });
+  };
+
   const restore = async (rev: number) => {
     const old = await loadRevision(job.id, rev);
     if (!old) return setNotice("That revision couldn't be loaded.");
@@ -573,6 +585,7 @@ export function DesignEditor({
         status: job.status,
         signoff,
         plans: plans.map((p) => ({ id: p.id, url: p.url })),
+        compare: base ? { revision: base.revision, changes } : null,
       });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -777,6 +790,7 @@ export function DesignEditor({
                   onSelect={(id) => pick(id)}
                   multi={multi}
                   suggest={foundHere}
+                  clouds={cloudsOn(changes, level.id).map((c) => c.at)}
                   onToggle={(id) => {
                     const base = multi.length ? multi : selectedId && !selectedId.includes("#") ? [selectedId] : [];
                     const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
@@ -954,6 +968,18 @@ export function DesignEditor({
               />
             ) : null}
             {tab === "signoff" ? (
+              <PaperworkPanel
+                model={model}
+                job={job}
+                company={company}
+                locked={locked}
+                onChange={(paperwork, summary) => {
+                  const m = modelRef.current;
+                  commit({ ...m, paperwork }, summary);
+                }}
+              />
+            ) : null}
+            {tab === "signoff" ? (
               <SignoffPanel
                 jobId={job.id}
                 status={job.status}
@@ -965,7 +991,21 @@ export function DesignEditor({
                 reporting={reporting}
               />
             ) : null}
-            {tab === "history" ? <HistoryPanel jobId={job.id} revision={revision} locked={locked} onRestore={restore} /> : null}
+            {tab === "history" && base ? (
+              <ChangesPanel
+                revision={base.revision}
+                changes={changes}
+                levelName={(id) => model.levels.find((l) => l.id === id)?.name ?? ""}
+                onPick={(id) => {
+                  const m = model.members.find((x) => x.id === id);
+                  if (m && m.levelId !== level.id) setActiveLevelId(m.levelId);
+                  pick(id, true);
+                  setTab("history");
+                }}
+                onClear={() => setBase(null)}
+              />
+            ) : null}
+            {tab === "history" ? <HistoryPanel jobId={job.id} revision={revision} locked={locked} onRestore={restore} comparing={base?.revision ?? null} onCompare={compareWith} /> : null}
           </div>
         </aside>
       </div>

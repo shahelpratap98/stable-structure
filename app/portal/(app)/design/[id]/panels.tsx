@@ -6,6 +6,8 @@ import { Spinner } from "@/components/spinner";
 import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
 import { autoTrib, DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
 import { DEFAULT_SITE, demandFromSite, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
+import type { Change } from "@/lib/design/diff";
+import { DEFAULT_PAPERWORK, drawingsFromText, drawingsToText, MONITORING, type Monitoring, type Paperwork } from "@/lib/design/paperwork";
 import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
   BRACE_NAME,
@@ -1418,7 +1420,21 @@ export function SitePanel({ model, locked, onSite }: { model: DesignModel; locke
 
 type Rev = Awaited<ReturnType<typeof listRevisions>>[number];
 
-export function HistoryPanel({ jobId, revision, locked, onRestore }: { jobId: string; revision: number; locked: boolean; onRestore: (rev: number) => void }) {
+export function HistoryPanel({
+  jobId,
+  revision,
+  locked,
+  onRestore,
+  comparing,
+  onCompare,
+}: {
+  jobId: string;
+  revision: number;
+  locked: boolean;
+  onRestore: (rev: number) => void;
+  comparing: number | null;
+  onCompare: (rev: number | null) => void;
+}) {
   const [revs, setRevs] = useState<Rev[] | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -1449,19 +1465,137 @@ export function HistoryPanel({ jobId, revision, locked, onRestore }: { jobId: st
                   Rev {r.revision} · {when(r.savedAt)}
                   {r.by ? ` · ${r.by}` : ""}
                 </span>
-                {r.revision !== revision && !locked ? (
-                  <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => onRestore(r.revision)}>
-                    Restore
-                  </button>
-                ) : r.revision === revision ? (
-                  <span className="font-semibold text-ok">Current</span>
-                ) : null}
+                <span className="flex gap-3">
+                  {r.revision !== revision ? (
+                    <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => onCompare(comparing === r.revision ? null : r.revision)}>
+                      {comparing === r.revision ? "Stop comparing" : "Compare"}
+                    </button>
+                  ) : null}
+                  {r.revision !== revision && !locked ? (
+                    <button type="button" className="font-semibold text-accent-600 hover:underline" onClick={() => onRestore(r.revision)}>
+                      Restore
+                    </button>
+                  ) : r.revision === revision ? (
+                    <span className="font-semibold text-ok">Current</span>
+                  ) : null}
+                </span>
               </div>
               <p className="mt-0.5 text-sm">{r.summary || "Saved"}</p>
             </li>
           ))}
         </ol>
       )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- changes since a revision
+
+export function ChangesPanel({ revision, changes, levelName, onPick, onClear }: { revision: number; changes: Change[]; levelName: (id: string) => string; onPick: (id: string) => void; onClear: () => void }) {
+  return (
+    <Section
+      title={`Changes since revision ${revision}`}
+      aside={
+        <button type="button" className="text-xs font-semibold text-muted hover:text-ink" onClick={onClear}>
+          Stop comparing
+        </button>
+      }
+    >
+      {changes.length ? (
+        <ul className="flex flex-col divide-y divide-line text-sm">
+          {changes.map((c, i) => (
+            <li key={i} className="py-1.5">
+              <button type="button" className="w-full text-left disabled:cursor-default" disabled={!c.id || c.kind === "removed" || c.id.includes("#")} onClick={() => onPick(c.id)}>
+                <span className={`font-semibold ${c.kind === "removed" ? "text-bad" : c.kind === "added" ? "text-ok" : "text-ink"}`}>{c.mark}</span>
+                <span className="ml-2 text-xs text-muted">{c.levelId ? levelName(c.levelId) : "Whole job"}</span>
+                <span className="block text-xs">{c.what}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted">No changes.</p>
+      )}
+      <p className="mt-2 text-xs text-muted">Changed members are boxed on the plan. Download the report while comparing to cloud them on the framing plans and list them in the report.</p>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- consent paperwork (PS1, design features)
+
+export function PaperworkPanel({ model, job, company, locked, onChange }: { model: DesignModel; job: { title: string }; company: string; locked: boolean; onChange: (p: Paperwork, summary: string) => void }) {
+  const pw = model.paperwork ?? DEFAULT_PAPERWORK;
+  const set = (patch: Partial<Paperwork>, what: string) => onChange({ ...pw, ...patch }, what);
+  // the text being typed, until the saved list changes underneath it (undo, another tab)
+  const saved = drawingsToText(pw.drawings);
+  const [draft, setDraft] = useState({ base: saved, text: saved });
+  const drawings = draft.base === saved ? draft.text : saved;
+  const setDrawings = (text: string) => setDraft({ base: saved, text });
+  return (
+    <Section title="Consent paperwork" aside={<span className="text-[11px] text-muted">PS1 · design features</span>}>
+      <p className="mb-2 text-xs text-muted">
+        Goes into the report as the PS1 details page and the design features report. The PS1 itself is the official Engineering New Zealand form, signed by the design professional.
+      </p>
+      <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+        <TextField label="Design firm" value={pw.firm} placeholder={company} onCommit={(v) => set({ firm: v }, "PS1 design firm")} />
+        <TextField label="Owner / developer" value={pw.owner} onCommit={(v) => set({ owner: v }, "PS1 owner")} />
+        <TextField label="Building consent authority" value={pw.bca} placeholder="e.g. Auckland Council" onCommit={(v) => set({ bca: v }, "PS1 council")} />
+        <TextField label="Legal description" value={pw.legal} placeholder="Lot 6 DP 123456" onCommit={(v) => set({ legal: v }, "PS1 legal description")} />
+        <div className="col-span-2">
+          <TextField label="Building work" value={pw.description} placeholder={job.title} onCommit={(v) => set({ description: v }, "PS1 building work")} />
+        </div>
+        <div className="col-span-2">
+          <TextField label="Services (extent of engagement)" value={pw.extent} onCommit={(v) => set({ extent: v }, "PS1 extent")} />
+        </div>
+        <TextField label="Building Code clauses" value={pw.clauses} onCommit={(v) => set({ clauses: v }, "PS1 clauses")} />
+        <Select<"all" | "part">
+          label="Covers"
+          value={pw.part}
+          options={[
+            { value: "part", label: "Part of the building work" },
+            { value: "all", label: "All of the building work" },
+          ]}
+          onChange={(v) => set({ part: v }, `PS1 covers ${v}`)}
+        />
+        <div className="col-span-2">
+          <TextField label="Design basis" value={pw.basis} onCommit={(v) => set({ basis: v }, "PS1 design basis")} />
+        </div>
+        <label className="col-span-2 flex flex-col gap-1">
+          <span className="text-xs font-semibold text-muted">Drawings (one per line: number | title | revision)</span>
+          <textarea
+            className="field min-h-20 w-full py-1.5 text-sm"
+            value={drawings}
+            placeholder={"S100 | Foundation plan | B\nS200 | Ground floor framing | B"}
+            onChange={(e) => setDrawings(e.target.value)}
+            onBlur={() => {
+              const d = drawingsFromText(drawings);
+              const text = drawingsToText(d);
+              setDraft({ base: text, text }); // in step with what is saved, so undo shows through
+              if (text !== saved) set({ drawings: d }, "PS1 drawings");
+            }}
+          />
+        </label>
+        <Select<Monitoring>
+          label="Construction monitoring"
+          value={pw.monitoring}
+          options={(Object.keys(MONITORING) as Monitoring[]).map((k) => ({ value: k, label: MONITORING[k] }))}
+          onChange={(v) => set({ monitoring: v }, `construction monitoring ${v}`)}
+        />
+        <NumberField label="Design life" unit="years" value={pw.designLife} min={1} onCommit={(v) => v && set({ designLife: v }, `design life ${v} years`)} />
+        <TextField label="Design professional" value={pw.engineer} onCommit={(v) => set({ engineer: v }, "PS1 design professional")} />
+        <TextField label="CPEng number" value={pw.cpeng} onCommit={(v) => set({ cpeng: v }, "PS1 CPEng number")} />
+        <div className="col-span-2">
+          <TextField label="Qualifications" value={pw.qualifications} placeholder="BE(Hons) Civil, CPEng, CMEngNZ" onCommit={(v) => set({ qualifications: v }, "PS1 qualifications")} />
+        </div>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={pw.pi} onChange={(e) => set({ pi: e.target.checked }, "PS1 PI insurance")} />
+          PI insurance of at least $200,000
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={pw.acenz} onChange={(e) => set({ acenz: e.target.checked }, "PS1 ACE New Zealand")} />
+          Firm is an ACE New Zealand member
+        </label>
+      </fieldset>
     </Section>
   );
 }

@@ -250,8 +250,17 @@ export default async function DesignGuidePage() {
         <H id="report">11. The council report</H>
         <p className="mt-2">
           On the <T>Sign-off</T> tab, <T>Download report (PDF)</T> builds the calculations package in your browser. It has the company logo on every sheet, a cover with the
-          designer, checker and sign-off, the design basis and loads, the member schedule, the bracing summary, a marked-up framing plan for every level (over the architect&apos;s plan
-          where it&apos;s placed to scale), a 3D view and the full calculation for every member.
+          designer, checker and sign-off, a design features report (scope, standards, importance level, loads, wind, earthquake, ground, durability), the design basis and loads, the
+          member schedule, the bracing summary, the connection schedule, typical details for the connections and foundations the job uses, a marked-up framing plan for every level
+          (over the architect&apos;s plan where it&apos;s placed to scale), a 3D view and the full calculation for every member.
+        </p>
+        <p className="mt-2">
+          At the end are the <T>PS1 details</T> (fill them in under <T>Consent paperwork</T> on the <T>Sign-off</T> tab) and the engine verification. The PS1 page is information
+          for the official Engineering New Zealand form, in the same order: the design professional copies it to that form, checks it and signs the form itself.
+        </p>
+        <p className="mt-2">
+          To issue a revision, open the <T>History</T> tab and choose <T>Compare</T> on the revision you last issued. The changes are listed and boxed on the plan, and a report
+          downloaded while comparing adds a <T>Changes since revision N</T> page and revision clouds on the framing plans.
         </p>
         <p className="mt-2">
           Until the job is signed, every page is watermarked <T>DRAFT</T> and the file name ends in -DRAFT. Download it again after sign-off for the version to lodge.
@@ -262,7 +271,16 @@ export default async function DesignGuidePage() {
         <H id="history">12. Saving and history</H>
         <p className="mt-2">
           Changes save automatically a moment after you make them; the top bar shows <T>Saved · rev N</T>. Every save is kept on the <T>History</T> tab with what changed and who
-          changed it, and any earlier revision can be restored (restoring is itself a new revision, so nothing is lost).
+          changed it, and any earlier revision can be restored (restoring is itself a new revision, so nothing is lost). <T>Compare</T> shows what changed since an earlier revision
+          without restoring it.
+        </p>
+        <p className="mt-2">
+          The{" "}
+          <Link href="/portal/design/verification" className="font-semibold text-accent-600 hover:underline">
+            engine verification
+          </Link>{" "}
+          page runs the design engine against textbook formulas, published capacity tables, hand calculations and past Stable Structure jobs, and shows each answer beside the
+          expected one.
         </p>
         <p className="mt-2">
           If someone else saves the same job while you have it open, the top bar shows <T>Changed elsewhere</T>. Reload to get their changes; anything you changed since your last save

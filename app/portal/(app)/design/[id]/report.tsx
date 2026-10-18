@@ -7,7 +7,11 @@
 import { Document, Font, Image, Page, pdf, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { ReactNode } from "react";
 import { DRAFT_NOTE, STATUS_LABEL, type Calcs, type Result } from "@/lib/design/calc";
+import type { Change } from "@/lib/design/diff";
 import { BRACE_NAME, byLabel, describeMember, MEMBER_INFO, memberLength, type DesignModel, type Member } from "@/lib/design/model";
+import { designFeatures, ps1Rows, type PaperSection } from "@/lib/design/paperwork";
+import { runVerification, type VResult } from "@/lib/design/verify";
+import { DetailSheet, detailsFor } from "./details";
 import { PARAM_META } from "./panels";
 import { planImage, type PlanSource } from "./plan-image";
 import { personLabel, type Signoff, type Status } from "./signoff";
@@ -32,6 +36,7 @@ export type ReportInput = {
   status: Status;
   signoff: Signoff | null;
   plans: PlanSource[];
+  compare?: { revision: number; changes: Change[] } | null; // changes since an earlier revision, clouded on the plans
 };
 
 const INK = "#1b2530";
@@ -189,8 +194,32 @@ function CalcBlock({ r, member }: { r: Result; member?: Member }) {
   );
 }
 
-function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImages: { name: string; url: string; w: number; h: number }[]; view3d: string | null }) {
-  const { job, model, calcs, status, signoff, revision, company } = input;
+function Sections({ sections }: { sections: PaperSection[] }) {
+  return (
+    <>
+      {sections.map((sec) => (
+        <View key={sec.title} wrap={false} style={{ marginBottom: 4 }}>
+          <Text style={s.h2}>{sec.title}</Text>
+          <View style={s.table}>
+            {sec.rows.map(([k, v], i) => (
+              <Row key={i} widths={["34%", "66%"]} cells={[k, v]} />
+            ))}
+          </View>
+          {(sec.notes ?? []).map((n, i) => (
+            <Text key={i} style={[s.muted, { marginTop: 2 }]}>
+              {n}
+            </Text>
+          ))}
+        </View>
+      ))}
+    </>
+  );
+}
+
+function ReportDoc({ input, planImages, view3d, checks }: { input: ReportInput; planImages: { name: string; url: string; w: number; h: number }[]; view3d: string | null; checks: VResult[] }) {
+  const { job, model, calcs, status, signoff, revision, company, compare } = input;
+  const details = detailsFor(calcs);
+  const changes = compare?.changes ?? [];
   const people = signoff?.people ?? [];
   const levelName = (id: string) => model.levels.find((l) => l.id === id)?.name ?? "";
   const ordered = [...model.levels].sort((a, b) => a.elevation - b.elevation);
@@ -202,7 +231,22 @@ function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImag
   const fails = items.filter((i) => calcs.results.get(i.id)?.status === "fail").length;
   const shownRev = status === "signed" && signoff?.signedRevision ? signoff.signedRevision : revision;
   const n = (t: string) => sections.indexOf(t) + 1;
-  const sections = ["Design basis", "Member schedule", ...(calcs.bracing.length ? ["Bracing"] : []), ...(calcs.connections.length ? ["Connections"] : []), ...(planImages.length ? ["Framing plans"] : []), ...(view3d ? ["3D view"] : []), "Calculations"];
+  const changesTitle = compare ? `Changes since revision ${compare.revision}` : "";
+  const sections = [
+    "Design features",
+    ...(compare ? [changesTitle] : []),
+    "Design basis",
+    "Member schedule",
+    ...(calcs.bracing.length ? ["Bracing"] : []),
+    ...(calcs.connections.length ? ["Connections"] : []),
+    ...(details.length ? ["Typical details"] : []),
+    ...(planImages.length ? ["Framing plans"] : []),
+    ...(view3d ? ["3D view"] : []),
+    "Calculations",
+    "Producer statement (PS1) details",
+    "Engine verification",
+  ];
+  const groups = [...new Set(checks.map((c) => c.group))];
 
   return (
     <Document title={`${job.jobNo ? job.jobNo + " " : ""}${job.title} – structural calculations`} author={company} creator={company}>
@@ -246,6 +290,34 @@ function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImag
           <Text style={[s.muted, { marginTop: 10 }]}>{company}</Text>
         </View>
       </Page>
+
+      {/* design features report */}
+      <Frame input={input}>
+        <Text style={s.h1}>{n("Design features")}. Design features</Text>
+        <Text style={s.p}>The basis of this design, for the building consent authority&apos;s reviewer: what is designed, to which standards, for which loads, ground and exposure.</Text>
+        <Sections sections={designFeatures(model, calcs)} />
+      </Frame>
+
+      {compare ? (
+        <Frame input={input}>
+          <Text style={s.h1}>
+            {n(changesTitle)}. {changesTitle}
+          </Text>
+          <Text style={s.p}>
+            {changes.length
+              ? `${changes.length} change${changes.length === 1 ? "" : "s"} from revision ${compare.revision} to revision ${shownRev}. Changed members are clouded on the framing plans with a revision ${shownRev} triangle.`
+              : `No changes from revision ${compare.revision}.`}
+          </Text>
+          {changes.length ? (
+            <View style={s.table}>
+              <Row head widths={["10%", "12%", "18%", "60%"]} cells={["Mark", "Change", "Level", "What"]} />
+              {changes.map((c, i) => (
+                <Row key={i} widths={["10%", "12%", "18%", "60%"]} cells={[c.mark, c.kind === "added" ? "Added" : c.kind === "removed" ? "Removed" : "Changed", c.levelId ? levelName(c.levelId) : "Whole job", c.what]} />
+              ))}
+            </View>
+          ) : null}
+        </Frame>
+      ) : null}
 
       {/* basis */}
       <Frame input={input}>
@@ -352,6 +424,14 @@ function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImag
         </Frame>
       ) : null}
 
+      {details.length ? (
+        <Frame input={input}>
+          <Text style={s.h1}>{n("Typical details")}. Typical details</Text>
+          <Text style={s.p}>Arrangements for the connections and foundations in this job. Sizes, bolts and ratings are in the connection and footing schedules; read these sketches with them.</Text>
+          <DetailSheet keys={details} />
+        </Frame>
+      ) : null}
+
       {/* plans */}
       {planImages.map((img) => (
         <Frame key={img.name} input={input} landscape>
@@ -380,6 +460,40 @@ function ReportDoc({ input, planImages, view3d }: { input: ReportInput; planImag
         ))}
         <Text style={s.draft}>{DRAFT_NOTE}</Text>
       </Frame>
+
+      {/* PS1 details */}
+      <Frame input={input}>
+        <Text style={s.h1}>{n("Producer statement (PS1) details")}. Producer statement (PS1) details</Text>
+        <Text style={s.draft}>
+          Information for the PS1, in the order of the Engineering New Zealand form. This page is not a producer statement: the design professional transfers it to the current official form, checks it, and signs that form.
+        </Text>
+        <Sections sections={ps1Rows(model, job, company)} />
+      </Frame>
+
+      {/* verification */}
+      <Frame input={input}>
+        <Text style={s.h1}>{n("Engine verification")}. Engine verification</Text>
+        <Text style={s.p}>
+          The design engine was run, when this report was made, against {checks.length} answers worked out independently (textbook formulas, published capacity tables, hand calculations and past Stable Structure jobs).{" "}
+          {checks.every((c) => c.pass) ? "Every check matched." : `${checks.filter((c) => !c.pass).length} did not match: see below.`}
+        </Text>
+        <View style={s.table}>
+          <Row head widths={["60%", "20%", "20%"]} cells={["Group", "Checks", "Result"]} />
+          {groups.map((g) => {
+            const cs = checks.filter((c) => c.group === g);
+            const bad = cs.filter((c) => !c.pass).length;
+            return <Row key={g} widths={["60%", "20%", "20%"]} cells={[g, String(cs.length), bad ? `${bad} differ` : "All match"]} />;
+          })}
+        </View>
+        {checks
+          .filter((c) => !c.pass)
+          .map((c, i) => (
+            <Text key={i} style={{ color: "#b8342a", marginTop: 2 }}>
+              {c.group}: {c.name}: expected {String(c.want)}, got {c.got === null ? c.error : String(c.got)}
+            </Text>
+          ))}
+        <Text style={[s.muted, { marginTop: 6 }]}>This checks the engine&apos;s arithmetic and methods on known cases. It does not check the model of this job, which is for the designer and the checker.</Text>
+      </Frame>
     </Document>
   );
 }
@@ -388,7 +502,8 @@ export async function buildReport(input: ReportInput): Promise<Blob> {
   const levels = [...input.model.levels].sort((a, b) => a.elevation - b.elevation);
   const planImages: { name: string; url: string; w: number; h: number }[] = [];
   for (const l of levels) {
-    const img = await planImage(input.model, input.calcs, l, input.plans);
+    const shown = input.status === "signed" && input.signoff?.signedRevision ? input.signoff.signedRevision : input.revision;
+    const img = await planImage(input.model, input.calcs, l, input.plans, input.compare ? { changes: input.compare.changes, revision: shown } : null);
     if (img) planImages.push({ name: l.name, ...img });
   }
   let view3d: string | null = null;
@@ -397,5 +512,5 @@ export async function buildReport(input: ReportInput): Promise<Blob> {
   } catch {
     view3d = null; // no WebGL: leave the 3D page out
   }
-  return pdf(<ReportDoc input={input} planImages={planImages} view3d={view3d} />).toBlob();
+  return pdf(<ReportDoc input={input} planImages={planImages} view3d={view3d} checks={runVerification()} />).toBlob();
 }
