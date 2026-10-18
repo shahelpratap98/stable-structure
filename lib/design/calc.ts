@@ -14,6 +14,7 @@ import { braceCalcs, type BracingSheet } from "./bracing";
 import { DEFAULT_SITE, windBasis } from "./site";
 import { designPad, designStrip, slabPunch } from "./foundations";
 import { designPortal } from "./lateral";
+import { designConcreteBeam } from "./concrete";
 import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
 import { solveBeam } from "./frame";
 import { candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
@@ -1080,6 +1081,51 @@ export function runCalcs(model: DesignModel): Calcs {
 
   const site = model.site ?? DEFAULT_SITE;
 
+  // reinforced concrete beam: section "300x600" (larger figure is the depth)
+  const concreteResult = (m: Member, spec: BeamSpec): Result => {
+    const dims = m.section.split(/[x×]/i).map((v) => parseFloat(v)).filter((v) => v > 0);
+    const base: Result = { memberId: m.id, mark: m.label, status: "none", ratio: null, summary: "", utils: [], kv: [], inputs: [], loads: [], checks: [], notes: [] };
+    if (dims.length < 2) return { ...base, summary: "Give the section as width × depth in mm, e.g. 300x600." };
+    const b = Math.min(dims[0], dims[1]),
+      D = Math.max(dims[0], dims[1]);
+    const ll = lineLoads(spec.trib, p, spec.extraG, spec.extraQ);
+    const r = designConcreteBeam({
+      L: spec.span,
+      supports: spec.supports ?? [0, spec.span],
+      b,
+      D,
+      fc: m.fc ?? 25,
+      G: ll.G,
+      Q: ll.Qf + ll.Qr + ll.S,
+      points: (spec.points ?? []).map((q) => ({ at: q.at, G: q.G, Q: q.Qf + q.Qr + q.S })),
+    });
+    const ends = { a: r.reactions.find((x) => x.at < 1e-6)?.loads ?? ZERO, b: r.reactions.find((x) => Math.abs(x.at - spec.span) < 1e-6)?.loads ?? ZERO };
+    return {
+      ...base,
+      status: statusFor(r.util),
+      ratio: r.util,
+      sec: { name: `${b}×${D} RC`, fam: "other", b, d: D },
+      govName: r.gov,
+      summary: `${b}×${D} RC · ${r.lines[2].value.split(" (")[0]} bottom · ${Math.round(r.util * 100)}% · ${r.gov.toLowerCase()}`,
+      utils: r.utils,
+      kv: r.lines,
+      inputs: [
+        { label: "Member", value: `${spec.mark} · ${spec.role}` },
+        { label: "Span", value: `${fmt(spec.span)} m`, note: spec.supports ? `${spec.supports.length} supports` : "simply supported" },
+      ],
+      loads: [
+        { label: "G (incl. self weight)", value: `${fmt(r.G)} kN/m` },
+        { label: "Q", value: `${fmt(ll.Qf + ll.Qr + ll.S)} kN/m` },
+        { label: "Tributary", value: tribText(spec.trib) || "none set" },
+      ],
+      checks: r.utils.map((u) => ({ name: u.label, demand: u.u * 100, capacity: 100, unit: "%", ratio: u.u })),
+      notes: r.notes,
+      ends,
+      supportLoads: spec.supports ? r.reactions : undefined,
+      carried: spec.points?.length ? spec.points : undefined,
+    };
+  };
+
   const levelsDown = [...model.levels].sort((a, b) => b.elevation - a.elevation);
   const onLevel = (m: Member, l: Level) => m.levelId === l.id || (l === levelsDown[levelsDown.length - 1] && !levelOf(model, m.levelId));
   for (const lvl of levelsDown) {
@@ -1123,7 +1169,7 @@ export function runCalcs(model: DesignModel): Calcs {
         segment: m.segment,
         uplift: upliftKPa,
       };
-      const res = designBeam(spec, p);
+      const res = m.material === "concrete" ? concreteResult(m, spec) : designBeam(spec, p);
       const tn = tribOf(m).note;
       if (tn) res.loads = res.loads.map((l) => (l.label === "Tributary" ? { ...l, note: tn } : l));
       // ends resting on another beam don't also load a post

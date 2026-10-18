@@ -237,7 +237,8 @@ export const findSteel = (section: string) => {
 const GRADE_KEY: Record<string, TimberKey> = { SG8: "SG8", SG10: "SG10", GL8: "GL8", GL10: "GL10", GL12: "GL12", hySPAN: "LVL", hyONE: "HYONE", hy90: "HY90", LVL11: "LVL11" };
 
 // A fixed (user-chosen) section as a candidate, or null if it isn't in the library.
-export function fixedCandidate(section: string, material: "timber" | "steel", grade?: string): Candidate | null {
+export function fixedCandidate(section: string, material: "timber" | "steel" | "concrete", grade?: string): Candidate | null {
+  if (material === "concrete") return null; // designed separately (concrete.ts)
   if (material === "steel") {
     const s = findSteel(section);
     return s ? { fam: s.fam, name: s.name, b: s.b, d: s.d, steel: s } : null;

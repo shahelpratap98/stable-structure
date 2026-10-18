@@ -267,8 +267,14 @@ export function MemberPanel({
         options={[
           { value: "timber", label: "Timber" },
           { value: "steel", label: "Steel" },
+          ...(m.type === "beam" ? [{ value: "concrete" as Material, label: "Reinforced concrete" }] : []),
         ]}
-        onChange={(v) => set({ material: v, ...(v === "steel" ? { section: "250PFC" } : { section: "2/240x45", grade: "SG8" }) }, `material ${v}`)}
+        onChange={(v) =>
+          set(
+            { material: v, ...(v === "steel" ? { section: "250PFC" } : v === "concrete" ? { section: "300x600", sizing: { mode: "fixed" as const }, fc: m.fc ?? 25 } : { section: "2/240x45", grade: "SG8" }) },
+            `material ${v}`,
+          )
+        }
       />
       {m.material === "timber" ? (
         <Select<TimberGrade>
@@ -287,6 +293,8 @@ export function MemberPanel({
           ]}
           onChange={(v) => set({ grade: v }, `grade ${v}`)}
         />
+      ) : m.material === "concrete" ? (
+        <NumberField label="f'c" unit="MPa" value={m.fc ?? 25} min={20} onCommit={(v) => set({ fc: v ?? 25 }, `f'c ${v} MPa`)} />
       ) : (
         <span />
       )}

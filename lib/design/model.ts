@@ -26,7 +26,7 @@ export type MemberType =
   | "footing"
   | "pile"
   | "retaining";
-export type Material = "timber" | "steel";
+export type Material = "timber" | "steel" | "concrete";
 export type TimberGrade = "SG8" | "SG10" | "GL8" | "GL10" | "GL12" | "hySPAN" | "hyONE" | "hy90" | "LVL11";
 export type Family = "SG8" | "SG10" | "GL8" | "GL10" | "GL12" | "LVL" | "HYONE" | "HY90" | "LVL11" | "PFC" | "UB" | "UC";
 
@@ -118,6 +118,7 @@ export type Member = {
   segment?: number; // m, spacing of intermediate lateral restraints when restraint is "ends"
   dz?: number; // m, height offset from the level (split levels): + raises the member
   lateral?: number; // kN (ULS) at the top of a post: a cantilever post, fixed at its base
+  fc?: number; // MPa, concrete members
   notes?: string;
 };
 
