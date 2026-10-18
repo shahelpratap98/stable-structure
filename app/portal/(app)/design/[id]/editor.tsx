@@ -755,7 +755,7 @@ export function DesignEditor({
               Close
             </button>
           </div>
-          <div className="flex overflow-x-auto border-b border-line text-xs font-semibold">
+          <div className="flex overflow-x-auto border-b border-line text-[11px] font-semibold">
             {(
               [
                 ["member", selected ? selected.label : selectedLintel ? selectedLintel.opening.label : "Overview"],
@@ -766,7 +766,7 @@ export function DesignEditor({
                 ["signoff", job.status === "signed" ? "Signed" : job.status === "in_review" ? "In review" : "Sign-off"],
               ] as const
             ).map(([t, label]) => (
-              <button key={t} type="button" onClick={() => setTab(t)} className={`flex-1 border-b-2 px-2 py-2.5 whitespace-nowrap ${tab === t ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
+              <button key={t} type="button" onClick={() => setTab(t)} className={`flex-1 border-b-2 px-1 py-2.5 whitespace-nowrap ${tab === t ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
                 {label}
               </button>
             ))}
