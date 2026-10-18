@@ -11,6 +11,7 @@
 // Every result is preliminary until checked by a CPEng (see DRAFT_NOTE).
 
 import { braceCalcs, type BracingSheet } from "./bracing";
+import { solveBeam } from "./frame";
 import { candidates, fixedCandidate, FAMILY_LABEL, FY, ES, SG8, type Candidate } from "./materials";
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
@@ -46,6 +47,7 @@ export type Result = {
   notes: string[];
   ends?: { a: Loads; b: Loads }; // unfactored reactions at each end (beams); axial at both for supports
   carried?: PointLoad[]; // point loads from members bearing on this one
+  supportLoads?: { at: number; loads: Loads }[]; // beams over more than two supports: reaction at each (m from end 1)
   bu?: { W: number; E: number; line: string; dir: "along" | "across" };
 };
 
@@ -141,6 +143,7 @@ type BeamCheck = {
   sw: number;
   endA: Loads; // unfactored reactions, the midspan point load included as Qf
   endB: Loads;
+  reactions?: { at: number; loads: Loads }[]; // every support, for beams over more than two
 };
 
 function selfWeight(sec: Candidate) {
@@ -149,7 +152,8 @@ function selfWeight(sec: Candidate) {
 
 const pointComp = (c: Combo, q: PointLoad) => c.G * q.G + c.Qf * q.Qf + c.Qr * q.Qr + c.S * q.S;
 
-function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[] }): BeamCheck {
+function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; supports?: number[] }): BeamCheck {
+  if (opts.supports && !(opts.supports.length === 2 && opts.supports[0] < 1e-6 && Math.abs(opts.supports[1] - span) < 1e-6)) return checkMulti(span, opts.supports, base, sec, p, opts);
   const L = span;
   const Lmm = L * 1000;
   // Floor and roof dead loads already include joists and rafters.
@@ -233,13 +237,140 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
   return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB };
 }
 
+// Beams over more than two supports, or with an overhang: solved with the
+// frame solver. Moments don't depend on EI for a prismatic beam, so each
+// unit load case is solved once (EI = 1) and combined per combination; live
+// load is patterned (all spans, odd spans, even spans).
+type MultiCase = { M: number[]; V: number[]; d: number[]; R: number[] };
+function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[] }): BeamCheck {
+  const sup = [...new Set(supports.map((s) => Math.round(s * 1e4) / 1e4))].sort((a, b) => a - b);
+  const sw = opts.selfWeight === false ? 0 : selfWeight(sec);
+  const l = { ...base, G: base.G + sw };
+  const P = opts.point ? p.Ppt : 0;
+  const pts = (opts.points ?? []).filter((q) => q.at > 0 && q.at < L);
+  const sum = pts.reduce((a, q) => ({ G: a.G + q.G, Qf: a.Qf + q.Qf, Qr: a.Qr + q.Qr, S: a.S + q.S }), { G: 0, Qf: 0, Qr: 0, S: 0 });
+  const cs = combos(l, p, opts.point, sum);
+  const EI = ("steel" in sec ? ES * sec.steel.Ix : (sec.mat.E * sec.b * sec.d ** 3) / 12) / 1e9; // kN·m²
+  const k2 = "steel" in sec ? 1 : sec.mat.k2;
+  // regions between supports and to the free ends
+  const bounds = [...new Set([0, ...sup, L])].sort((a, b) => a - b);
+  const regions = bounds.slice(0, -1).map((x0, k) => ({ x0, x1: bounds[k + 1], cant: !sup.includes(x0) || !sup.includes(bounds[k + 1]) }));
+  const mids = regions.map((r) => (r.cant ? (sup.includes(r.x0) ? r.x1 : r.x0) : (r.x0 + r.x1) / 2)); // Ppt at mid-span, or the tip of an overhang
+  const cuts = [...pts.map((q) => q.at), ...mids];
+  const beam = { length: L, supports: sup, EI: 1 };
+  const run = (w: (x0: number, x1: number) => number, loads: { at: number; P: number }[]): MultiCase => {
+    const r = solveBeam(beam, w, loads, 160, cuts, false);
+    return { M: r.stations.map((s) => s.M), V: r.stations.map((s) => s.V), d: r.stations.map((s) => s.d), R: sup.map((x) => r.reactions.find((q) => Math.abs(q.at - x) < 1e-6)?.R ?? 0) };
+  };
+  const xs = solveBeam(beam, () => 0, [], 160, cuts, false).stations.map((s) => s.x);
+  const inRegion = (k: number) => (x0: number, x1: number) => (x0 >= regions[k].x0 - 1e-9 && x1 <= regions[k].x1 + 1e-9 ? 1 : 0);
+  const U = run(() => 1, []);
+  const R = regions.map((_, k) => run(inRegion(k), []));
+  const Pt = pts.map((q) => run(() => 0, [{ at: q.at, P: 1 }]));
+  const Pp = mids.map((m) => run(() => 0, [{ at: m, P: 1 }]));
+  const add = (acc: number[], c: number[], f: number) => (f ? acc.map((v, i) => v + f * c[i]) : acc);
+  const patterns = [regions.map((_, k) => k), regions.map((_, k) => k).filter((k) => k % 2 === 0), regions.map((_, k) => k).filter((k) => k % 2 === 1)].filter((pt) => pt.length);
+  const field = (key: "M" | "V" | "d" | "R", g: number, q: number, pattern: number[], ptF: (q: PointLoad) => number, ppt: number, at: number) => {
+    let a = (key === "R" ? U.R : U[key]).map((v) => g * v);
+    for (const k of pattern) a = add(a, R[k][key], q);
+    pts.forEach((qq, i) => (a = add(a, Pt[i][key], ptF(qq))));
+    if (ppt && at >= 0) a = add(a, Pp[at][key], ppt);
+    return a;
+  };
+
+  let uM = 0,
+    uV = 0,
+    gov = cs[0].name,
+    Mg = 0,
+    phiMg = 0,
+    Vg = 0,
+    phiVg = 0;
+  for (const c of cs) {
+    const q = c.Qf * l.Qf + c.Qr * l.Qr + c.S * l.S;
+    let M = 0,
+      V = 0;
+    for (const pat of patterns)
+      for (let at = c.pf && P ? 0 : -1; at < (c.pf && P ? mids.length : 0); at++) {
+        const m = field("M", c.G * l.G, q, pat, (qq) => pointComp(c, qq), c.pf * P, at);
+        const v = field("V", c.G * l.G, q, pat, (qq) => pointComp(c, qq), c.pf * P, at);
+        M = Math.max(M, ...m.map(Math.abs));
+        V = Math.max(V, ...v.map(Math.abs));
+      }
+    let phiM: number, phiV: number;
+    if ("steel" in sec) {
+      phiM = (0.9 * sec.steel.fy * sec.steel.Ze) / 1e6;
+      phiV = (0.9 * 0.6 * FY * sec.steel.d * sec.steel.tw) / 1e3;
+    } else {
+      const t = sec.mat;
+      phiM = (t.phi * c.k1 * t.fb * sec.b * sec.d * sec.d) / 6 / 1e6;
+      phiV = (t.phi * c.k1 * t.fs * (2 / 3) * sec.b * sec.d) / 1e3;
+    }
+    if (M / phiM > uM) {
+      uM = M / phiM;
+      gov = c.name;
+      Mg = M;
+      phiMg = phiM;
+    }
+    if (V / phiV > uV) {
+      uV = V / phiV;
+      Vg = V;
+      phiVg = phiV;
+    }
+  }
+
+  // deflections per region (mm), against span/300 and span/360 (overhangs: twice their length)
+  const span = (k: number) => (regions[k].x1 - regions[k].x0) * (regions[k].cant ? 2 : 1) * 1000;
+  const maxIn = (d: number[], k: number) => Math.max(0, ...d.filter((_, i) => xs[i] >= regions[k].x0 - 1e-9 && xs[i] <= regions[k].x1 + 1e-9).map(Math.abs)) * (1000 / EI);
+  let uDl = 0,
+    uDs = 0,
+    uDp = 0,
+    dl = 0,
+    ds = 0,
+    dP = 0,
+    limL = 1,
+    limS = 1;
+  regions.forEach((_, k) => {
+    const long = maxIn(field("d", k2 * (l.G + 0.4 * l.Qf), 0, [], (qq) => k2 * (qq.G + 0.4 * qq.Qf), 0.4 * k2 * P, k), k);
+    let short = 0;
+    for (const pat of patterns) short = Math.max(short, maxIn(field("d", 0, 0.7 * (l.Qf + l.Qr), pat, (qq) => 0.7 * (qq.Qf + qq.Qr), 0.7 * P, k), k));
+    const pl = P > 0 ? maxIn(field("d", 0, 0, [], () => 0, P, k), k) : 0;
+    const lL = Math.min(span(k) / 300, opts.dlim || p.dAbs || 1e9);
+    const lS = span(k) / 360;
+    if (long / lL > uDl) [uDl, dl, limL] = [long / lL, long, lL];
+    if (short / lS > uDs) [uDs, ds, limS] = [short / lS, short, lS];
+    if (P > 0 && p.dPlim > 0 && pl / p.dPlim > uDp) [uDp, dP] = [pl / p.dPlim, pl];
+  });
+
+  const util = Math.max(uM, uV, uDl, uDs, uDp);
+  const govName = util === uM ? "Bending" : util === uV ? "Shear" : util === uDl ? "Long-term δ" : util === uDs ? "Short-term δ" : "Point-load δ";
+  // unfactored reactions at each support: dead on everything, live as the worst pattern, the
+  // point load where it gives the largest reaction there
+  const reactions = sup.map((x, i) => {
+    const worst = (fn: (pat: number[]) => number) => Math.max(...patterns.map(fn));
+    const live = (w: number, key: "Qf" | "Qr" | "S") => worst((pat) => pat.reduce((a, k) => a + w * R[k].R[i], 0)) + pts.reduce((a, qq, j) => a + qq[key] * Pt[j].R[i], 0);
+    return {
+      at: x,
+      loads: {
+        G: l.G * U.R[i] + pts.reduce((a, qq, j) => a + qq.G * Pt[j].R[i], 0),
+        Qf: live(l.Qf, "Qf") + (P ? Math.max(0, ...Pp.map((c) => P * c.R[i])) : 0),
+        Qr: live(l.Qr, "Qr"),
+        S: live(l.S, "S"),
+      },
+    };
+  });
+  const zero: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 };
+  const endA = reactions.find((r) => r.at < 1e-6)?.loads ?? zero;
+  const endB = reactions.find((r) => Math.abs(r.at - L) < 1e-6)?.loads ?? zero;
+  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB, reactions };
+}
+
 export const rStar = (e: Loads) => Math.max(1.35 * e.G, 1.2 * e.G + 1.5 * e.Qf, 1.2 * e.G + 1.5 * e.Qr + 0.4 * e.Qf, 1.2 * e.G + e.S + 0.4 * e.Qf);
 
 function secInfo(c: Candidate): SecInfo {
   return "steel" in c ? { name: c.name, fam: c.fam, b: c.b, d: c.d, tw: c.steel.tw, tf: c.steel.tf } : { name: c.name, fam: c.fam, b: c.b, d: c.d };
 }
 
-type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[] };
+type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[]; supports?: number[] };
 
 function designBeam(spec: BeamSpec, p: DesignParams): Result {
   const base: Result = { memberId: spec.id, mark: spec.mark, status: "none", ratio: null, summary: "", utils: [], kv: [], inputs: [], loads: [], checks: [], notes: [] };
@@ -250,7 +381,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
   let seq: SeqRow[] | undefined;
   if (spec.sizing.mode === "fixed") {
     if (!spec.fixed) return { ...base, summary: "Section not in the library (use e.g. 2/240x45, or 250PFC for steel)." };
-    chosen = checkBeam(spec.span, loads, spec.fixed, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points });
+    chosen = checkBeam(spec.span, loads, spec.fixed, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports });
   } else {
     const all = candidates(spec.sizing, spec.fallbackMaxD);
     const fams = [...new Set(all.map((c) => c.fam))];
@@ -261,7 +392,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       let best: BeamCheck | null = null;
       let pass: BeamCheck | null = null;
       for (const c of all.filter((x) => x.fam === f)) {
-        const r = checkBeam(spec.span, loads, c, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points });
+        const r = checkBeam(spec.span, loads, c, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports });
         if (!best || r.util < best.util) best = r;
         if (r.ok) {
           pass = r;
@@ -305,12 +436,16 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
       { label: "δ long-term", value: `${fmt(c.dl, 1)} / ${fmt(c.limL, 1)} mm` },
       { label: "δ short-term", value: `${fmt(c.ds, 1)} / ${fmt(c.limS, 1)} mm` },
       ...(spec.point && p.Ppt > 0 ? [{ label: `δ under ${fmt(p.Ppt, 1)} kN point load`, value: `${fmt(c.dP)} / ${fmt(p.dPlim)} mm` }] : []),
-      { label: "End reactions R*", value: `${fmt(rStar(c.endA), 1)} / ${fmt(rStar(c.endB), 1)} kN` },
+      c.reactions
+        ? { label: "Support reactions R*", value: c.reactions.map((r) => `${fmt(r.at)} m: ${fmt(rStar(r.loads), 1)}`).join(" · ") + " kN" }
+        : { label: "End reactions R*", value: `${fmt(rStar(c.endA), 1)} / ${fmt(rStar(c.endB), 1)} kN` },
       ...(downstand !== null ? [{ label: "Depth vs 240 joists", value: downstand > 0 ? `${downstand} mm downstand` : "flush" }] : []),
     ],
     inputs: [
       { label: "Member", value: `${spec.mark} · ${spec.role}` },
-      { label: "Span", value: `${fmt(spec.span)} m`, note: "simply supported" },
+      c.reactions
+        ? { label: "Length", value: `${fmt(spec.span)} m`, note: `${c.reactions.length} supports at ${c.reactions.map((r) => fmt(r.at)).join(", ")} m${c.reactions[0].at > 1e-6 || Math.abs(c.reactions[c.reactions.length - 1].at - spec.span) > 1e-6 ? ", overhanging" : ""}; live load patterned` }
+        : { label: "Span", value: `${fmt(spec.span)} m`, note: "simply supported" },
       { label: "Sizing", value: spec.sizing.mode === "auto" ? "Automatic (first section that passes)" : "Fixed" },
     ],
     loads: [
@@ -333,6 +468,7 @@ function designBeam(spec: BeamSpec, p: DesignParams): Result {
         ? [`Steel fy ${c.sec.steel.fy} MPa (Grade 300 at tf ${c.sec.steel.tf} mm), Ze ${Math.round(c.sec.steel.Ze / 1e3)}×10³ mm³, φ 0.9; full lateral restraint assumed (top flange held by the joists). Bolt a timber packer to the web for joist hangers.`]
         : [`${c.sec.fam === "LVL" ? "hySPAN: fb 48, fs 5.3 MPa, E 13.2 GPa, φ 0.9" : "SG8 dry: fb 14, fs 3.8 MPa, E 8.0 GPa, φ 0.8"}; k4 = k5 = k8 = 1.0 (compression edge restrained).`],
     ends: { a: c.endA, b: c.endB },
+    supportLoads: c.reactions,
     carried: spec.points?.length ? spec.points : undefined,
   };
 }
@@ -490,6 +626,7 @@ export function runCalcs(model: DesignModel): Calcs {
   for (const x of beamLike) {
     if (!x.b) continue;
     for (const end of ["a", "b"] as const) {
+      if (x.free === end) continue; // a cantilever tip rests on nothing
       const pt = x[end]!;
       if (posts.some((s) => near(s.a, pt))) continue;
       for (const y of beamLike) {
@@ -571,6 +708,14 @@ export function runCalcs(model: DesignModel): Calcs {
     const from: string[] = [];
     for (const m of beamLike) {
       if (!beamLevels.has(m.levelId) || !m.b) continue;
+      const sl = results.get(m.id)?.supportLoads;
+      if (sl) {
+        // a beam over several supports: whichever of them is this one
+        const hit = sl.filter((r) => near(along(m, r.at), s.a));
+        hit.forEach((r) => (loads = add(loads, r.loads)));
+        if (hit.length) from.push(m.label);
+        continue;
+      }
       const e = results.get(m.id)?.ends;
       if (!e) continue;
       const atA = near(m.a, s.a),
@@ -648,6 +793,16 @@ export function runCalcs(model: DesignModel): Calcs {
     results.set(s.id, res);
   };
 
+  // Where a beam is held up: its ends (unless marked free) and any post on its
+  // own level standing part-way along it. Undefined for a plain two-end span.
+  const beamSupports = (m: Member): number[] | undefined => {
+    if (!m.b) return undefined;
+    const L = memberLength(m);
+    const inner = posts.filter((s) => s.type === "post" && s.levelId === m.levelId).map((s) => partway(m, s.a)).filter((x): x is number => x !== null);
+    const at = [...(m.free === "a" ? [] : [0]), ...inner, ...(m.free === "b" ? [] : [L])].sort((a, b) => a - b);
+    return inner.length || m.free ? at : undefined;
+  };
+
   const levelsDown = [...model.levels].sort((a, b) => b.elevation - a.elevation);
   const onLevel = (m: Member, l: Level) => m.levelId === l.id || (l === levelsDown[levelsDown.length - 1] && !levelOf(model, m.levelId));
   for (const lvl of levelsDown) {
@@ -686,6 +841,7 @@ export function runCalcs(model: DesignModel): Calcs {
         fallbackMaxD: m.type === "beam" && loadKind(model, level) === "floor" ? p.beamMaxD : 0,
         flush: m.type === "beam" && loadKind(model, level) === "floor",
         points,
+        supports: beamSupports(m),
       };
       const res = designBeam(spec, p);
       // ends resting on another beam don't also load a post

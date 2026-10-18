@@ -303,6 +303,18 @@ export function MemberPanel({
           )}
           <Select label="Level" value={m.levelId} options={model.levels.map((l) => ({ value: l.id, label: l.name }))} onChange={(v) => set({ levelId: v }, "moved level")} />
           {beamLike || m.type === "post" ? <TextField label="Role" value={m.role ?? ""} placeholder="e.g. Flush floor beam" onCommit={(v) => set({ role: v || undefined }, "role")} /> : <span />}
+          {m.type === "beam" || m.type === "joist" || m.type === "rafter" ? (
+            <Select
+              label="Supports"
+              value={m.free ?? "both"}
+              options={[
+                { value: "both", label: "Both ends (+ any posts under it)" },
+                { value: "b", label: "End 2 free (cantilever)" },
+                { value: "a", label: "End 1 free (cantilever)" },
+              ]}
+              onChange={(v) => set({ free: v === "both" ? undefined : v }, v === "both" ? "supported both ends" : `end ${v === "a" ? 1 : 2} free`)}
+            />
+          ) : null}
           {m.type === "joist" || m.type === "rafter" ? <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} /> : null}
           {m.type === "post" ? <NumberField label="Height" unit="m" value={m.height} min={0.1} placeholder="storey height" onCommit={(v) => set({ height: v }, "height")} /> : null}
           {m.type === "footing" || m.type === "pile" ? sectionField : null}

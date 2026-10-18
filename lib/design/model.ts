@@ -112,6 +112,7 @@ export type Member = {
   brace?: { system: BraceSystem; line?: string };
   rw?: RetainSpec;
   height?: number; // m, post height override
+  free?: "a" | "b"; // beams: this end is unsupported (a cantilever)
   notes?: string;
 };
 
