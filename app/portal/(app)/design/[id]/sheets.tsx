@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { RATINGS } from "@/lib/design/bracing";
 import { DRAFT_NOTE, tribText, type Calcs, type Result } from "@/lib/design/calc";
-import { BRACE_NAME, byLabel, describeMember, memberLength, type DesignModel } from "@/lib/design/model";
+import { BRACE_NAME, byLabel, describeMember, MEMBER_INFO, memberLength, type DesignModel } from "@/lib/design/model";
 import { poleTotals } from "@/lib/design/retaining";
 import { FamilyTag, SummaryStrip, UtilPill } from "./panels";
 
@@ -110,7 +110,7 @@ export function Sheets({ model, calcs, job, onPick }: { model: DesignModel; calc
                 return (
                   <tr key={m.id} {...row(m.id)}>
                     <td className={`${td} font-mono font-bold`}>{m.label}</td>
-                    <td className={td}>{m.role || describeMember(m)}</td>
+                    <td className={td}>{m.role || (m.sizing?.mode === "fixed" || m.type === "joist" || m.type === "rafter" ? describeMember(m) : MEMBER_INFO[m.type].label)}</td>
                     <td className={td}>
                       {levelName(m.levelId)}
                       {vl ? ` · ${vl.wall.label}` : ""}
