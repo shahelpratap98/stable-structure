@@ -527,12 +527,14 @@ export function runCalcs(model: DesignModel): Calcs {
   type Seat = { kind: "support"; id: string; levelId: string } | { kind: "beam"; id: string; levelId: string; at: number };
   const seats = new Map<string, Seat>();
   const downFrom = (l: Level) => model.levels.filter((x) => x.elevation < l.elevation - 1e-6).sort((a, b) => b.elevation - a.elevation);
-  const partway = (m: Member, q: Pt) => {
+  // Levels are traced from separate sheets, so between levels allow 300 mm.
+  const ACROSS = 0.3;
+  const partway = (m: Member, q: Pt, tol = 0.15) => {
     if (!m.b) return null;
     const L = memberLength(m);
     const t = ((q.x - m.a.x) * (m.b.x - m.a.x) + (q.y - m.a.y) * (m.b.y - m.a.y)) / (L * L || 1);
     const foot = { x: m.a.x + t * (m.b.x - m.a.x), y: m.a.y + t * (m.b.y - m.a.y) };
-    return t * L > 0.15 && t * L < L - 0.15 && near(foot, q) ? t * L : null;
+    return t * L > 0.15 && t * L < L - 0.15 && near(foot, q, tol) ? t * L : null;
   };
   for (const q of posts) {
     if (q.type !== "post") continue;
@@ -544,14 +546,16 @@ export function runCalcs(model: DesignModel): Calcs {
       continue;
     }
     for (const v of downFrom(ql)) {
-      const under = posts.filter((x) => x.levelId === v.id && near(x.a, q.a)).sort((a, b) => Number(b.type === "post") - Number(a.type === "post"))[0];
+      const under = posts
+        .filter((x) => x.levelId === v.id && near(x.a, q.a, ACROSS))
+        .sort((a, b) => Number(b.type === "post") - Number(a.type === "post") || Math.hypot(a.a.x - q.a.x, a.a.y - q.a.y) - Math.hypot(b.a.x - q.a.x, b.a.y - q.a.y))[0];
       if (under) {
         seats.set(q.id, { kind: "support", id: under.id, levelId: v.id });
         break;
       }
-      const beam = beamLike.find((m) => m.levelId === v.id && partway(m, q.a) !== null);
+      const beam = beamLike.find((m) => m.levelId === v.id && partway(m, q.a, ACROSS) !== null);
       if (beam) {
-        seats.set(q.id, { kind: "beam", id: beam.id, levelId: v.id, at: partway(beam, q.a)! });
+        seats.set(q.id, { kind: "beam", id: beam.id, levelId: v.id, at: partway(beam, q.a, ACROSS)! });
         break;
       }
     }
