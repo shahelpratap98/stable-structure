@@ -119,8 +119,8 @@ export function designConcreteBeam(s: ConcreteSpec) {
     lines: [
       { label: "Section", value: `${s.b} wide × ${s.D} deep, f'c ${s.fc} MPa, d ${d} mm` },
       { label: "M* sagging / hogging", value: `${Mpos.toFixed(1)} / ${Mneg.toFixed(1)} kNm` },
-      { label: "Bottom steel", value: `${bot.text} (As ${bot.req.toFixed(0)} mm² req)` },
-      ...(top ? [{ label: "Top steel over supports", value: `${top.text} (As ${top.req.toFixed(0)} mm² req)` }] : [{ label: "Top steel", value: "2 HD12 (hangers)" }]),
+      { label: "Bottom steel", value: `${bot.text} (As ${bot.As.toFixed(0)} mm² req${bot.As > bot.req + 0.5 ? ", minimum steel" : ""})` },
+      ...(top ? [{ label: "Top steel over supports", value: `${top.text} (As ${top.As.toFixed(0)} mm² req${top.As > top.req + 0.5 ? ", minimum steel" : ""})` }] : [{ label: "Top steel", value: "2 HD12 (hangers)" }]),
       { label: "V* / φVc", value: `${V.toFixed(1)} / ${(0.75 * Vc).toFixed(1)} kN` },
       { label: "Stirrups", value: `HD10 two legs @ ${sp} crs${Vs > 0 ? "" : " (nominal)"}` },
     ],
