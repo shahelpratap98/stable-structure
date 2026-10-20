@@ -7,11 +7,11 @@
 
 import type { Calcs, Result } from "./calc";
 import { parseTimberSection, STEEL } from "./materials";
-import { along, framingTop, memberLength, type DesignModel, type Level, type Member, type Pt } from "./model";
+import { along, framingTop, memberLength, type DesignModel, type Level, type Member, type Pt, type RoofSpec } from "./model";
 import { poleLayout } from "./retaining";
 import { defaultRaft } from "./raft";
 
-export type Layer = "walls" | "framing" | "glass" | "joists" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining";
+export type Layer = "walls" | "framing" | "glass" | "joists" | "flooring" | "roof" | "purlins" | "roofing" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining";
 export type Tone =
   | "member"
   | "framing"
@@ -22,13 +22,23 @@ export type Tone =
   | "glass"
   | "joist"
   | "joistDbl"
+  | "floorSheet"
+  | "rafter"
+  | "truss"
+  | "purlin"
+  | "roofing"
   | "concrete"
   | "pole"
   | "rail"
   | `brace:${string}`;
 
+export type P3 = { x: number; y: number; z: number };
 export type Part =
   | { kind: "bar"; id: string; layer: Layer; tone: Tone; a: Pt; b: Pt; z0: number; z1: number; w: number; off?: number }
+  // a member between two points in space (rafters, truss chords): w across in plan, d deep
+  | { kind: "beam3"; id: string; layer: Layer; tone: Tone; a: P3; b: P3; w: number; d: number }
+  // a flat plane through 3+ points (roofing): drawn only, not exported
+  | { kind: "poly"; id: string; layer: Layer; tone: Tone; pts: P3[] }
   | { kind: "col"; id: string; layer: Layer; tone: Tone; x: number; y: number; z0: number; z1: number; w: number; d: number; round?: boolean };
 
 export function levelAbove(model: DesignModel, level: Level) {
@@ -94,6 +104,7 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
     case "joistzone": {
       if (!m.b || !m.zone) return [];
       const s = secOf(m, r);
+      if (m.zone.roof) return roofParts(m, m.zone.roof, level.kind === "roof" ? base : level.elevation + level.height, s);
       const sp = m.zone.spacing / 1000;
       const x0 = Math.min(m.a.x, m.b.x),
         x1 = Math.max(m.a.x, m.b.x),
@@ -112,6 +123,8 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
         joist(d - 0.0225, "joistDbl");
         joist(d + 0.0225, "joistDbl");
       }
+      // 20 mm flooring over the joists
+      out.push({ kind: "beam3", id: m.id, layer: "flooring", tone: "floorSheet", a: { x: x0, y: (y0 + y1) / 2, z: t + 0.01 }, b: { x: x1, y: (y0 + y1) / 2, z: t + 0.01 }, w: y1 - y0, d: 0.02 });
       return out;
     }
     case "wall": {
@@ -270,7 +283,7 @@ export function allParts(model: DesignModel, calcs: Calcs): { part: Part; level:
     if (!level) continue;
     // split levels: the member sits dz above (or below) its level
     const dz = m.dz ?? 0;
-    for (const part of partsFor(model, calcs, m)) out.push({ part: dz ? { ...part, z0: part.z0 + dz, z1: part.z1 + dz } : part, level });
+    for (const part of partsFor(model, calcs, m)) out.push({ part: dz ? lift(part, dz) : part, level });
   }
   for (const vl of calcs.lintels) {
     const level = lv.get(vl.wall.levelId);
@@ -281,6 +294,147 @@ export function allParts(model: DesignModel, calcs: Calcs): { part: Part; level:
     // lintels sit within the wall: cap the width to the wall
     const wallTh = (vl.wall.wall?.thickness ?? 90) / 1000;
     for (const part of beamParts(vl.id, "lintels", vl.member.a, vl.member.b, top, { ...s, b: Math.min(s.b, wallTh) })) out.push({ part, level });
+  }
+  return out;
+}
+
+function lift(p: Part, dz: number): Part {
+  if (p.kind === "beam3") return { ...p, a: { ...p.a, z: p.a.z + dz }, b: { ...p.b, z: p.b.z + dz } };
+  if (p.kind === "poly") return { ...p, pts: p.pts.map((q) => ({ ...q, z: q.z + dz })) };
+  return { ...p, z0: p.z0 + dz, z1: p.z1 + dz };
+}
+
+// Roof framing over a zone, built in the zone's own frame: u runs along the
+// rafters (the zone's dir), v along the eaves. zE is the underside of the
+// rafters at the wall plate. Equal pitch all round, so hips run at 45° in plan.
+function roofParts(m: Member, rs: RoofSpec, zE: number, s: Sec): Part[] {
+  const out: Part[] = [];
+  const ns = m.zone!.dir === "y";
+  const x0 = Math.min(m.a.x, m.b!.x),
+    x1 = Math.max(m.a.x, m.b!.x),
+    y0 = Math.min(m.a.y, m.b!.y),
+    y1 = Math.max(m.a.y, m.b!.y);
+  const [u0, u1, v0, v1] = ns ? [y0, y1, x0, x1] : [x0, x1, y0, y1];
+  const W = u1 - u0,
+    Lv = v1 - v0,
+    um = (u0 + u1) / 2;
+  const tp = Math.tan((Math.max(0, Math.min(60, rs.pitch)) * Math.PI) / 180);
+  const ov = Math.max(0, rs.overhang);
+  const sp = Math.max(0.3, m.zone!.spacing / 1000);
+  const P = (u: number, v: number, z: number): P3 => (ns ? { x: v, y: u, z } : { x: u, y: v, z });
+  const ridged = rs.form === "gable" || rs.form === "hip";
+  const hipped = rs.form === "hip";
+  const half = Math.min(W, hipped ? Lv : W) / 2; // a hip roof shorter than it is wide ends in a point
+  // height of the rafters' underside above zE at (u, v): rises from every eave
+  const rise = (u: number, v: number) => {
+    let run = !ridged ? u - u0 : Math.min(u - u0, u1 - u);
+    if (hipped) run = Math.min(run, v - v0, v1 - v);
+    return Math.min(run, ridged ? half : W) * tp;
+  };
+  const d = rs.framing === "trusses" ? 0.09 : s.d,
+    b = rs.framing === "trusses" ? 0.045 : s.b;
+  const mid = d / 2; // centre line above the underside
+  const bar = (layer: Layer, tone: Tone, ua: number, va: number, za: number, ub: number, vb: number, zb: number, w = b, dd = d) => {
+    if (Math.hypot(ub - ua, vb - va, zb - za) < 0.02) return;
+    out.push({ kind: "beam3", id: m.id, layer, tone, a: P(ua, va, za), b: P(ub, vb, zb), w, d: dd });
+  };
+  const vs: number[] = [];
+  for (let v = v0 + 0.0225; v <= v1 - 0.0225 + 1e-6 && vs.length < 300; v += sp) vs.push(v);
+  if (vs.length && v1 - 0.0225 - vs[vs.length - 1] > 0.1) vs.push(v1 - 0.0225);
+
+  if (rs.framing === "rafters") {
+    // common and jack rafters from each eave, tails past the wall by the overhang
+    for (const v of vs) {
+      const e = hipped ? Math.min(v - v0, v1 - v) : Infinity; // where the hip cuts the rafter
+      if (!ridged) bar("roof", "rafter", u0 - ov, v, zE - ov * tp + mid, u1 + (rs.form === "flat" ? ov : 0), v, zE + (W + (rs.form === "flat" ? ov : 0)) * tp + mid);
+      else {
+        const top = Math.min(half, e);
+        bar("roof", "rafter", u0 - ov, v, zE - ov * tp + mid, u0 + top, v, zE + top * tp + mid);
+        bar("roof", "rafter", u1 + ov, v, zE - ov * tp + mid, u1 - top, v, zE + top * tp + mid);
+      }
+    }
+    if (hipped) {
+      // jack rafters on the hip ends, running along v
+      for (let u = u0 + sp / 2; u < u1 - 0.05; u += sp) {
+        const top = Math.min(u - u0, u1 - u, half);
+        bar("roof", "rafter", u, v0 - ov, zE - ov * tp + mid, u, v0 + top, zE + top * tp + mid);
+        bar("roof", "rafter", u, v1 + ov, zE - ov * tp + mid, u, v1 - top, zE + top * tp + mid);
+      }
+      // hip rafters from each corner to the ridge ends, and the ridge
+      const hz = zE + half * tp + mid;
+      const ra = v0 + half,
+        rb = v1 - half;
+      for (const [uc, vc, vr] of [
+        [u0, v0, ra],
+        [u1, v0, ra],
+        [u0, v1, rb],
+        [u1, v1, rb],
+      ] as const)
+        bar("roof", "rafter", uc - Math.sign(um - uc) * ov, vc - Math.sign(vr - vc) * ov, zE - ov * tp * Math.SQRT2 + mid, um, vr, hz, b, d + 0.05);
+      if (rb > ra) bar("roof", "rafter", um, ra, hz, um, rb, hz, b, d + 0.05);
+    } else if (ridged) bar("roof", "rafter", um, v0, zE + half * tp + mid, um, v1, zE + half * tp + mid, b, d + 0.05);
+    // purlins across the rafters, at their spacing up the slope
+    if (rs.purlins > 0) {
+      const step = (rs.purlins / 1000) * Math.cos(Math.atan(tp));
+      const pz = (u: number, v: number) => zE + rise(u, v) + d + 0.0225;
+      const slopes: [number, number][] = ridged ? [[u0 - ov, 1], [u1 + ov, -1]] : [[u0 - ov, 1]];
+      for (const [ue, dirn] of slopes) {
+        const limit = ridged ? half + ov : W + ov * (rs.form === "flat" ? 2 : 1);
+        for (let k = 0.15; k <= limit + 1e-6; k += step) {
+          const u = ue + dirn * k;
+          const inset = hipped ? Math.max(0, k - ov) : 0; // purlins stop at the hips
+          const va = v0 - ov + inset,
+            vb = v1 + ov - inset;
+          if (vb - va < 0.1) continue;
+          const z = pz(Math.min(Math.max(u, u0), u1), Math.max(Math.min((va + vb) / 2, v1), v0)) - (k < ov ? (ov - k) * tp : 0);
+          bar("purlins", "purlin", u, va, z, u, vb, z, 0.07, 0.045);
+        }
+      }
+    }
+  } else {
+    // trusses: bottom chord across the zone, top chords to the apex (cut flat on hip ends), webs
+    for (const v of vs) {
+      const peak = rise(um, v);
+      const zb = zE + 0.045;
+      bar("roof", "truss", u0 - 0.05, v, zb, u1 + 0.05, v, zb, b, 0.09);
+      if (!ridged) {
+        bar("roof", "truss", u0 - ov, v, zE - ov * tp + mid, u1, v, zE + W * tp + mid, b, 0.09);
+        bar("roof", "truss", u1, v, zb, u1, v, zE + W * tp, b, 0.09);
+        bar("roof", "truss", um, v, zb, um, v, zE + (W / 2) * tp, b, 0.09);
+        continue;
+      }
+      const flat = peak / tp; // horizontal run before the top chord levels off (hip ends)
+      bar("roof", "truss", u0 - ov, v, zE - ov * tp + mid, u0 + flat, v, zE + peak + mid, b, 0.09);
+      bar("roof", "truss", u1 + ov, v, zE - ov * tp + mid, u1 - flat, v, zE + peak + mid, b, 0.09);
+      if (u1 - flat > u0 + flat + 0.02) bar("roof", "truss", u0 + flat, v, zE + peak + mid, u1 - flat, v, zE + peak + mid, b, 0.09);
+      if (peak > 0.25) {
+        bar("roof", "truss", um, v, zb, um, v, zE + peak, b, 0.09);
+        const q = W / 4;
+        bar("roof", "truss", u0 + q, v, zb, um, v, zE + peak * 0.55, b, 0.09);
+        bar("roof", "truss", u1 - q, v, zb, um, v, zE + peak * 0.55, b, 0.09);
+      }
+    }
+  }
+
+  // roofing over everything, eaves and verges included
+  const t = d + (rs.purlins > 0 && rs.framing === "rafters" ? 0.045 : 0) + 0.02;
+  const z = (h: number) => zE + h + t;
+  const poly = (pts: P3[]) => out.push({ kind: "poly", id: m.id, layer: "roofing", tone: "roofing", pts });
+  if (!ridged) {
+    const hi = rs.form === "flat" ? W + 2 * ov : W + ov;
+    poly([P(u0 - ov, v0 - ov, z(-ov * tp)), P(u0 - ov, v1 + ov, z(-ov * tp)), P(u0 - ov + hi, v1 + ov, z((hi - ov) * tp)), P(u0 - ov + hi, v0 - ov, z((hi - ov) * tp))]);
+  } else if (!hipped) {
+    for (const ue of [u0 - ov, u1 + ov])
+      poly([P(ue, v0 - ov, z(-ov * tp)), P(ue, v1 + ov, z(-ov * tp)), P(um, v1 + ov, z(half * tp)), P(um, v0 - ov, z(half * tp))]);
+  } else {
+    const ra = v0 + half,
+      rb = Math.max(v1 - half, ra);
+    const zr = z(half * tp),
+      ze = z(-ov * tp);
+    poly([P(u0 - ov, v0 - ov, ze), P(u0 - ov, v1 + ov, ze), P(um, rb, zr), P(um, ra, zr)]);
+    poly([P(u1 + ov, v0 - ov, ze), P(um, ra, zr), P(um, rb, zr), P(u1 + ov, v1 + ov, ze)]);
+    poly([P(u0 - ov, v0 - ov, ze), P(um, ra, zr), P(u1 + ov, v0 - ov, ze)]);
+    poly([P(u0 - ov, v1 + ov, ze), P(u1 + ov, v1 + ov, ze), P(um, rb, zr)]);
   }
   return out;
 }

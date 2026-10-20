@@ -4,13 +4,15 @@ import { useActionState, useEffect, useState, type ReactNode } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Spinner } from "@/components/spinner";
 import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
-import { autoTrib, DRAFT_NOTE, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
+import { autoTrib, DRAFT_NOTE, loadKind, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
 import { DEFAULT_SITE, demandFromSite, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
 import type { Change } from "@/lib/design/diff";
 import { defaultRaft, lossOfSupport, type RaftSpec } from "@/lib/design/raft";
 import { DEFAULT_PAPERWORK, drawingsFromText, drawingsToText, MONITORING, type Monitoring, type Paperwork } from "@/lib/design/paperwork";
 import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
+  defaultRoof,
+  type RoofSpec,
   BRACE_NAME,
   byLabel,
   DEFAULT_PARAMS,
@@ -420,7 +422,9 @@ export function MemberPanel({
         </Section>
       ) : null}
 
-      {m.type === "joistzone" && m.zone ? <ZoneEditor m={m} locked={locked} set={set} materialFields={materialFields} sectionField={sectionField} /> : null}
+      {m.type === "joistzone" && m.zone ? (
+        <ZoneEditor m={m} locked={locked} set={set} materialFields={materialFields} sectionField={sectionField} topStorey={loadKind(model, model.levels.find((l) => l.id === m.levelId)) === "roof"} />
+      ) : null}
       {m.type === "raft" ? <RaftEditor m={m} site={model.site} locked={locked} set={set} /> : null}
       {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} /> : null}
       {m.type === "bracing" ? (
@@ -556,10 +560,76 @@ function RaftEditor({ m, site, locked, set }: { m: Member; site: SiteData | unde
   );
 }
 
-function ZoneEditor({ m, locked, set, materialFields, sectionField }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void; materialFields: ReactNode; sectionField: ReactNode }) {
+function ZoneEditor({
+  m,
+  locked,
+  set,
+  materialFields,
+  sectionField,
+  topStorey,
+}: {
+  m: Member;
+  locked: boolean;
+  set: (p: Partial<Member>, w: string) => void;
+  materialFields: ReactNode;
+  sectionField: ReactNode;
+  topStorey: boolean;
+}) {
   const z = m.zone!;
   const upd = (p: Partial<ZoneSpec>, w: string) => set({ zone: { ...z, ...p } }, w);
   const [dbl, setDbl] = useState(z.doubled.map((d) => d.toFixed(3)).join(", "));
+  if (z.roof) {
+    const r = z.roof;
+    const updR = (p: Partial<RoofSpec>, w: string) => set({ zone: { ...z, roof: { ...r, ...p } } }, w);
+    return (
+      <Section title="Roof framing">
+        <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+          <Select<RoofSpec["form"]>
+            label="Roof"
+            value={r.form}
+            options={[
+              { value: "gable", label: "Gable (ridge)" },
+              { value: "hip", label: "Hip" },
+              { value: "mono", label: "Mono-pitch" },
+              { value: "flat", label: "Flat / low pitch" },
+            ]}
+            onChange={(v) => updR({ form: v, ...(v === "flat" && r.pitch > 5 ? { pitch: 3 } : {}) }, `${v} roof`)}
+          />
+          <NumberField label="Pitch" unit="°" value={r.pitch} min={0} onCommit={(v) => v !== undefined && updR({ pitch: Math.min(60, v) }, `pitch ${v}°`)} />
+          <Select<RoofSpec["framing"]>
+            label="Framing"
+            value={r.framing}
+            options={[
+              { value: "rafters", label: "Rafters (designed)" },
+              { value: "trusses", label: "Trusses (by supplier)" },
+            ]}
+            onChange={(v) => updR({ framing: v }, v)}
+          />
+          <NumberField label="Spacing" unit="mm" value={z.spacing} min={300} onCommit={(v) => v && upd({ spacing: v }, `spacing ${v}`)} />
+          {r.framing === "rafters" ? materialFields : null}
+          {r.framing === "rafters" ? sectionField : null}
+          <Select
+            label="Rafters run"
+            value={z.dir}
+            options={[
+              { value: "y", label: "North–south (↕)" },
+              { value: "x", label: "East–west (↔)" },
+            ]}
+            onChange={(v) => upd({ dir: v }, `rafters ${v === "x" ? "E–W" : "N–S"}`)}
+          />
+          <NumberField label="Eaves overhang" unit="m" value={r.overhang} min={0} onCommit={(v) => v !== undefined && updR({ overhang: v }, `overhang ${v} m`)} />
+          {r.framing === "rafters" ? <NumberField label="Purlins at" unit="mm" value={r.purlins} min={0} placeholder="none" onCommit={(v) => updR({ purlins: v ?? 0 }, v ? `purlins @ ${v}` : "no purlins")} /> : null}
+        </fieldset>
+        <p className="mt-2 text-xs text-muted">
+          Draw the zone over the walls the roof sits on. Rafters span across it ({z.dir === "y" ? "north–south" : "east–west"}); a gable or hip ridge runs down the middle, and the eaves and ridge beams under it pick up the roof load
+          automatically.
+        </p>
+        <button type="button" className="mt-2 text-xs font-semibold text-accent-600 hover:underline disabled:opacity-50" disabled={locked} onClick={() => set({ zone: { ...z, roof: undefined } }, "floor joists, not roof framing")}>
+          Make this floor joists instead
+        </button>
+      </Section>
+    );
+  }
   return (
     <Section title="Joists">
       <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
@@ -579,6 +649,13 @@ function ZoneEditor({ m, locked, set, materialFields, sectionField }: { m: Membe
         <div className="col-span-2">
           <Check label="Wet area (tiled floor load)" checked={z.wet} onChange={(v) => upd({ wet: v }, v ? "wet area" : "not wet")} />
         </div>
+        {topStorey ? (
+          <div className="col-span-2">
+            <button type="button" className="text-xs font-semibold text-accent-600 hover:underline" onClick={() => set({ zone: { ...z, spacing: 900, roof: defaultRoof() } }, "roof framing")}>
+              Make this roof framing (rafters or trusses)
+            </button>
+          </div>
+        ) : null}
         <label className="col-span-2 flex flex-col gap-1">
           <span className="text-xs font-semibold text-muted">Doubled joists under walls (plan {z.dir === "y" ? "x" : "y"}, m)</span>
           <input

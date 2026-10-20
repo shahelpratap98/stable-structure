@@ -89,7 +89,21 @@ export type ZoneSpec = {
   wet: boolean;
   doubled: number[]; // positions (m, plan coordinate across the span) of doubled joists under walls
   tableSpan?: number; // m, NZS 3604 Table 7.1 span to check against
+  roof?: RoofSpec; // set when the zone is roof framing (on the top storey or a roof level)
 };
+
+// Roof framing over a zone: the rafters (or trusses) span the zone's `dir`;
+// gable and hip roofs have their ridge down the middle, across that span.
+export type RoofForm = "flat" | "mono" | "gable" | "hip";
+export type RoofSpec = {
+  form: RoofForm;
+  pitch: number; // degrees
+  framing: "rafters" | "trusses";
+  purlins: number; // mm centres along the slope, 0 = none
+  overhang: number; // m, eaves past the zone edge
+};
+export const defaultRoof = (): RoofSpec => ({ form: "gable", pitch: 20, framing: "rafters", purlins: 900, overhang: 0.45 });
+export const roofHalfSpan = (r: RoofSpec) => r.framing === "rafters" && (r.form === "gable" || r.form === "hip");
 
 export type BraceSystem = "GS1N" | "GS2N" | "GS2NOM" | "GSPH" | "BL1H" | "BLGH" | "BLPH" | "BW" | "PORTAL";
 export type RetainSpec = { kind: "pole" | "block"; h0: number; h1: number }; // retained heights (m) at each end
@@ -264,7 +278,7 @@ export function normaliseModel(raw: unknown): DesignModel {
       // v1 bracing walls were plain lines with a length in the section field
       if (out.type === "bracing" && !out.brace) out.brace = { system: "GS2N" };
       if (out.type === "wall") out.wall = { ...defaultWall(), ...(out.wall ?? {}), openings: Array.isArray(out.wall?.openings) ? out.wall!.openings : [] };
-      if (out.type === "joistzone") out.zone = { ...defaultZone(), ...(out.zone ?? {}) };
+      if (out.type === "joistzone") out.zone = { ...defaultZone(), ...(out.zone ?? {}), ...(out.zone?.roof ? { roof: { ...defaultRoof(), ...out.zone.roof } } : {}) };
       if (out.type === "raft") out.raft = { ...defaultRaft(), ...(out.raft ?? {}) };
       if (out.type === "retaining") out.rw = { kind: "pole", h0: 1, h1: 1, ...(out.rw ?? {}) };
       // v1 loaded width -> tributaries on whatever surface the level carries
@@ -346,7 +360,11 @@ export function describeMember(m: Member) {
     case "wall":
       return `${m.wall?.kind === "block" ? "Block" : m.wall?.kind === "int" ? "Internal" : "External"} ${m.wall?.thickness ?? 90} wall`;
     case "joistzone":
-      return `${m.section} ${m.grade ?? "SG8"} @ ${m.zone?.spacing ?? 400}`;
+      return m.zone?.roof
+        ? m.zone.roof.framing === "trusses"
+          ? `Trusses @ ${m.zone.spacing}, ${m.zone.roof.form} ${m.zone.roof.pitch}°`
+          : `${m.section} ${m.grade ?? "SG8"} rafters @ ${m.zone.spacing}, ${m.zone.roof.form} ${m.zone.roof.pitch}°`
+        : `${m.section} ${m.grade ?? "SG8"} @ ${m.zone?.spacing ?? 400}`;
     case "bracing":
       return BRACE_NAME[m.brace?.system ?? "GS2N"];
     case "retaining":

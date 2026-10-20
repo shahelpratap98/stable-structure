@@ -133,6 +133,15 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   same area) checked for axial load to NZS 3603, on a 350 × 350 × 200 footing
   or larger, sized from the site bearing. Gravity only: braced and anchor
   piles follow NZS 3604 Section 6.
+- **Roof framing**: a joist zone with a `roof` spec (drawn on the top storey)
+  is rafters or trusses over a flat, mono, gable or hip roof. Rafters are
+  designed on their run (to the ridge for gable and hip); trusses report
+  their reactions for the supplier. `autoTrib` gives eaves a quarter of the
+  width and the ridge half (trusses: half to each eave; hip ends a quarter).
+  The 3D view draws sloped rafters, hips, ridge, purlins, trusses and
+  roofing (`beam3` and `poly` parts in `geometry.ts`), with flooring over
+  joist zones and a toggle per level. "Find beams on the sheet" can add a
+  colour set as walls too (blue sets as blockwork).
 - **Rib rafts**: `lib/design/raft.ts`. Drawn as a rectangle; carries the
   walls and posts on its level (or the storey above, when drawn on the
   foundation level). Average, edge beam and under-wall bearing, post

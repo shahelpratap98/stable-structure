@@ -18,7 +18,7 @@ import { designConcreteBeam } from "./concrete";
 import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
 import { solveBeam } from "./frame";
 import { ALL_FAMILIES, candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, KEY_GRADE, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
-import { along, describeMember, framingTop, MEMBER_INFO, memberLength, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type Sizing, type Trib } from "./model";
+import { along, describeMember, framingTop, MEMBER_INFO, memberLength, roofHalfSpan, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type RoofSpec, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
 import { defaultRaft, designRaft, type RaftPost, type RaftWall } from "./raft";
 
@@ -565,6 +565,11 @@ export function tribText(t: Trib) {
     .join(" · ");
 }
 
+// Roof framing over a joist zone (rafters or trusses), when the zone is marked as roof framing.
+export function zoneRoof(_model: DesignModel, z: Member): RoofSpec | null {
+  return z.type === "joistzone" && z.zone?.roof ? z.zone.roof : null;
+}
+
 // Default tributary for a member that has none set.
 function defaultTrib(model: DesignModel, m: Member): Trib {
   const level = levelOf(model, m.levelId);
@@ -602,16 +607,33 @@ export function autoTrib(model: DesignModel, m: Member): { trib: Trib; from: str
       y1 = Math.max(z.a.y, z.b.y);
     // joists running along y bear on the zone's top and bottom edges (lines of constant y)
     const alongY = z.zone.dir === "y";
-    if (alongY ? Math.abs(uy) > 0.1 : Math.abs(ux) > 0.1) continue; // beam must run across the joists
+    const rs = zoneRoof(model, z);
+    const W = alongY ? y1 - y0 : x1 - x0;
+    if (alongY ? Math.abs(uy) > 0.1 : Math.abs(ux) > 0.1) {
+      // a hip roof's end beams, running along the rafters: the jack rafters land on them
+      if (rs?.form !== "hip") continue;
+      const c2 = alongY ? (m.a.x + m.b.x) / 2 : (m.a.y + m.b.y) / 2;
+      if (alongY ? Math.abs(ux) > 0.1 : Math.abs(uy) > 0.1) continue;
+      if (![alongY ? x0 : y0, alongY ? x1 : y1].some((e) => Math.abs(c2 - e) <= TOL)) continue;
+      const ov2 = alongY ? overlap(m.a.y, m.b.y, y0, y1) : overlap(m.a.x, m.b.x, x0, x1);
+      if (ov2 < 0.1) continue;
+      const f2 = Math.min(1, ov2 / L);
+      if (f2 < 0.98) partial = true;
+      t.roof += (W / 4) * f2;
+      from.push(z.label);
+      continue;
+    }
     const c = alongY ? (m.a.y + m.b.y) / 2 : (m.a.x + m.b.x) / 2;
     const edges = alongY ? [y0, y1] : [x0, x1];
-    if (!edges.some((e) => Math.abs(c - e) <= TOL)) continue;
+    const ridge = rs && roofHalfSpan(rs) && Math.abs(c - (alongY ? (y0 + y1) / 2 : (x0 + x1) / 2)) <= TOL;
+    if (!ridge && !edges.some((e) => Math.abs(c - e) <= TOL)) continue;
     const ov = alongY ? overlap(m.a.x, m.b.x, x0, x1) : overlap(m.a.y, m.b.y, y0, y1);
     if (ov < 0.1) continue;
     const frac = Math.min(1, ov / L);
     if (frac < 0.98) partial = true;
-    const half = ((alongY ? y1 - y0 : x1 - x0) / 2) * frac;
-    if (roof) t.roof += half;
+    // rafters to a ridge: each eave a quarter of the width, the ridge half; otherwise half to each edge
+    const half = (rs && roofHalfSpan(rs) ? (ridge ? W / 2 : W / 4) : W / 2) * frac;
+    if (roof || rs) t.roof += half;
     else {
       t.floor += half;
       if (z.zone.wet) t.wet += half;
@@ -1267,12 +1289,68 @@ function runCalcsOnce(model: DesignModel): Calcs {
     for (const s of posts.filter((x) => onLevel(x, lvl)).sort((a, b) => Number(b.type === "post") - Number(a.type === "post"))) designSupport(s);
   }
 
-  // joist zones
+  // joist zones, and rafter and truss zones over the top storey
   for (const z of model.members) {
     if (z.type !== "joistzone" || !z.b || !z.zone) continue;
-    const span = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
     const width = z.zone.dir === "x" ? Math.abs(z.b.y - z.a.y) : Math.abs(z.b.x - z.a.x);
     const s = z.zone.spacing / 1000;
+    const rs = zoneRoof(model, z);
+    if (rs) {
+      const W = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
+      const run = roofHalfSpan(rs) ? W / 2 : W;
+      const slope = 1 / Math.cos((rs.pitch * Math.PI) / 180);
+      const count = Math.floor(width / s) + 1;
+      if (rs.framing === "trusses") {
+        const w = lineLoads({ roof: s }, p);
+        const R = { G: (w.G * W) / 2, Qf: 0, Qr: (w.Qr * W) / 2, S: (w.S * W) / 2 };
+        results.set(z.id, {
+          memberId: z.id,
+          mark: z.label,
+          status: "none",
+          ratio: null,
+          summary: `Trusses @ ${z.zone.spacing} · span ${fmt(W)} m · ${rs.form} ${rs.pitch}°`,
+          utils: [],
+          kv: [
+            { label: "Trusses", value: `${count} @ ${z.zone.spacing} crs, span ${fmt(W)} m` },
+            { label: "Roof", value: `${rs.form}, ${rs.pitch}° pitch, ${fmt(rs.overhang)} m eaves` },
+            { label: "Reaction per truss end G / Qr", value: `${fmt(R.G)} / ${fmt(R.Qr)} kN` },
+            { label: "R* per truss end", value: `${fmt(rStar(R))} kN` },
+          ],
+          inputs: [{ label: "Framing", value: "Prefabricated timber trusses" }],
+          loads: [{ label: "Roof", value: `G ${p.Groof} / Q ${p.Qroof} kPa on plan` }],
+          checks: [],
+          notes: ["Trusses are designed by the truss supplier to NZS 3603 and AS/NZS 1170 for these loads and the site wind; fix each truss to the top plate for uplift. The reactions shown are for the supporting walls and beams."],
+        });
+        continue;
+      }
+      const r = designBeam(
+        {
+          id: z.id,
+          mark: z.label,
+          role: z.role || `Rafters (${rs.form} roof, ${rs.pitch}°)`,
+          span: run,
+          trib: { roof: s },
+          sizing: { mode: "fixed" },
+          fixed: fixedCandidate(z.section, z.material, z.grade),
+          point: false,
+          selfWeight: false,
+          fallbackMaxD: 0,
+        },
+        p,
+      );
+      r.kv.push(
+        { label: "Rafters", value: `${count} @ ${z.zone.spacing} crs, run ${fmt(run)} m (${fmt(run * slope)} m on the slope)` },
+        { label: "Roof", value: `${rs.form}, ${rs.pitch}°${rs.purlins ? `, purlins @ ${rs.purlins}` : ""}, ${fmt(rs.overhang)} m eaves` },
+      );
+      r.notes.push(
+        `Rafters designed on their horizontal run with the roof loads on plan. ${roofHalfSpan(rs) ? "They span from the eaves to a ridge beam, which carries half the roof width; " : ""}hip, valley and ridge members and fixings for uplift to NZS 3604 Section 10 or specific design.`,
+      );
+      r.summary = r.sec ? `${z.section} rafters @ ${z.zone.spacing} · run ${fmt(run)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
+      r.ends = undefined;
+      results.set(z.id, r);
+      continue;
+    }
+    const span = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
     const r = designBeam(
       {
         id: z.id,

@@ -3,12 +3,13 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { runCalcs, type Calcs } from "@/lib/design/calc";
+import { loadKind, runCalcs, type Calcs } from "@/lib/design/calc";
 import { cloudsOn, diffModels } from "@/lib/design/diff";
 import { defaultRaft } from "@/lib/design/raft";
 import { exportIfc } from "@/lib/design/ifc";
 import { FAMILY_COLOUR, FAMILY_LABEL } from "@/lib/design/materials";
 import {
+  defaultRoof,
   DEFAULT_SECTION,
   defaultWall,
   defaultZone,
@@ -69,7 +70,14 @@ function newMember(model: DesignModel, type: MemberType, levelId: string, a: Pt,
   };
   if (MEMBER_INFO[type].area && b) {
     // joists span the shorter way across the zone
-    if (type === "joistzone") m.zone = { ...defaultZone(), dir: Math.abs(b.y - a.y) <= Math.abs(b.x - a.x) ? "y" : "x" };
+    if (type === "joistzone") {
+      m.zone = { ...defaultZone(), dir: Math.abs(b.y - a.y) <= Math.abs(b.x - a.x) ? "y" : "x" };
+      // over the top storey it is roof framing: rafters at 900 to a ridge
+      if (loadKind(model, model.levels.find((l) => l.id === levelId)) === "roof") {
+        m.zone = { ...m.zone, spacing: 900, roof: defaultRoof() };
+        m.section = "190x45";
+      }
+    }
     m.a = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y) };
     m.b = { x: Math.max(a.x, b.x), y: Math.max(a.y, b.y) };
   }
@@ -451,18 +459,21 @@ export function DesignEditor({
       setFinding(false);
     }
   };
-  const addFound = (hue: number) => {
+  const addFound = (hue: number, as: "beam" | "wall") => {
     if (!found || !level.plan?.scale) return;
     const frameNow = { scale: level.plan.scale, origin: level.plan.origin };
     let m = modelRef.current;
     const add: Member[] = [];
+    // blue-filled walls on an engineer's plan are blockwork (15 series)
+    const blue = hue === 7 || hue === 8;
     for (const l of found.lines.filter((x) => x.hue === hue)) {
-      const mem = newMember({ ...m, members: [...m.members, ...add] }, "beam", level.id, toWorld(frameNow, l.a), toWorld(frameNow, l.b));
-      if (l.label) mem.label = l.label;
+      const mem = newMember({ ...m, members: [...m.members, ...add] }, as, level.id, toWorld(frameNow, l.a), toWorld(frameNow, l.b));
+      if (as === "beam" && l.label) mem.label = l.label;
+      if (as === "wall" && blue && mem.wall) mem.wall = { ...mem.wall, kind: "block", thickness: 140 };
       add.push(mem);
     }
     m = { ...m, members: [...m.members, ...add] };
-    commit(m, `Added ${add.length} beams found on the sheet`);
+    commit(m, `Added ${add.length} ${as === "beam" ? "beams" : blue ? "block walls" : "walls"} found on the sheet`);
     setFound({ ...found, lines: found.lines.filter((x) => x.hue !== hue) });
   };
   const foundHere = found && found.levelId === level.id ? found.lines : [];
@@ -765,13 +776,22 @@ export function DesignEditor({
                   {[...new Set(foundHere.map((l) => l.hue))].map((h) => {
                     const ls = foundHere.filter((l) => l.hue === h);
                     return (
-                      <button key={h} type="button" className="flex items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-0.5 font-semibold hover:border-accent" onClick={() => addFound(h)} disabled={locked}>
+                      <span key={h} className="flex items-center gap-1 rounded-md border border-line bg-surface px-1.5 py-0.5">
                         <i className="inline-block h-2 w-4" style={{ background: ls[0].colour }} />
-                        Add {ls.length} as beams{ls.some((l) => l.label) ? ` (${ls.filter((l) => l.label).length} marked)` : ""}
-                      </button>
+                        <span className="text-muted">
+                          {ls.length}
+                          {ls.some((l) => l.label) ? ` (${ls.filter((l) => l.label).length} marked)` : ""}:
+                        </span>
+                        <button type="button" className="rounded px-1 font-semibold hover:bg-surface-2 hover:text-accent-600" onClick={() => addFound(h, "beam")} disabled={locked}>
+                          beams
+                        </button>
+                        <button type="button" className="rounded px-1 font-semibold hover:bg-surface-2 hover:text-accent-600" onClick={() => addFound(h, "wall")} disabled={locked}>
+                          walls
+                        </button>
+                      </span>
                     );
                   })}
-                  <span className="text-muted">Each colour is a set of lines; pick the colours that are beams (dashed on the plan).</span>
+                  <span className="text-muted">Each colour is a set of lines (dashed on the plan): add each set as beams or as walls.</span>
                   <button type="button" className="ml-auto font-semibold text-muted hover:text-ink" onClick={() => setFound(null)}>
                     Dismiss
                   </button>

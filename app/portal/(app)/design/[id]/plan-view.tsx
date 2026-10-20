@@ -550,8 +550,30 @@ export function PlanView(props: Props) {
                     return ns ? <line key={`d${i}`} x1={v} y1={y0} x2={v} y2={y1} strokeOpacity={0.9} strokeWidth={3} vectorEffect="non-scaling-stroke" /> : <line key={`d${i}`} x1={x0} y1={v} x2={x1} y2={v} strokeOpacity={0.9} strokeWidth={3} vectorEffect="non-scaling-stroke" />;
                   })}
                 </g>
+                {m.zone.roof && m.zone.roof.form !== "flat" && m.zone.roof.form !== "mono"
+                  ? (() => {
+                      // ridge down the middle; hips at 45° from each corner
+                      const r = m.zone.roof!;
+                      const W = ns ? y1 - y0 : x1 - x0,
+                        Lv = ns ? x1 - x0 : y1 - y0;
+                      const h = r.form === "hip" ? Math.min(W, Lv) / 2 : 0;
+                      const um = ns ? (y0 + y1) / 2 : (x0 + x1) / 2;
+                      const P = (u: number, v: number) => (ns ? { x: v, y: u } : { x: u, y: v });
+                      const [v0, v1] = ns ? [x0, x1] : [y0, y1];
+                      const [u0, u1] = ns ? [y0, y1] : [x0, x1];
+                      const ra = P(um, v0 + h),
+                        rb = P(um, v1 - h);
+                      const ln = (a: Pt, b: Pt, k: string) => <line key={k} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={colour} strokeWidth={2} strokeDasharray="7 4" vectorEffect="non-scaling-stroke" />;
+                      return (
+                        <g>
+                          {ln(ra, rb, "ridge")}
+                          {r.form === "hip" ? [ln(P(u0, v0), ra, "h1"), ln(P(u1, v0), ra, "h2"), ln(P(u0, v1), rb, "h3"), ln(P(u1, v1), rb, "h4")] : null}
+                        </g>
+                      );
+                    })()
+                  : null}
                 <text x={(x0 + x1) / 2} y={(y0 + y1) / 2} textAnchor="middle" fontSize={px(11)} fontWeight={700} fill={colour} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
-                  {m.label} · {m.section} @ {m.zone.spacing} {ns ? "↕" : "↔"}
+                  {m.label} · {m.zone.roof ? (m.zone.roof.framing === "trusses" ? `trusses @ ${m.zone.spacing}` : `${m.section} rafters @ ${m.zone.spacing}`) : `${m.section} @ ${m.zone.spacing}`} {ns ? "↕" : "↔"}
                   {results.get(m.id)?.status === "fail" ? " ✕" : ""}
                 </text>
                 {selected ? (

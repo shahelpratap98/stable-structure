@@ -108,6 +108,21 @@ export function exportIfc(model: DesignModel, calcs: Calcs, job: { title: string
 
   // Each part as a swept solid in absolute (storey) coordinates.
   const solid = (p: Part): string | null => {
+    if (p.kind === "poly") return null;
+    if (p.kind === "beam3") {
+      const dx = p.b.x - p.a.x,
+        dy = -(p.b.y - p.a.y),
+        dz = p.b.z - p.a.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len < 0.005) return null;
+      const ax = [dx / len, dy / len, dz / len];
+      // local x: up, square to the member (or along x for a vertical one)
+      let up = [-ax[0] * ax[2], -ax[1] * ax[2], 1 - ax[2] * ax[2]];
+      const n = Math.hypot(up[0], up[1], up[2]);
+      up = n < 1e-6 ? [1, 0, 0] : up.map((c) => c / n);
+      const pos = place3(point3(p.a.x, -p.a.y, p.a.z), dir3(ax[0], ax[1], ax[2]), dir3(up[0], up[1], up[2]));
+      return add(`IFCEXTRUDEDAREASOLID(${rect(p.d, p.w)},${pos},${zUp},${num(len)})`);
+    }
     if (p.kind === "bar") {
       const dx = p.b.x - p.a.x;
       const dy = -(p.b.y - p.a.y);
@@ -141,7 +156,7 @@ export function exportIfc(model: DesignModel, calcs: Calcs, job: { title: string
     byMaterial.set(mat, [...(byMaterial.get(mat) ?? []), ref]);
   };
 
-  const all = allParts(model, calcs).filter(({ part }) => part.layer !== "framing" && part.layer !== "glass");
+  const all = allParts(model, calcs).filter(({ part }) => !["framing", "glass", "flooring", "roofing"].includes(part.layer));
   const grouped = new Map<string, Part[]>();
   for (const { part } of all) grouped.set(part.id, [...(grouped.get(part.id) ?? []), part]);
 

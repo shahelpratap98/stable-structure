@@ -25,8 +25,12 @@ type Props = {
 const LAYERS: { key: Layer; label: string; on: boolean }[] = [
   { key: "walls", label: "Walls", on: true },
   { key: "glass", label: "Glazing", on: true },
-  { key: "framing", label: "Wall framing", on: false },
+  { key: "framing", label: "Wall framing", on: true },
   { key: "joists", label: "Joists", on: true },
+  { key: "flooring", label: "Flooring", on: false },
+  { key: "roof", label: "Rafters & trusses", on: true },
+  { key: "purlins", label: "Purlins", on: true },
+  { key: "roofing", label: "Roofing", on: false },
   { key: "beams", label: "Beams & rafters", on: true },
   { key: "lintels", label: "Lintels", on: true },
   { key: "posts", label: "Posts", on: true },
@@ -44,6 +48,11 @@ const TONE: Record<Exclude<Tone, "member" | `brace:${string}`>, { c: string; o?:
   glass: { c: "#8fc3e8", o: 0.25 },
   joist: { c: "#e2c793" },
   joistDbl: { c: "#b9894a" },
+  floorSheet: { c: "#cdb58a", o: 0.85 },
+  rafter: { c: "#d6ae6c" },
+  truss: { c: "#cfa865" },
+  purlin: { c: "#b98f55" },
+  roofing: { c: "#59626b", o: 0.55 },
   concrete: { c: "#a9aeb0", o: 0.5 },
   pole: { c: "#5e4b33" },
   rail: { c: "#8a6f4a" },
@@ -62,6 +71,29 @@ type Stage = {
 
 // Plan x -> X, plan y -> Z, height -> Y (three.js is y-up).
 function partGeometry(p: Part): THREE.BufferGeometry | null {
+  if (p.kind === "beam3") {
+    const dx = p.b.x - p.a.x,
+      dy = p.b.y - p.a.y,
+      dz = p.b.z - p.a.z;
+    const run = Math.hypot(dx, dy);
+    const len = Math.hypot(run, dz);
+    if (len < 0.003) return null;
+    const g = new THREE.BoxGeometry(len, Math.max(0.004, p.d), Math.max(0.004, p.w));
+    g.rotateZ(Math.atan2(dz, run));
+    g.rotateY(-Math.atan2(dy, dx));
+    g.translate((p.a.x + p.b.x) / 2, (p.a.z + p.b.z) / 2, (p.a.y + p.b.y) / 2);
+    return g;
+  }
+  if (p.kind === "poly") {
+    if (p.pts.length < 3) return null;
+    const pos: number[] = [];
+    for (let i = 1; i < p.pts.length - 1; i++)
+      for (const q of [p.pts[0], p.pts[i], p.pts[i + 1]]) pos.push(q.x, q.z, q.y);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    return g;
+  }
   if (p.kind === "bar") {
     const dx = p.b.x - p.a.x;
     const dy = p.b.y - p.a.y;
@@ -92,6 +124,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const [layers, setLayers] = useState<Record<Layer, boolean>>(() => Object.fromEntries(LAYERS.map((l) => [l.key, l.on])) as Record<Layer, boolean>);
   const [tagsOn, setTagsOn] = useState(true);
   const [explode, setExplode] = useState(0);
+  const [hidden, setHidden] = useState<string[]>([]); // levels switched off
   const [panel, setPanel] = useState(false);
   useEffect(() => {
     select.current = onSelect;
@@ -227,7 +260,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     // merge each member's parts by tone, so a whole joist zone or wall frame is one mesh
     const buckets = new Map<string, { id: string; tone: Tone; layer: Layer; geos: THREE.BufferGeometry[] }>();
     for (const { part, level } of allParts(model, calcs)) {
-      if (level.elevation > cutoff + 1e-6) continue;
+      if (level.elevation > cutoff + 1e-6 || hidden.includes(level.id)) continue;
       if (!layers[part.layer]) continue;
       const g = partGeometry(part);
       if (!g) continue;
@@ -253,6 +286,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
         transparent: o !== undefined,
         opacity: o ?? 1,
         depthWrite: o === undefined || o > 0.5,
+        side: b.tone === "roofing" ? THREE.DoubleSide : THREE.FrontSide,
         emissive: selected ? new THREE.Color("#2a6fd0") : new THREE.Color("#000000"),
         emissiveIntensity: selected ? 0.55 : 0,
       });
@@ -260,7 +294,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       mesh.userData.id = b.id;
       // see-through wall panels and glass shouldn't steal clicks from members inside them
       mesh.userData.pick = !(o !== undefined && o < 0.5);
-      if (o === undefined && b.layer !== "framing" && b.layer !== "joists") mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edgeMat));
+      if (o === undefined && !["framing", "joists", "roof", "purlins"].includes(b.layer)) mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), edgeMat));
       if (o !== undefined) mesh.renderOrder = 2;
       s.root.add(mesh);
       if (b.layer !== "glass") box.expandByObject(mesh);
@@ -280,7 +314,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
         const r = calcs.results.get(id);
         const lvlId = id.includes("#") ? calcs.lintels.find((l) => l.id === id)?.wall.levelId : model.members.find((m) => m.id === id)?.levelId;
         const lvl = model.levels.find((l) => l.id === lvlId);
-        if (!p || !r || !lvl || lvl.elevation > cutoff + 1e-6) continue;
+        if (!p || !r || !lvl || lvl.elevation > cutoff + 1e-6 || hidden.includes(lvl.id)) continue;
         const el = document.createElement("button");
         el.type = "button";
         el.textContent = r.mark;
@@ -306,7 +340,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       s.camera.position.set(centre.x - size * 0.8, centre.y + size * 0.75, centre.z + size * 0.95);
       s.framed = true;
     }
-  }, [model, calcs, selectedId, colourBy, upToLevel, layers, tagsOn, explode]);
+  }, [model, calcs, selectedId, colourBy, upToLevel, layers, tagsOn, explode, hidden]);
 
   const setView = (v: "iso" | "top" | "north" | "south" | "east" | "west") => {
     const s = stage.current;
@@ -331,6 +365,27 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={host} className="absolute inset-0 overflow-hidden" />
+      {model.levels.length > 1 ? (
+        <div className="absolute bottom-2 left-2 flex max-w-[60%] flex-wrap gap-1">
+          {[...model.levels]
+            .sort((a, b) => a.elevation - b.elevation)
+            .map((l) => {
+              const on = !hidden.includes(l.id);
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  aria-pressed={on}
+                  title={on ? `Hide ${l.name}` : `Show ${l.name}`}
+                  onClick={() => setHidden((h) => (on ? [...h, l.id] : h.filter((x) => x !== l.id)))}
+                  className={`rounded-md px-2 py-1 text-[11px] font-semibold shadow ${on ? "bg-ink text-white" : "bg-surface/95 text-muted line-through"}`}
+                >
+                  {l.name}
+                </button>
+              );
+            })}
+        </div>
+      ) : null}
       <div className="absolute top-2 right-2 flex flex-wrap justify-end gap-1">
         <div className="flex rounded-lg bg-surface/95 p-0.5 text-[11px] font-semibold shadow">
           {(
@@ -381,7 +436,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
 // A still of the whole model for the report: coloured by member type, wall
 // framing hidden, from the usual corner view. Returns a PNG data URL.
 export function snapshot3d(model: DesignModel, calcs: Calcs, width = 1600, height = 1000): string | null {
-  const parts = allParts(model, calcs).filter(({ part }) => part.layer !== "framing");
+  const parts = allParts(model, calcs).filter(({ part }) => !["framing", "flooring", "roofing"].includes(part.layer));
   if (!parts.length) return null;
   const canvas = document.createElement("canvas");
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });

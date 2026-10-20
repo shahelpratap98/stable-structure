@@ -6,14 +6,14 @@
 // exactly what the tests check.
 
 import { buOf } from "./bracing";
-import { alphaM, runCalcs, steelPhiMb } from "./calc";
+import { alphaM, autoTrib, runCalcs, steelPhiMb } from "./calc";
 import { designConcreteBeam } from "./concrete";
 import { beamEnd, timberBearing } from "./connections";
 import { designPad, slabPunch } from "./foundations";
 import { solveBeam, solveFrame } from "./frame";
 import { designPortal } from "./lateral";
 import { fbAt, LVL, STEEL } from "./materials";
-import { emptyModel, type Level, type Member } from "./model";
+import { defaultRoof, defaultZone, emptyModel, type Level, type Member, type RoofSpec } from "./model";
 import { defaultRaft, designRaft, raftSelfWeight } from "./raft";
 import { DEFAULT_SITE, quakeBasis, windBasis } from "./site";
 
@@ -128,6 +128,26 @@ const RAFT: VCase[] = [
   { name: "Thickening under a 200 kN post: √(200 / (150 − 1.2 × 24 × 0.305)), 50 mm steps", want: 1200, tol: 0, unit: "mm", source: "Hand", run: () => raft().thick[0].side },
 ].map((c) => ({ ...c, group: "Rib raft (NZS 3101)" }));
 
+// ---------------------------------------------------------------- roof framing load paths
+// a 6 m wide roof zone over the top storey, rafters running north-south, eaves beams along both long sides and a ridge beam down the middle
+const roofTrib = (roof: RoofSpec, beam: "eave" | "ridge" | "end") => {
+  const m = emptyModel();
+  const gf = m.levels[1].id;
+  const beams: Record<string, Member> = {
+    eave: { id: "E", type: "beam", label: "E", levelId: gf, a: { x: 0, y: 0 }, b: { x: 10, y: 0 }, material: "timber", section: "" },
+    ridge: { id: "R", type: "beam", label: "R", levelId: gf, a: { x: 0, y: 3 }, b: { x: 10, y: 3 }, material: "timber", section: "" },
+    end: { id: "N", type: "beam", label: "N", levelId: gf, a: { x: 0, y: 0 }, b: { x: 0, y: 6 }, material: "timber", section: "" },
+  };
+  m.members.push({ id: "Z", type: "joistzone", label: "RZ", levelId: gf, a: { x: 0, y: 0 }, b: { x: 10, y: 6 }, material: "timber", section: "190x45", zone: { ...defaultZone(), dir: "y", spacing: 900, roof } }, beams[beam]);
+  return autoTrib(m, beams[beam])?.trib.roof ?? 0;
+};
+const ROOF: VCase[] = [
+  { name: "Gable rafters, 6 m wide: each eave carries a quarter of the width", want: 1.5, unit: "m", run: () => roofTrib(defaultRoof(), "eave") },
+  { name: "Gable rafters: the ridge beam carries half the width", want: 3, unit: "m", run: () => roofTrib(defaultRoof(), "ridge") },
+  { name: "Trusses span the full 6 m: each eave carries half", want: 3, unit: "m", run: () => roofTrib({ ...defaultRoof(), framing: "trusses" }, "eave") },
+  { name: "Hip roof: the end beam takes the jack rafters, a quarter of the width", want: 1.5, unit: "m", run: () => roofTrib({ ...defaultRoof(), form: "hip" }, "end") },
+].map((c) => ({ ...c, group: "Roof framing", source: "Hand (tributary widths)" }));
+
 // ---------------------------------------------------------------- concrete beam
 // SS 6 m, 300 × 500, f'c 30, G 10 + self-weight 3.6, Q 10: w* = 1.2×13.6 + 1.5×10 = 31.32 kN/m
 const rc = once(() => designConcreteBeam({ L: 6, supports: [0, 6], b: 300, D: 500, fc: 30, G: 10, Q: 10, points: [] }));
@@ -217,7 +237,7 @@ const BRACE: VCase[] = (
   })),
 );
 
-export const VERIFICATION_CASES: VCase[] = [...FRAME, ...STEELCASES, ...TIMBERCASES, ...SITE, ...FDN, ...RAFT, ...CONC, ...CONN, ...LATERAL, ...LOT6, ...BRACE];
+export const VERIFICATION_CASES: VCase[] = [...FRAME, ...STEELCASES, ...TIMBERCASES, ...SITE, ...FDN, ...RAFT, ...ROOF, ...CONC, ...CONN, ...LATERAL, ...LOT6, ...BRACE];
 
 export function checkCase(c: VCase): VResult {
   const { run, ...rest } = c;

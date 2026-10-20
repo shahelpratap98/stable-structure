@@ -154,7 +154,7 @@ const bbox = (ms: Member[]) => {
     }
   return x0 === Infinity ? null : { x0, y0, x1, y1, w: x1 - x0, d: y1 - y0 };
 };
-const zoneArea = (ms: Member[]) => ms.filter((z) => z.type === "joistzone" && z.b).reduce((a, z) => a + Math.abs((z.b!.x - z.a.x) * (z.b!.y - z.a.y)), 0);
+const zoneArea = (ms: Member[]) => ms.filter((z) => z.type === "joistzone" && z.b && !z.zone?.roof).reduce((a, z) => a + Math.abs((z.b!.x - z.a.x) * (z.b!.y - z.a.y)), 0);
 
 export function demandFromSite(model: DesignModel, site: SiteData): StoreyDemand[] {
   const p = model.params;
