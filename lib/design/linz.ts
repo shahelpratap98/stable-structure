@@ -1,7 +1,7 @@
 import "server-only";
 
 // LINZ Data Service (WFS) lookups for the site panel: official NZ Addresses
-// (layer 105689) and the 1:50k topographic coastline (layer 50258). The key
+// (layer 123113) and the 1:50k topographic coastline (layer 50258). The key
 // stays on the server (LINZ_KEY); nothing here is sent to the browser except
 // the results. WFS 1.0.0 is used so coordinates are always longitude, latitude.
 
@@ -9,7 +9,7 @@ import { addressFilter } from "./linz-query";
 import { distanceToLines } from "./site";
 
 const LDS = "https://data.linz.govt.nz/services";
-const ADDRESSES = "layer-105689";
+const ADDRESSES = "layer-123113"; // republished Sept 2025 (layer 105689 retired)
 const COASTLINE = "layer-50258";
 
 export type FoundAddress = { address: string; lat: number; lon: number };

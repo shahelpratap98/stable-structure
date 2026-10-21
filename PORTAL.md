@@ -161,7 +161,7 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   Tags are coloured by kind; failing members' tags turn red only when
   colouring by result. Headers in non-loadbearing walls are not tagged.
 - **Site from its address** (`lib/design/linz.ts`, server-only): "Find site"
-  on the Loads tab searches LINZ NZ Addresses (layer 105689) through the LDS
+  on the Loads tab searches LINZ NZ Addresses (layer 123113) through the LDS
   WFS with the `LINZ_KEY` environment variable (Vercel, Preview and
   Production; never sent to the browser), then measures the distance to the
   LINZ 1:50k coastline (layer 50258). It sets the nearest Z-table town and its
