@@ -332,6 +332,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const [liftRoof, setLiftRoof] = useState(0);
   const [panel, setPanel] = useState(false);
   const [hidden, setHidden] = useState<string[]>([]); // levels switched off
+  const [built, setBuilt] = useState(0); // bumps after each rebuild, so the selection is reapplied
   useEffect(() => {
     select.current = onSelect;
   }, [onSelect]);
@@ -470,9 +471,10 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       if (b.geos.length > 1) b.geos.forEach((g) => g.dispose());
       if (!geo) continue;
       const { c, o } = colourFor(b.id, b.tone);
-      const selected = !!selectedId && (b.id === selectedId || b.id.startsWith(selectedId + "#")) && b.layer !== "walls" && b.layer !== "glass";
-      const mesh = new THREE.Mesh(geo, frameMaterial(c, o, selected));
+      const mesh = new THREE.Mesh(geo, frameMaterial(c, o));
       mesh.userData.id = b.id;
+      mesh.userData.base = c;
+      mesh.userData.selectable = b.layer !== "walls" && b.layer !== "glass";
       mesh.userData.see = o !== undefined && o < 0.8 && !b.tone.startsWith("brace:");
       if ((o === undefined || b.tone.startsWith("brace:")) && b.layer !== "roofing") mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), edgeMat));
       if (o !== undefined) mesh.renderOrder = 2;
@@ -494,9 +496,12 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       const mark = r?.mark ?? model.members.find((m) => m.id === id)?.label;
       if (!p || !mark) continue;
       const roofTag = t === "joistzone" && !!model.members.find((m) => m.id === id)?.zone?.roof;
-      const tex = tagTexture(mark, r?.status === "fail" ? "rgba(178,58,42,.95)" : id === selectedId ? "rgba(255,122,26,.95)" : TAG_BG[cat]);
+      const bg = r?.status === "fail" ? "rgba(178,58,42,.95)" : TAG_BG[cat];
+      const tex = tagTexture(mark, bg);
       const sp = sprite(tex, cat === "id_wall" ? 0.3 : 0.34, tex.userData.ratio as number, p.x, p.y, p.z + (lift.get(lvlId ?? "") ?? 0) + (roofTag ? liftRoof : 0));
       sp.userData.id = id;
+      sp.userData.mark = mark;
+      sp.userData.bg = bg;
       s.root.add(sp);
     }
 
@@ -509,7 +514,32 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       s.camera.position.set(centre.x - size * 0.55, centre.y + size * 0.75, centre.z + size * 0.95);
       s.framed = true;
     }
-  }, [model, calcs, selectedId, colourBy, upToLevel, layers, explode, liftRoof, hidden]);
+    setBuilt((n) => n + 1);
+  }, [model, calcs, colourBy, upToLevel, layers, explode, liftRoof, hidden]);
+
+  // Selection only recolours: the selected member's framing and tag turn orange.
+  useEffect(() => {
+    const s = stage.current;
+    if (!s) return;
+    const hit = (id: string) => !!selectedId && (id === selectedId || id.startsWith(selectedId + "#"));
+    for (const o of s.root.children) {
+      const id = o.userData.id as string | undefined;
+      if (!id) continue;
+      if (o instanceof THREE.Mesh && o.userData.selectable) {
+        const on = hit(id);
+        const m = o.material as THREE.MeshLambertMaterial;
+        m.color.set(on ? "#ff7a1a" : (o.userData.base as string));
+        m.emissive.set(on ? "#662200" : "#000000");
+      } else if (o instanceof THREE.Sprite && o.userData.mark) {
+        const tex = tagTexture(o.userData.mark as string, id === selectedId ? "rgba(255,122,26,.95)" : (o.userData.bg as string));
+        if (o.material.map !== tex) {
+          o.material.setValues({ map: tex }); // swapping one texture for another needs no shader rebuild
+          const h = o.scale.y;
+          o.scale.set(h * (tex.userData.ratio as number), h, 1);
+        }
+      }
+    }
+  }, [selectedId, built]);
 
   const setView = (v: "iso" | "top" | "north" | "south" | "east" | "west") => {
     const s = stage.current;
