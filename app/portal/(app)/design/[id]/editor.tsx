@@ -959,6 +959,7 @@ export function DesignEditor({
               <SitePanel
                 model={model}
                 locked={locked}
+                address={job.address}
                 onSite={(site, summary) => {
                   const m = modelRef.current;
                   commit({ ...m, site }, summary);

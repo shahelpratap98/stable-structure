@@ -28,7 +28,12 @@ export type SiteData = {
   bearing: number; // kPa, ultimate geotechnical bearing capacity
   phiBearing: number; // strength reduction for bearing (B1/VM4: 0.45-0.60)
   expansive: "none" | "moderate" | "high"; // AS 2870 class M / H and above, or a TC2/TC3 site
+  lookup?: SiteLookup; // where the site was found from its address (LINZ)
 };
+
+// The address lookup: the LINZ address, its position, the nearest Z-table
+// location, and the distance to the 1:50k coastline (null: more than 1 km).
+export type SiteLookup = { address: string; lat: number; lon: number; town: string; townKm: number; coastM: number | null; on: string };
 
 export const DEFAULT_SITE: SiteData = {
   town: "Auckland",
@@ -49,23 +54,61 @@ export const DEFAULT_SITE: SiteData = {
 // NZS 1170.5 Table 3.3 hazard factor Z (as cited by B1/VM1: Christchurch and
 // the Canterbury earthquake region at least 0.30, cl 2.6.2.1). D = distance
 // to a major fault (km) where it matters for the near-fault factor.
-export const TOWNS: Record<string, { Z: number; D?: number; region: WindRegion }> = {
-  Whangarei: { Z: 0.13, region: "A7" },
-  Auckland: { Z: 0.13, region: "A7" },
-  Hamilton: { Z: 0.16, region: "A7" },
-  Tauranga: { Z: 0.2, region: "A7" },
-  Rotorua: { Z: 0.24, region: "A7" },
-  Napier: { Z: 0.38, region: "A7" },
-  Hastings: { Z: 0.39, region: "A7" },
-  "New Plymouth": { Z: 0.18, region: "A7" },
-  "Palmerston North": { Z: 0.38, D: 8, region: "A7" },
-  Wellington: { Z: 0.4, D: 2, region: "W" },
-  Nelson: { Z: 0.27, region: "A6" },
-  Christchurch: { Z: 0.3, region: "A6" },
-  Queenstown: { Z: 0.32, region: "A6" },
-  Dunedin: { Z: 0.13, region: "A6" },
-  Invercargill: { Z: 0.17, region: "A6" },
+// lat / lon: town centre, for finding the nearest location to a site.
+export const TOWNS: Record<string, { Z: number; D?: number; region: WindRegion; lat: number; lon: number }> = {
+  Whangarei: { Z: 0.13, region: "A7", lat: -35.725, lon: 174.323 },
+  Auckland: { Z: 0.13, region: "A7", lat: -36.848, lon: 174.763 },
+  Hamilton: { Z: 0.16, region: "A7", lat: -37.787, lon: 175.279 },
+  Tauranga: { Z: 0.2, region: "A7", lat: -37.687, lon: 176.165 },
+  Rotorua: { Z: 0.24, region: "A7", lat: -38.137, lon: 176.251 },
+  Napier: { Z: 0.38, region: "A7", lat: -39.493, lon: 176.912 },
+  Hastings: { Z: 0.39, region: "A7", lat: -39.639, lon: 176.84 },
+  "New Plymouth": { Z: 0.18, region: "A7", lat: -39.057, lon: 174.075 },
+  "Palmerston North": { Z: 0.38, D: 8, region: "A7", lat: -40.356, lon: 175.611 },
+  Wellington: { Z: 0.4, D: 2, region: "W", lat: -41.286, lon: 174.776 },
+  Nelson: { Z: 0.27, region: "A6", lat: -41.271, lon: 173.284 },
+  Christchurch: { Z: 0.3, region: "A6", lat: -43.532, lon: 172.636 },
+  Queenstown: { Z: 0.32, region: "A6", lat: -45.031, lon: 168.663 },
+  Dunedin: { Z: 0.13, region: "A6", lat: -45.879, lon: 170.503 },
+  Invercargill: { Z: 0.17, region: "A6", lat: -46.413, lon: 168.353 },
 };
+
+// Great-circle distance, km.
+export function kmBetween(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const r = Math.PI / 180;
+  const a = Math.sin(((lat2 - lat1) * r) / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(((lon2 - lon1) * r) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// The nearest location in the Z table. Between listed towns the engineer checks the standard's Z map.
+export function nearestTown(lat: number, lon: number): { town: string; km: number } {
+  let best = { town: "Auckland", km: Infinity };
+  for (const [town, t] of Object.entries(TOWNS)) {
+    const km = kmBetween(lat, lon, t.lat, t.lon);
+    if (km < best.km) best = { town, km };
+  }
+  return best;
+}
+
+// Metres from a point to the nearest of some polylines ([lon, lat] vertices), flat-earth near the point.
+export function distanceToLines(lat: number, lon: number, lines: [number, number][][]): number | null {
+  const kx = 111320 * Math.cos((lat * Math.PI) / 180),
+    ky = 110540;
+  let best: number | null = null;
+  for (const line of lines)
+    for (let i = 0; i < line.length; i++) {
+      const ax = (line[i][0] - lon) * kx,
+        ay = (line[i][1] - lat) * ky;
+      const [bx, by] = i + 1 < line.length ? [(line[i + 1][0] - lon) * kx, (line[i + 1][1] - lat) * ky] : [ax, ay];
+      const dx = bx - ax,
+        dy = by - ay;
+      const L2 = dx * dx + dy * dy;
+      const t = L2 > 0 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L2)) : 0;
+      const d = Math.hypot(ax + t * dx, ay + t * dy);
+      if (best === null || d < best) best = d;
+    }
+  return best;
+}
 
 // Ch(T) for the equivalent static method: held at its T = 0.4 s value for short periods (Table 3.1)
 function chESM(soil: SoilClass, T: number) {
@@ -217,5 +260,22 @@ export function normaliseSite(raw: unknown): SiteData | undefined {
     bearing: n(r.bearing, 300),
     phiBearing: n(r.phiBearing, 0.5),
     expansive: one(r.expansive, ["none", "moderate", "high"] as const, "none"),
+    lookup: normaliseLookup(r.lookup),
+  };
+}
+
+function normaliseLookup(raw: unknown): SiteLookup | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Partial<SiteLookup>;
+  const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+  if (!num(r.lat) || !num(r.lon) || typeof r.address !== "string") return undefined;
+  return {
+    address: r.address.slice(0, 300),
+    lat: r.lat!,
+    lon: r.lon!,
+    town: typeof r.town === "string" ? r.town.slice(0, 60) : "",
+    townKm: num(r.townKm) ? r.townKm! : 0,
+    coastM: num(r.coastM) ? r.coastM! : null,
+    on: typeof r.on === "string" ? r.on.slice(0, 40) : "",
   };
 }

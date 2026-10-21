@@ -5,7 +5,7 @@ import { ActionForm } from "@/components/action-form";
 import { Spinner } from "@/components/spinner";
 import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
 import { autoTrib, DRAFT_NOTE, loadKind, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
-import { DEFAULT_SITE, demandFromSite, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
+import { DEFAULT_SITE, demandFromSite, nearestTown, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
 import type { Change } from "@/lib/design/diff";
 import { defaultRaft, lossOfSupport, type RaftSpec } from "@/lib/design/raft";
 import type { DeckSpec, StairSpec } from "@/lib/design/deck";
@@ -38,7 +38,7 @@ import {
   type WallSpec,
   type ZoneSpec,
 } from "@/lib/design/model";
-import { deleteDesignJob, listRevisions, updateJobDetails } from "../actions";
+import { deleteDesignJob, listRevisions, searchSiteAddress, siteCoastDistance, updateJobDetails } from "../actions";
 
 export type PlanFile = { id: string; fileName: string; pageCount: number; url: string };
 
@@ -1508,11 +1508,103 @@ export function BulkPanel({
 
 // ---------------------------------------------------------------- site
 
-export function SitePanel({ model, locked, onSite }: { model: DesignModel; locked: boolean; onSite: (s: SiteData | undefined, summary: string) => void }) {
+// Find the site from its address (LINZ): sets the nearest Z-table town and its wind region,
+// and exposure zone D within 500 m of the coast. Soil class and terrain stay with the engineer.
+function SiteLookupBox({ site, address, locked, onSite }: { site: SiteData | undefined; address: string; locked: boolean; onSite: (s: SiteData, summary: string) => void }) {
+  const [q, setQ] = useState(site?.lookup?.address ?? address);
+  const [busy, setBusy] = useState(false);
+  const [found, setFound] = useState<{ address: string; lat: number; lon: number }[] | null>(null);
+  const [msg, setMsg] = useState("");
+  const search = async () => {
+    setBusy(true);
+    setMsg("");
+    setFound(null);
+    const r = await searchSiteAddress(q).catch(() => ({ ok: false as const, message: "Couldn't reach the server." }));
+    setBusy(false);
+    if (!r.ok) return setMsg(r.message);
+    if (!r.found.length) return setMsg("No LINZ address matches. Try the number and street only.");
+    setFound(r.found);
+  };
+  const pick = async (f: { address: string; lat: number; lon: number }) => {
+    setBusy(true);
+    setMsg("");
+    const c = await siteCoastDistance(f.lat, f.lon).catch(() => ({ ok: false as const, message: "Couldn't reach the server." }));
+    setBusy(false);
+    if (!c.ok) return setMsg(c.message);
+    const base = site ?? { ...DEFAULT_SITE };
+    const near = nearestTown(f.lat, f.lon);
+    const coastal = c.coastM !== null && c.coastM <= 500;
+    onSite(
+      {
+        ...base,
+        town: near.town,
+        windRegion: TOWNS[near.town].region,
+        exposure: coastal && (base.exposure === "B" || base.exposure === "C") ? "D" : base.exposure,
+        lookup: { address: f.address, lat: f.lat, lon: f.lon, town: near.town, townKm: near.km, coastM: c.coastM, on: new Date().toISOString().slice(0, 10) },
+      },
+      `site found: ${f.address}`,
+    );
+    setFound(null);
+  };
+  const lk = site?.lookup;
+  return (
+    <div className="mb-3 rounded-md border border-line bg-surface-2/40 p-2.5">
+      <form
+        className="flex gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void search();
+        }}
+      >
+        <label htmlFor="site-q" className="sr-only">
+          Site address
+        </label>
+        <input id="site-q" className="field min-w-0 flex-1 text-sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Site address" disabled={locked || busy} />
+        <button type="submit" className="btn btn-quiet shrink-0 px-2.5 py-1 text-xs" disabled={locked || busy || q.trim().length < 3}>
+          {busy ? "Looking…" : "Find site"}
+        </button>
+      </form>
+      {msg ? <p className="mt-1.5 text-xs text-bad">{msg}</p> : null}
+      {found ? (
+        <ul className="mt-1.5 flex flex-col">
+          {found.map((f) => (
+            <li key={`${f.lat},${f.lon},${f.address}`}>
+              <button type="button" className="w-full rounded px-1.5 py-1 text-left text-sm hover:bg-surface-2" onClick={() => void pick(f)} disabled={busy}>
+                {f.address}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {lk ? (
+        <div className="mt-2 text-xs text-muted">
+          <p className="font-semibold text-ink">{lk.address}</p>
+          <p className="tabular-nums">
+            {Math.abs(lk.lat).toFixed(4)}°S {lk.lon.toFixed(4)}°E · nearest Z-table town {lk.town} ({lk.townKm.toFixed(0)} km) ·{" "}
+            {lk.coastM === null ? "over 1 km from the coast" : `${Math.round(lk.coastM)} m from the coast`}
+          </p>
+          {lk.townKm > 20 ? <p className="mt-1 text-warn">The nearest listed town is {lk.townKm.toFixed(0)} km away: check Z against the NZS 1170.5 hazard map.</p> : null}
+          <p className="mt-1">
+            Wind region and zone are by nearest town: confirm on{" "}
+            <a className="font-semibold text-accent-600 hover:underline" href={`https://branz.maps.arcgis.com/apps/webappviewer/index.html?id=1bade5ce36a9459aa0de4bd5cecd6e36&center=${lk.lon},${lk.lat}&level=16`} target="_blank" rel="noreferrer">
+              BRANZ Maps at this spot
+            </a>
+            . Address and coastline from LINZ ({lk.on}).
+          </p>
+        </div>
+      ) : (
+        <p className="mt-1.5 text-xs text-muted">Finds the address in LINZ, then sets the nearest Z-table town, its wind region, and exposure zone D within 500 m of the coast.</p>
+      )}
+    </div>
+  );
+}
+
+export function SitePanel({ model, locked, onSite, address = "" }: { model: DesignModel; locked: boolean; onSite: (s: SiteData | undefined, summary: string) => void; address?: string }) {
   const site = model.site;
   if (!site)
     return (
       <Section title="Site">
+        <SiteLookupBox site={undefined} address={address} locked={locked} onSite={onSite} />
         <p className="text-sm text-muted">Add the site to work out wind and earthquake bracing demand (specific design to NZS 1170.5 and AS/NZS 1170.2), footing sizes and durability notes.</p>
         <button type="button" className="btn btn-quiet mt-2 px-2.5 py-1 text-xs" disabled={locked} onClick={() => onSite({ ...DEFAULT_SITE }, "site added")}>
           Add site data
@@ -1526,6 +1618,7 @@ export function SitePanel({ model, locked, onSite }: { model: DesignModel; locke
   const demand = demandFromSite(model, site);
   return (
     <Section title="Site" aside={<span className="text-[11px] text-muted">NZS 1170.5 · AS/NZS 1170.2</span>}>
+      <SiteLookupBox site={site} address={address} locked={locked} onSite={onSite} />
       <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
         <Select
           label="Town (hazard factor Z)"

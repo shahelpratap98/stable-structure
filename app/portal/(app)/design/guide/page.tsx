@@ -158,7 +158,7 @@ export default async function DesignGuidePage() {
           the line loads that come from these.
         </p>
         <p className="mt-2">
-          The <T>Loads</T> tab holds the job&apos;s design loads (floor and roof dead and live, snow, wall weights, the midspan point load and deflection limits), the bracing demand per
+          On the <T>Loads</T> tab, <T>Find site</T> looks the job&apos;s address up in LINZ: it sets the nearest town in the earthquake table and its wind region, and exposure zone D within 500 m of the coast, with a link to BRANZ Maps to confirm the wind zone. Set the soil class and terrain yourself. The <T>Loads</T> tab also holds the job&apos;s design loads (floor and roof dead and live, snow, wall weights, the midspan point load and deflection limits), the bracing demand per
           level, and a list of <T>assumptions to confirm</T>. Those assumptions print in the council report, so keep them current.
         </p>
       </Card>

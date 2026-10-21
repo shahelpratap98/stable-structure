@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { ActionState } from "@/components/action-form";
 import { requireAdmin, requireProfile } from "@/lib/auth";
+import { coastDistance, findAddresses, type FoundAddress } from "@/lib/design/linz";
 import { emptyModel, normaliseModel, type DesignModel } from "@/lib/design/model";
 import { rateLimit, waitMessage } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
@@ -202,4 +203,24 @@ export async function removeEngineer(_prev: ActionState, fd: FormData): Promise<
   if (error) return { ok: false, message: error.message };
   revalidatePath("/portal/design");
   return { ok: true, message: "Removed." };
+}
+
+// Site address lookup (LINZ): matching addresses for what was typed.
+export async function searchSiteAddress(q: string): Promise<{ ok: true; found: FoundAddress[] } | { ok: false; message: string }> {
+  const me = await requireProfile();
+  if (typeof q !== "string" || q.length > 200) return { ok: false, message: "Bad request." };
+  const limit = await rateLimit("siteLookups", me.user_id);
+  if (!limit.ok) return { ok: false, message: "Too many lookups. " + waitMessage(limit.retryAfter) };
+  const r = await findAddresses(q);
+  return r.ok ? { ok: true, found: r.value } : r;
+}
+
+// The distance from a found address to the coast (null: more than 1 km).
+export async function siteCoastDistance(lat: number, lon: number): Promise<{ ok: true; coastM: number | null } | { ok: false; message: string }> {
+  const me = await requireProfile();
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat > -33 || lat < -48 || lon < 165 || lon > 179) return { ok: false, message: "That's not in New Zealand." };
+  const limit = await rateLimit("siteLookups", me.user_id);
+  if (!limit.ok) return { ok: false, message: "Too many lookups. " + waitMessage(limit.retryAfter) };
+  const r = await coastDistance(lat, lon);
+  return r.ok ? { ok: true, coastM: r.value } : r;
 }
