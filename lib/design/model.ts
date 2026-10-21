@@ -170,7 +170,20 @@ export type DesignModel = {
   notes: string[]; // assumptions to confirm before issue
   site?: SiteData; // wind, earthquake and ground data for specific design
   paperwork?: Paperwork; // PS1 and design features report details
+  grids?: { x: GridLine[]; y: GridLine[] }; // set-out grid: x lines (constant x) and y lines (constant y)
 };
+
+export type GridLine = { n: string; at: number }; // label and plan coordinate, m
+
+// "1=0, 2=0.35, 3=6.33" -> grid lines
+export const gridFromText = (text: string): GridLine[] =>
+  text
+    .split(/[,;\n]+/)
+    .map((p) => p.trim().match(/^([^=\s]+)\s*=\s*(-?[\d.]+)$/))
+    .filter((m): m is RegExpMatchArray => !!m)
+    .map((m) => ({ n: m[1].slice(0, 6), at: Number(m[2]) }))
+    .filter((g) => Number.isFinite(g.at));
+export const gridToText = (g: GridLine[]) => g.map((l) => `${l.n}=${l.at}`).join(", ");
 
 export const MEMBER_TYPES: MemberType[] = ["beam", "lintel", "joist", "rafter", "joistzone", "wall", "post", "bracing", "footing", "pile", "raft", "retaining"];
 
@@ -305,6 +318,13 @@ export function normaliseModel(raw: unknown): DesignModel {
     notes: Array.isArray(m.notes) ? m.notes.filter((n) => typeof n === "string").slice(0, 100) : [],
     site: normaliseSite(m.site),
     paperwork: normalisePaperwork(m.paperwork),
+    grids:
+      m.grids && typeof m.grids === "object"
+        ? {
+            x: (Array.isArray(m.grids.x) ? m.grids.x : []).filter((g) => g && typeof g.n === "string" && Number.isFinite(g.at)).slice(0, 60),
+            y: (Array.isArray(m.grids.y) ? m.grids.y : []).filter((g) => g && typeof g.n === "string" && Number.isFinite(g.at)).slice(0, 60),
+          }
+        : undefined,
   };
 }
 

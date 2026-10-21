@@ -36,6 +36,7 @@ type Drag =
 type Props = {
   level: Level;
   members: Member[]; // this level
+  grids?: { x: { n: string; at: number }[]; y: { n: string; at: number }[] }; // set-out grid, m
   ghosts: Member[]; // level below, drawn faintly for alignment
   page: RenderedPage | null;
   pageLoading: boolean;
@@ -486,6 +487,51 @@ export function PlanView(props: Props) {
               ),
             )}
           </g>
+
+          {/* set-out grid lines */}
+          {props.grids && (props.grids.x.length || props.grids.y.length) && shapes.length
+            ? (() => {
+                const pts = shapes.flatMap((s) => (s.b ? [s.a, s.b] : [s.a]));
+                const xs = [...pts.map((q) => q.x), ...props.grids!.x.map((g) => toPdf(frame, { x: g.at, y: 0 }).x)];
+                const ys = [...pts.map((q) => q.y), ...props.grids!.y.map((g) => toPdf(frame, { x: 0, y: g.at }).y)];
+                const pad = 3 / scaleK;
+                const x0 = Math.min(...xs) - pad,
+                  x1 = Math.max(...xs) + pad,
+                  y0 = Math.min(...ys) - pad,
+                  y1 = Math.max(...ys) + pad;
+                const r = px(11);
+                const bubble = (cx: number, cy: number, n: string, k: string) => (
+                  <g key={k}>
+                    <circle cx={cx} cy={cy} r={r} fill="white" stroke="#1c2326" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                    <text x={cx} y={cy + px(4)} textAnchor="middle" fontSize={px(n.length > 1 ? 10 : 12)} fontWeight={600} fill="#1c2326" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                      {n}
+                    </text>
+                  </g>
+                );
+                return (
+                  <g pointerEvents="none">
+                    {props.grids!.x.map((g) => {
+                      const x = toPdf(frame, { x: g.at, y: 0 }).x;
+                      return (
+                        <g key={`gx${g.n}`}>
+                          <line x1={x} y1={y0} x2={x} y2={y1} stroke="#7a8580" strokeWidth={1} strokeDasharray="10 6" vectorEffect="non-scaling-stroke" />
+                          {bubble(x, y0 - r, g.n, "b")}
+                        </g>
+                      );
+                    })}
+                    {props.grids!.y.map((g) => {
+                      const y = toPdf(frame, { x: 0, y: g.at }).y;
+                      return (
+                        <g key={`gy${g.n}`}>
+                          <line x1={x0} y1={y} x2={x1} y2={y} stroke="#7a8580" strokeWidth={1} strokeDasharray="10 6" vectorEffect="non-scaling-stroke" />
+                          {bubble(x0 - r, y, g.n, "b")}
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })()
+            : null}
 
           {/* rafts, then joist zones, under everything else */}
           {shapes.map(({ m, a, b }) => {

@@ -28,7 +28,7 @@ import {
 } from "@/lib/design/model";
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
-import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, ChangesPanel, Overview, PaperworkPanel, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
+import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, ChangesPanel, GridPanel, Overview, PaperworkPanel, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
 import { countPages, findLines, labelLines, loadPdf, pageWords, renderPage, type FoundLine, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
@@ -801,6 +801,7 @@ export function DesignEditor({
                 <PlanView
                   level={level}
                   members={model.members.filter((m) => m.levelId === level.id)}
+                  grids={model.grids}
                   ghosts={below ? model.members.filter((m) => m.levelId === below.id) : []}
                   page={page}
                   pageLoading={pageLoading}
@@ -971,6 +972,16 @@ export function DesignEditor({
               />
             ) : null}
             {tab === "levels" ? <JobSection job={job} locked={locked} canDelete={canDelete} /> : null}
+            {tab === "levels" ? (
+              <GridPanel
+                model={model}
+                locked={locked}
+                onGrids={(grids, summary) => {
+                  const m = modelRef.current;
+                  commit({ ...m, grids }, summary);
+                }}
+              />
+            ) : null}
             {tab === "levels" ? (
               <LevelsPanel
                 model={model}

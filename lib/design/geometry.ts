@@ -17,7 +17,10 @@ export type Tone =
   | "framing"
   | "trimmer"
   | "wallExt"
+  | "wallGround"
+  | "wallUpper"
   | "wallInt"
+  | "studInt"
   | "block"
   | "glass"
   | "joist"
@@ -132,7 +135,8 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
       const w = m.wall;
       const L = memberLength(m);
       const th = w.thickness / 1000;
-      const tone: Tone = w.kind === "block" ? "block" : w.kind === "int" ? "wallInt" : "wallExt";
+      // shading by storey, as on a framing model: ground floor walls tan, upper floors blue-grey
+      const tone: Tone = w.kind === "block" ? "block" : w.kind === "int" ? "wallInt" : level.floor === "slab" ? "wallGround" : "wallUpper";
       const ops = [...w.openings].sort((a, b) => a.offset - b.offset);
       const lintelTop = top - 0.045;
       const head = (o: (typeof ops)[number]) => {
@@ -141,7 +145,7 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
       };
       const panel = (s0: number, s1: number, z0: number, z1: number) => {
         if (s1 - s0 < 0.001 || z1 - z0 < 0.005) return;
-        out.push({ kind: "bar", id: m.id, layer: "walls", tone, ...sub(m, s0, s1), z0, z1, w: th });
+        out.push({ kind: "bar", id: m.id, layer: "walls", tone, ...sub(m, s0, s1), z0, z1, w: th + (w.kind === "block" ? 0 : 0.016) });
       };
       let cur = 0;
       for (const o of ops) {
@@ -158,7 +162,8 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
 
       // stud framing: plates, studs at spacing, nogs, trimmers and jack studs
       const sp = w.studSpacing / 1000;
-      const fr = (s0: number, s1: number, z0: number, z1: number, t: Tone = "framing") => {
+      const studTone: Tone = w.kind === "int" ? "studInt" : "framing";
+      const fr = (s0: number, s1: number, z0: number, z1: number, t: Tone = studTone) => {
         if (s1 - s0 < 0.001 || z1 - z0 < 0.005) return;
         out.push({ kind: "bar", id: m.id, layer: "framing", tone: t, ...sub(m, s0, s1), z0, z1, w: th });
       };
@@ -192,8 +197,8 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
         }
       for (const o of ops) {
         const h = head(o);
-        fr(o.offset - 0.045, o.offset, zb, h, "trimmer");
-        fr(o.offset + o.width, o.offset + o.width + 0.045, zb, h, "trimmer");
+        fr(o.offset - 0.045, o.offset, zb, h);
+        fr(o.offset + o.width, o.offset + o.width + 0.045, zb, h);
         if (o.sill > 0.05) {
           fr(o.offset, o.offset + o.width, base + o.sill - 0.045, base + o.sill);
           for (let s = o.offset + 0.0225; s <= o.offset + o.width - 0.0225; s += sp) fr(s - 0.0225, s + 0.0225, zb, base + o.sill - 0.045);
@@ -243,7 +248,8 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
     }
     case "bracing": {
       if (!m.b) return [];
-      return [{ kind: "bar", id: m.id, layer: "bracing", tone: `brace:${m.brace?.system ?? "GS2N"}`, a: m.a, b: m.b, z0: base + 0.045, z1: top - 0.09, w: 0.02, off: 0.06 }];
+      // a lined panel on the wall face
+      return [{ kind: "bar", id: m.id, layer: "bracing", tone: `brace:${m.brace?.system ?? "GS2N"}`, a: m.a, b: m.b, z0: base + 0.045, z1: top - 0.09, w: 0.014, off: 0.06 }];
     }
     case "retaining": {
       if (!m.b || !m.rw) return [];

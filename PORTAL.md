@@ -142,6 +142,14 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   roofing (`beam3` and `poly` parts in `geometry.ts`), with flooring over
   joist zones and a toggle per level. "Find beams on the sheet" can add a
   colour set as walls too (blue sets as blockwork).
+- **3D framing model** (`[id]/view-3d.tsx`) is drawn like Stable Structure's
+  own Lot 6 and 26121 framing models: matte role colours (timber joists,
+  studs, rafters and purlins, steel beams in steel blue, timber lintels in
+  burnt orange, steel and timber posts), faint edges, see-through wall
+  shading tinted by storey, GIB bracing panels on the wall faces, coloured
+  ID tags in the model, set-out grid lines with bubbles (`model.grids`,
+  entered on the Levels tab and shown on the plans too), grouped layers,
+  a toggle per level and a "lift roof" slider.
 - **Rib rafts**: `lib/design/raft.ts`. Drawn as a rectangle; carries the
   walls and posts on its level (or the storey above, when drawn on the
   foundation level). Average, edge beam and under-wall bearing, post

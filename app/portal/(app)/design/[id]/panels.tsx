@@ -11,6 +11,8 @@ import { defaultRaft, lossOfSupport, type RaftSpec } from "@/lib/design/raft";
 import { DEFAULT_PAPERWORK, drawingsFromText, drawingsToText, MONITORING, type Monitoring, type Paperwork } from "@/lib/design/paperwork";
 import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
+  gridFromText,
+  gridToText,
   defaultRoof,
   type RoofSpec,
   BRACE_NAME,
@@ -1718,6 +1720,36 @@ export function PaperworkPanel({ model, job, company, locked, onChange }: { mode
           Firm is an ACE New Zealand member
         </label>
       </fieldset>
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- set-out grid
+
+export function GridPanel({ model, locked, onGrids }: { model: DesignModel; locked: boolean; onGrids: (g: DesignModel["grids"], summary: string) => void }) {
+  const g = model.grids ?? { x: [], y: [] };
+  const [draft, setDraft] = useState({ base: `${gridToText(g.x)}|${gridToText(g.y)}`, x: gridToText(g.x), y: gridToText(g.y) });
+  const saved = `${gridToText(g.x)}|${gridToText(g.y)}`;
+  const cur = draft.base === saved ? draft : { base: saved, x: gridToText(g.x), y: gridToText(g.y) };
+  const commitGrid = (x: string, y: string) => {
+    const next = { x: gridFromText(x), y: gridFromText(y) };
+    const text = `${gridToText(next.x)}|${gridToText(next.y)}`;
+    setDraft({ base: text, x: gridToText(next.x), y: gridToText(next.y) });
+    if (text !== saved) onGrids(next.x.length || next.y.length ? next : undefined, "grid lines");
+  };
+  return (
+    <Section title="Grid lines">
+      <fieldset disabled={locked} className="grid gap-2.5">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-muted">Lines across (constant x, m)</span>
+          <input className="field py-1.5 text-sm tabular-nums" value={cur.x} placeholder="1=0, 2=0.35, 3=6.33" onChange={(e) => setDraft({ ...cur, x: e.target.value })} onBlur={() => commitGrid(cur.x, cur.y)} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-muted">Lines along (constant y, m)</span>
+          <input className="field py-1.5 text-sm tabular-nums" value={cur.y} placeholder="A=0, B=2.165, C=5.95" onChange={(e) => setDraft({ ...cur, y: e.target.value })} onBlur={() => commitGrid(cur.x, cur.y)} />
+        </label>
+      </fieldset>
+      <p className="mt-2 text-xs text-muted">Shown dashed with bubbles on every plan and in 3D, measured from the plan origin.</p>
     </Section>
   );
 }
