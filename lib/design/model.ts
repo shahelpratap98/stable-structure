@@ -112,7 +112,7 @@ export const defaultRoof = (): RoofSpec => ({ form: "gable", pitch: 20, framing:
 export const roofHalfSpan = (r: RoofSpec) => r.framing === "rafters" && (r.form === "gable" || r.form === "hip");
 
 export type BraceSystem = "GS1N" | "GS2N" | "GS2NOM" | "GSPH" | "BL1H" | "BLGH" | "BLPH" | "BW" | "PORTAL";
-export type RetainSpec = { kind: "pole" | "block"; h0: number; h1: number }; // retained heights (m) at each end
+export type RetainSpec = { kind: "pole" | "block"; h0: number; h1: number; fall?: number }; // retained heights (m) at each end; fall: how far the base drops from start to end (m, sloping ground)
 
 export type Member = {
   id: string;

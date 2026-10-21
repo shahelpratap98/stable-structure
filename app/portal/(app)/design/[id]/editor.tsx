@@ -947,6 +947,8 @@ export function DesignEditor({
                   onChange={(patch, summary) => updateMember(selected.id, patch, summary)}
                   onDuplicate={() => placeCopy(selected, { x: 0.3, y: 0.3 })}
                   onDelete={() => removeMember(selected.id)}
+                  results={results}
+                  onPick={(id) => pick(id, true)}
                 />
               ) : (
                 <Overview model={model} calcs={calcs} onPick={(id) => pick(id, true)} />

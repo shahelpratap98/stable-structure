@@ -332,25 +332,37 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
     case "retaining": {
       if (!m.b || !m.rw) return [];
       const L = memberLength(m);
+      // the base steps down along the wall where the ground falls
+      const fall = m.rw.fall ?? 0;
+      const baseAt = (s: number) => base - (fall * s) / (L || 1);
       if (m.rw.kind === "block") {
         const h = Math.max(m.rw.h0, m.rw.h1);
+        if (fall) {
+          const p = poleLayout({ ...m, rw: { ...m.rw, kind: "pole" } });
+          for (let i = 0; i < p.length - 1; i++) {
+            const zb = Math.max(baseAt(p[i].s), baseAt(p[i + 1].s));
+            out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "block", a: { x: p[i].x, y: p[i].y }, b: { x: p[i + 1].x, y: p[i + 1].y }, z0: zb, z1: zb + Math.max(p[i].h, p[i + 1].h), w: 0.19 });
+          }
+          return out;
+        }
         out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "block", a: m.a, b: m.b, z0: base, z1: base + h, w: 0.19 });
         out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "concrete", a: m.a, b: m.b, z0: base - (h > 1.0 ? 0.4 : 0.3), z1: base, w: h > 1.0 ? 1.6 : 0.8, off: h > 1.0 ? 0.6 : 0.2 });
         return out;
       }
       const poles = poleLayout(m);
       for (const p of poles) {
-        out.push({ kind: "col", id: m.id, layer: "retaining", tone: "pole", x: p.x, y: p.y, z0: base - p.band.emb / 1000, z1: base + p.h + 0.05, w: p.band.sed / 1000, d: p.band.sed / 1000, round: true });
-        out.push({ kind: "col", id: m.id, layer: "retaining", tone: "concrete", x: p.x, y: p.y, z0: base - p.band.emb / 1000 - 0.1, z1: base - 0.15, w: p.band.hole / 1000, d: p.band.hole / 1000, round: true });
+        const zb = baseAt(p.s);
+        out.push({ kind: "col", id: m.id, layer: "retaining", tone: "pole", x: p.x, y: p.y, z0: zb - p.band.emb / 1000, z1: zb + p.h + 0.05, w: p.band.sed / 1000, d: p.band.sed / 1000, round: true });
+        out.push({ kind: "col", id: m.id, layer: "retaining", tone: "concrete", x: p.x, y: p.y, z0: zb - p.band.emb / 1000 - 0.1, z1: zb - 0.15, w: p.band.hole / 1000, d: p.band.hole / 1000, round: true });
       }
-      void L;
       for (let i = 0; i < poles.length - 1; i++) {
         const a = poles[i],
           c = poles[i + 1];
         const h = (a.h + c.h) / 2;
         const t = Math.max(a.band.rail, c.band.rail) / 1000;
         const off = Math.max(a.band.sed, c.band.sed) / 2000 + t / 2;
-        for (let z = 0; z < h - 0.02; z += 0.2) out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "rail", a: { x: a.x, y: a.y }, b: { x: c.x, y: c.y }, z0: base + z, z1: base + Math.min(h, z + 0.196), w: t, off });
+        const zb = (baseAt(a.s) + baseAt(c.s)) / 2;
+        for (let z = 0; z < h - 0.02; z += 0.2) out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "rail", a: { x: a.x, y: a.y }, b: { x: c.x, y: c.y }, z0: zb + z, z1: zb + Math.min(h, z + 0.196), w: t, off });
       }
       return out;
     }
@@ -584,7 +596,7 @@ export function tagPoint(model: DesignModel, calcs: Calcs, id: string): { x: num
     m.type === "post" || m.type === "pile" || m.type === "footing"
       ? level.elevation + 0.6
       : m.type === "retaining"
-        ? level.elevation + Math.max(m.rw?.h0 ?? 1, m.rw?.h1 ?? 1) + 0.3
+        ? level.elevation + Math.max(m.rw?.h0 ?? 1, (m.rw?.h1 ?? 1) - (m.rw?.fall ?? 0)) + 0.3
         : vl
           ? level.elevation + level.height + 0.12
           : level.kind === "roof"

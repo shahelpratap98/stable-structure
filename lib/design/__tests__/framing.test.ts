@@ -60,3 +60,60 @@ describe("a deck carried on beams at both edges", () => {
     expect(r.status).not.toBe("fail");
   });
 });
+
+describe("supports read off the model, as the 26121 calcs take them", () => {
+  const wall = (id: string, a: [number, number], b: [number, number], openings: { offset: number; width: number }[] = []): Member => ({
+    id,
+    type: "wall",
+    label: id,
+    levelId: "FF",
+    a: { x: a[0], y: a[1] },
+    b: { x: b[0], y: b[1] },
+    material: "timber",
+    section: "140x45",
+    wall: { kind: "ext", thickness: 140, loadbearing: true, cladding: "light", studSpacing: 600, openings: openings.map((o, i) => ({ id: `o${i}`, label: `L${i}`, sill: 0, ...o })) },
+  });
+  const beam: Member = { id: "rb", type: "beam", label: "RB2", levelId: "FF", a: { x: -2.33, y: 9.95 }, b: { x: 7.85, y: 9.95 }, material: "steel", section: "250UB25.7", sizing: { mode: "fixed" }, trib: { roof: 3.98 } };
+
+  it("takes a loadbearing wall crossing under a beam as a support", () => {
+    const r = runCalcs(model([beam, wall("w", [0.42, 0.14], [0.42, 13.54])])).results.get("rb")!;
+    expect(r.inputs.find((i) => i.label === "Length")?.note).toMatch(/3 supports at 0.00, 2.75, 10.18/);
+  });
+  it("puts the beam's reaction on the lintel where it lands in an opening", () => {
+    const c = runCalcs(model([beam, wall("w", [0.42, 0.14], [0.42, 13.54], [{ offset: 6.18, width: 4.2 }])]));
+    const lintel = c.results.get("w#o0")!;
+    const pt = lintel.loads.find((l) => l.label === "Point load from RB2");
+    expect(pt?.value).toMatch(/^3\.67 m/);
+  });
+  it("spans flat-roof rafters between the walls under them, the eaves as overhangs", () => {
+    const zone: Member = {
+      id: "r",
+      type: "joistzone",
+      label: "R2",
+      levelId: "FF",
+      a: { x: 7.9275, y: -0.85 },
+      b: { x: 16.1325, y: 5.95 },
+      material: "timber",
+      grade: "SG8",
+      section: "240x45",
+      zone: { ...defaultZone(), spacing: 480, roof: { form: "low", pitch: 3, framing: "rafters", purlins: 900, overhang: 0 } },
+    };
+    const m = model([zone, wall("n", [0.35, 0.07], [25.46, 0.07]), wall("s", [7.92, 5.88], [25.46, 5.88])]);
+    m.params = { ...m.params, Groof: 0.4 };
+    const r = runCalcs(m).results.get("r")!;
+    expect(r.summary).toMatch(/span 5\.81 m/);
+    // his R2: δ 13.6 mm long term on 5.79 m; the 0.92 m eave lifting is not counted against it
+    const d = r.checks.find((x) => x.name === "Deflection, long term")!;
+    expect(d.demand).toBeGreaterThan(12.5);
+    expect(d.demand).toBeLessThan(14.5);
+    expect(r.status).not.toBe("fail");
+  });
+  it("loads an edge bearer with half the joist span", () => {
+    const d: Member = { id: "d", type: "deck", label: "DECK1", levelId: "FF", a: { x: 7.92, y: 5.95 }, b: { x: 28.21, y: 9.95 }, material: "timber", grade: "SG8", section: "240x45", deck: { ...defaultDeck(), ledger: "start", bearerSpan: 4, height: 0, drop: 1 } };
+    const r = runCalcs(model([d])).results.get("d")!;
+    // his DP: N* ≈ 18 kN per pile
+    const n = Number(r.kv.find((k) => k.label === "Piles")!.value.match(/N\* ([\d.]+)/)![1]);
+    expect(n).toBeGreaterThan(16);
+    expect(n).toBeLessThan(20);
+  });
+});

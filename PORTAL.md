@@ -158,6 +158,16 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   floor framing over it, the roof, retaining walls) and a Selected card.
   Tags are coloured by kind; failing members' tags turn red only when
   colouring by result. Headers in non-loadbearing walls are not tagged.
+- **Supports read off the model** (as the 26121 calcs take them): a
+  loadbearing wall crossing under a beam (more than 300 mm from its ends)
+  is a support; where it crosses at an opening, the beam's reaction there is
+  a point load on that opening's lintel. Flat, mono and low-slope rafters
+  span between the loadbearing walls and beams running across them, with
+  the eaves as overhangs. Overhangs are checked for the tip going down (not
+  lifting as the back span sags). A deck's most loaded bearer and its piles
+  carry half the joist span each side. Retaining walls take a `fall` (the
+  base stepping down along the wall). A wall's panel lists its lintels with
+  their sections and results.
 - **Decks and stairs** (`lib/design/deck.ts`): a deck is an area of H3.2
   joists on 2/190×45-class bearers on 125×125 H5 piles with 400 × 400 × 600
   footings and 140×20 boards (optionally bolted to the building along one

@@ -244,6 +244,8 @@ export function MemberPanel({
   onChange,
   onDuplicate,
   onDelete,
+  results,
+  onPick,
 }: {
   model: DesignModel;
   member: Member;
@@ -252,6 +254,8 @@ export function MemberPanel({
   onChange: (patch: Partial<Member>, summary: string) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  results?: Map<string, Result>; // for a wall: its openings' lintels
+  onPick?: (id: string) => void;
 }) {
   const m = member;
   const beamLike = BEAM_LIKE.includes(m.type);
@@ -431,7 +435,7 @@ export function MemberPanel({
       {m.type === "raft" ? <RaftEditor m={m} site={model.site} locked={locked} set={set} /> : null}
       {m.type === "deck" && m.deck ? <DeckEditor m={m} locked={locked} set={set} sectionField={sectionField} /> : null}
       {m.type === "stair" && m.stair ? <StairEditor m={m} locked={locked} set={set} /> : null}
-      {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} /> : null}
+      {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} results={results} onPick={onPick} /> : null}
       {m.type === "bracing" ? (
         <Section title="Bracing element">
           <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
@@ -480,6 +484,7 @@ export function MemberPanel({
             />
             <NumberField label="Retained height, start" unit="m" value={m.rw.h0} min={0} onCommit={(v) => v !== undefined && set({ rw: { ...m.rw!, h0: v } }, "retained height")} />
             <NumberField label="Retained height, end" unit="m" value={m.rw.h1} min={0} onCommit={(v) => v !== undefined && set({ rw: { ...m.rw!, h1: v } }, "retained height")} />
+            <NumberField label="Ground falls along it by" unit="m" value={m.rw.fall} placeholder="level" onCommit={(v) => set({ rw: { ...m.rw!, fall: v || undefined } }, v ? `base falls ${v} m` : "level base")} />
           </fieldset>
         </Section>
       ) : null}
@@ -754,7 +759,7 @@ function ZoneEditor({
   );
 }
 
-function WallEditor({ m, locked, set }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void }) {
+function WallEditor({ m, locked, set, results, onPick }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void; results?: Map<string, Result>; onPick?: (id: string) => void }) {
   const w = m.wall!;
   const upd = (p: Partial<WallSpec>, what: string) => set({ wall: { ...w, ...p } }, what);
   return (
@@ -794,19 +799,32 @@ function WallEditor({ m, locked, set }: { m: Member; locked: boolean; set: (p: P
           <Check label="Load-bearing" checked={w.loadbearing} onChange={(v) => upd({ loadbearing: v }, v ? "load-bearing" : "non-load-bearing")} />
         </div>
       </fieldset>
-      <h4 className="mt-3 mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">Openings</h4>
+      <h4 className="mt-3 mb-1.5 text-xs font-bold tracking-wide text-muted uppercase">Openings and their lintels</h4>
       {w.openings.length ? (
         <ul className="flex flex-col gap-1 text-sm">
           {[...w.openings]
             .sort((a, b) => a.offset - b.offset)
-            .map((o) => (
-              <li key={o.id} className="flex justify-between gap-2 tabular-nums">
-                <span className="font-semibold">{o.label}</span>
-                <span className="text-muted">
-                  {o.sill > 0.05 ? "window" : "door"} {Math.round(o.width * 1000)} at {o.offset.toFixed(2)} m
-                </span>
-              </li>
-            ))}
+            .map((o) => {
+              // each opening's lintel is designed: show its section and result, click through to the calculation
+              const r = results?.get(`${m.id}#${o.id}`);
+              return (
+                <li key={o.id}>
+                  <button type="button" disabled={!onPick} onClick={() => onPick?.(`${m.id}#${o.id}`)} className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left tabular-nums hover:bg-surface-2 disabled:hover:bg-transparent">
+                    <StatusDot status={r?.status ?? "none"} />
+                    <span className="font-semibold">{o.label}</span>
+                    <span className="min-w-0 flex-1 truncate text-muted">
+                      {o.sill > 0.05 ? "window" : "door"} {Math.round(o.width * 1000)} at {o.offset.toFixed(2)} m
+                    </span>
+                    {r?.sec ? (
+                      <span className="shrink-0 text-xs text-muted">
+                        {r.sec.name}
+                        {r.ratio != null ? ` · ${Math.round(r.ratio * 100)}%` : ""}
+                      </span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
         </ul>
       ) : (
         <p className="text-xs text-muted">None yet. Use the Opening tool (N) and click both sides of a door or window on this wall; each opening makes its own lintel.</p>

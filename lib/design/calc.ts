@@ -361,7 +361,13 @@ function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, 
 
   // deflections per region (mm), against span/300 and span/360 (overhangs: twice their length)
   const span = (k: number) => (regions[k].x1 - regions[k].x0) * (regions[k].cant ? 2 : 1) * 1000;
-  const maxIn = (d: number[], k: number) => Math.max(0, ...d.filter((_, i) => xs[i] >= regions[k].x0 - 1e-9 && xs[i] <= regions[k].x1 + 1e-9).map(Math.abs)) * (1000 / EI);
+  // an overhang is checked for its tip going down under load; lifting as the back span sags is not a serviceability limit
+  const maxIn = (d: number[], k: number) => {
+    const inK = d.filter((_, i) => xs[i] >= regions[k].x0 - 1e-9 && xs[i] <= regions[k].x1 + 1e-9);
+    if (!regions[k].cant) return Math.max(0, ...inK.map(Math.abs)) * (1000 / EI);
+    const down = Math.sign(d.reduce((a, v) => (Math.abs(v) > Math.abs(a) ? v : a), 0)) || 1;
+    return Math.max(0, ...inK.map((v) => v * down)) * (1000 / EI);
+  };
   let uDl = 0,
     uDs = 0,
     uDp = 0,
@@ -835,6 +841,61 @@ const ZERO: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 };
 // Members sharing a mark (a typical beam B2.8 drawn as several spans) take
 // one section: the largest any of them needs. The model is calculated once,
 // the governing section of each group fixed on its members, then again.
+// Where wall w crosses beam m: t m along the beam, s m along the wall, and the
+// opening it lands in (whose lintel then carries the beam there), if any.
+function wallCrossing(m: Member, w: Member): { t: number; s: number; opening?: Opening } | null {
+  if (!m.b || !w.b) return null;
+  const L = memberLength(m),
+    Lw = memberLength(w);
+  if (L < 1e-6 || Lw < 1e-6) return null;
+  const ux = (m.b.x - m.a.x) / L,
+    uy = (m.b.y - m.a.y) / L,
+    wx = (w.b.x - w.a.x) / Lw,
+    wy = (w.b.y - w.a.y) / Lw;
+  const den = ux * wy - uy * wx;
+  if (Math.abs(den) < 0.5) return null; // within 30° of parallel: runs along it, not across
+  const dx = w.a.x - m.a.x,
+    dy = w.a.y - m.a.y;
+  const t = (dx * wy - dy * wx) / den,
+    s = (dx * uy - dy * ux) / den;
+  // a wall at (or within 300 mm of) the beam's end is its end support, not another one
+  if (t < 0.3 || t > L - 0.3 || s < -0.05 || s > Lw + 0.05) return null;
+  return { t, s, opening: w.wall?.openings.find((o) => s > o.offset - 0.045 && s < o.offset + o.width + 0.045) };
+}
+
+// Rafters of a flat, mono or low roof zone over the loadbearing walls and beams
+// running across them (on the zone's storey), with the eaves as overhangs.
+function rafterSupports(model: DesignModel, z: Member, rs: RoofSpec): { length: number; at: number[]; maxSpan: number; over: string[] } | null {
+  if (!z.b || !z.zone) return null;
+  const ns = z.zone.dir === "y";
+  const [u0, u1, v0, v1] = ns
+    ? [Math.min(z.a.y, z.b.y), Math.max(z.a.y, z.b.y), Math.min(z.a.x, z.b.x), Math.max(z.a.x, z.b.x)]
+    : [Math.min(z.a.x, z.b.x), Math.max(z.a.x, z.b.x), Math.min(z.a.y, z.b.y), Math.max(z.a.y, z.b.y)];
+  const ov = Math.max(0, rs.overhang);
+  const ua = u0 - ov,
+    ub = u1 + (rs.form === "mono" ? 0 : ov);
+  const width = v1 - v0;
+  const found: { u: number; mark: string }[] = [];
+  for (const s of model.members) {
+    if (!s.b || s.levelId !== z.levelId) continue;
+    if (!(s.type === "beam" || (s.type === "wall" && s.wall?.loadbearing !== false))) continue;
+    const [sa, sb] = ns ? [s.a.y, s.b.y] : [s.a.x, s.b.x];
+    const [ta, tb] = ns ? [s.a.x, s.b.x] : [s.a.y, s.b.y];
+    if (Math.abs(sb - sa) > 0.2 * Math.abs(tb - ta)) continue; // not across the rafters
+    const overlap = Math.min(v1, Math.max(ta, tb)) - Math.max(v0, Math.min(ta, tb));
+    if (overlap < 0.25 * width) continue;
+    const u = (sa + sb) / 2;
+    if (u < ua - 0.1 || u > ub + 0.1) continue;
+    found.push({ u: Math.min(ub, Math.max(ua, u)), mark: s.label });
+  }
+  const at = [...new Set(found.map((f) => Math.round((f.u - ua) * 1e3) / 1e3))].sort((a, b) => a - b);
+  if (at.length < 2) return null;
+  const length = ub - ua;
+  let maxSpan = 0;
+  for (let i = 1; i < at.length; i++) maxSpan = Math.max(maxSpan, at[i] - at[i - 1]);
+  return { length, at, maxSpan, over: [...new Set(found.sort((a, b) => a.u - b.u).map((f) => f.mark))] };
+}
+
 export function runCalcs(model: DesignModel): Calcs {
   const first = runCalcsOnce(model);
   const groups = new Map<string, Member[]>();
@@ -902,6 +963,18 @@ function runCalcsOnce(model: DesignModel): Calcs {
       }
     }
   }
+  // a beam crossing a loadbearing wall bears on it; where it lands in an opening, on that opening's lintel
+  const crossings = new Map<string, { beam: string; beamAt: number; at: number }[]>(); // lintel id -> beams bearing on it
+  for (const x of beamLike) {
+    if (x.type !== "beam" || !x.b) continue;
+    for (const w of model.members) {
+      if (w.type !== "wall" || w.levelId !== x.levelId || w.wall?.loadbearing === false) continue;
+      const c = wallCrossing(x, w);
+      if (!c?.opening) continue;
+      const id = `${w.id}#${c.opening.id}`;
+      crossings.set(id, [...(crossings.get(id) ?? []), { beam: x.id, beamAt: c.t, at: c.s - (c.opening.offset - 0.045) }]);
+    }
+  }
   // order: a beam only after everything bearing on it (cycles fall back to drawing order)
   const order: Member[] = [];
   const done = new Set<string>();
@@ -911,6 +984,7 @@ function runCalcsOnce(model: DesignModel): Calcs {
     if (done.has(m.id) || visiting.has(m.id)) return;
     visiting.add(m.id);
     for (const [carried, list] of bearings) if (list.some((b) => b.carrier === m.id)) visit(byId.get(carried)!);
+    for (const c of crossings.get(m.id) ?? []) visit(byId.get(c.beam)!);
     visiting.delete(m.id);
     done.add(m.id);
     order.push(m);
@@ -1171,7 +1245,10 @@ function runCalcsOnce(model: DesignModel): Calcs {
   const beamSupports = (m: Member): number[] | undefined => {
     if (!m.b) return undefined;
     const L = memberLength(m);
-    const inner = posts.filter((s) => s.type === "post" && s.levelId === m.levelId).map((s) => partway(m, s.a)).filter((x): x is number => x !== null);
+    const inner = [
+      ...posts.filter((s) => s.type === "post" && s.levelId === m.levelId).map((s) => partway(m, s.a)),
+      ...(m.type === "beam" ? model.members.filter((w) => w.type === "wall" && w.levelId === m.levelId && w.wall?.loadbearing !== false).map((w) => wallCrossing(m, w)?.t ?? null) : []),
+    ].filter((x): x is number => x !== null);
     const at = [...(m.free === "a" ? [] : [0]), ...inner, ...(m.free === "b" ? [] : [L])].sort((a, b) => a - b);
     return inner.length || m.free ? at : undefined;
   };
@@ -1251,6 +1328,11 @@ function runCalcsOnce(model: DesignModel): Calcs {
           const e = r?.ends?.[b.end];
           if (e) points.push({ at: b.at, ...e, from: r!.mark });
         }
+      for (const c of crossings.get(m.id) ?? []) {
+        const r = results.get(c.beam);
+        const e = r?.supportLoads?.find((x) => Math.abs(x.at - c.beamAt) < 1e-3)?.loads;
+        if (e) points.push({ at: c.at, ...e, from: r!.mark });
+      }
       for (const [qid, seat] of seats) {
         if (seat.kind !== "beam" || seat.id !== m.id) continue;
         const r = results.get(qid);
@@ -1300,7 +1382,9 @@ function runCalcsOnce(model: DesignModel): Calcs {
     const rs = zoneRoof(model, z);
     if (rs) {
       const W = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
-      const run = roofHalfSpan(rs) ? W / 2 : W;
+      // flat, mono and low roofs: rafters over the walls and beams under them, eaves as overhangs
+      const rafterSup = !roofHalfSpan(rs) && rs.framing === "rafters" ? rafterSupports(model, z, rs) : null;
+      const run = rafterSup ? rafterSup.maxSpan : roofHalfSpan(rs) ? W / 2 : W;
       const slope = 1 / Math.cos((rs.pitch * Math.PI) / 180);
       const count = Math.floor(width / s) + 1;
       if (rs.framing === "trusses") {
@@ -1330,8 +1414,9 @@ function runCalcsOnce(model: DesignModel): Calcs {
         {
           id: z.id,
           mark: z.label,
-          role: z.role || `Rafters (${rs.form} roof, ${rs.pitch}°)`,
-          span: run,
+          role: z.role || `Rafters (${rs.form === "low" ? "low-slope" : rs.form} roof, ${rs.pitch}°)`,
+          span: rafterSup ? rafterSup.length : run,
+          supports: rafterSup?.at,
           trib: { roof: s },
           sizing: { mode: "fixed" },
           fixed: fixedCandidate(z.section, z.material, z.grade),
@@ -1342,13 +1427,15 @@ function runCalcsOnce(model: DesignModel): Calcs {
         p,
       );
       r.kv.push(
-        { label: "Rafters", value: `${count} @ ${z.zone.spacing} crs, run ${fmt(run)} m (${fmt(run * slope)} m on the slope)` },
+        rafterSup
+          ? { label: "Rafters", value: `${count} @ ${z.zone.spacing} crs on ${rafterSup.over.join(", ")}: longest span ${fmt(run)} m` }
+          : { label: "Rafters", value: `${count} @ ${z.zone.spacing} crs, run ${fmt(run)} m (${fmt(run * slope)} m on the slope)` },
         { label: "Roof", value: `${rs.form}, ${rs.pitch}°${rs.purlins ? `, purlins @ ${rs.purlins}` : ""}, ${fmt(rs.overhang)} m eaves` },
       );
       r.notes.push(
         `Rafters designed on their horizontal run with the roof loads on plan. ${roofHalfSpan(rs) ? "They span from the eaves to a ridge beam, which carries half the roof width; " : ""}hip, valley and ridge members and fixings for uplift to NZS 3604 Section 10 or specific design.`,
       );
-      r.summary = r.sec ? `${z.section} rafters @ ${z.zone.spacing} · run ${fmt(run)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
+      r.summary = r.sec ? `${z.section} rafters @ ${z.zone.spacing} · ${rafterSup ? "span" : "run"} ${fmt(run)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
       r.ends = undefined;
       results.set(z.id, r);
       continue;
@@ -1417,12 +1504,14 @@ function runCalcsOnce(model: DesignModel): Calcs {
       { id: z.id, mark: z.label, role: "Deck joists (H3.2)", span: lay.joistSpan, trib: { floor: s }, sizing: { mode: "fixed" }, fixed: fixedCandidate(z.section, "timber", "SG8"), point: false, selfWeight: false, fallbackMaxD: 0 },
       pd,
     );
+    // the most loaded bearer line carries half the joist span each side of it (an edge bearer, half of one)
+    const bearerW = Math.max(0, ...lay.bearers.map((b, i, all) => (b.ledger ? 0 : ((i > 0 ? b.u - all[i - 1].u : 0) + (i < all.length - 1 ? all[i + 1].u - b.u : 0)) / 2)));
     const bearer = designBeam(
-      { id: z.id + "~b", mark: z.label, role: "Deck bearers (H3.2)", span: lay.pileSpan, trib: { floor: lay.joistSpan }, sizing: { mode: "auto", families: ["SG8"], maxB: 90, maxD: 290, minD: 140 }, fixed: null, point: false, selfWeight: true, fallbackMaxD: 0 },
+      { id: z.id + "~b", mark: z.label, role: "Deck bearers (H3.2)", span: lay.pileSpan, trib: { floor: bearerW }, sizing: { mode: "auto", families: ["SG8"], maxB: 90, maxD: 290, minD: 140 }, fixed: null, point: false, selfWeight: true, fallbackMaxD: 0 },
       pd,
     );
-    // an interior pile carries a bay of deck each way
-    const area = lay.joistSpan * lay.pileSpan;
+    // a pile carries the bearer's width of deck, a pile spacing along it
+    const area = bearerW * lay.pileSpan;
     const pl: Loads = { G: DECK_G * area, Qf: DECK_Q * area, Qr: 0, S: 0 };
     const pile = designPost(pl, Math.max(0.3, z.deck.drop - 0.25), p, { name: "125×125 H5 pile", fam: "SG8", b: 125, d: 125 });
     const Np = rStar(pl);

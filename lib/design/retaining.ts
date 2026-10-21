@@ -28,7 +28,7 @@ export const BLOCK_SPECS = [
 
 const bandFor = (h: number) => POLE_BANDS.find((b) => h <= b.h + 0.005);
 
-export type Pole = { x: number; y: number; h: number; band: Band };
+export type Pole = { x: number; y: number; h: number; band: Band; s: number }; // s: m along the wall
 
 // Walk the wall: each pole takes the band for the highest retained height over
 // its adjoining bay, never exceeding that band's spacing.
@@ -42,7 +42,7 @@ export function poleLayout(m: Member): Pole[] {
     let b = bandFor(Math.max(hAt(s), hAt(s + 1.2))) ?? POLE_BANDS[POLE_BANDS.length - 1];
     b = bandFor(Math.max(hAt(s), hAt(s + b.s / 1000))) ?? b;
     const p = along(m, s);
-    poles.push({ x: p.x, y: p.y, h: hAt(s), band: b });
+    poles.push({ x: p.x, y: p.y, h: hAt(s), band: b, s });
     if (s >= L) break;
     const nx = s + b.s / 1000;
     s = nx >= L ? L : L - nx < 0.3 ? (s + L) / 2 : nx;
