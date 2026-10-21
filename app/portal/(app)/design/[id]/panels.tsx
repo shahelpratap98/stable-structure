@@ -8,6 +8,7 @@ import { autoTrib, DRAFT_NOTE, loadKind, STATUS_COLOUR, STATUS_LABEL, tribText, 
 import { DEFAULT_SITE, demandFromSite, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
 import type { Change } from "@/lib/design/diff";
 import { defaultRaft, lossOfSupport, type RaftSpec } from "@/lib/design/raft";
+import type { DeckSpec, StairSpec } from "@/lib/design/deck";
 import { DEFAULT_PAPERWORK, drawingsFromText, drawingsToText, MONITORING, type Monitoring, type Paperwork } from "@/lib/design/paperwork";
 import { ALL_FAMILIES, DEFAULT_FAMILIES, FAMILY_COLOUR, FAMILY_LABEL, MORE_FAMILIES, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
 import {
@@ -428,6 +429,8 @@ export function MemberPanel({
         <ZoneEditor m={m} locked={locked} set={set} materialFields={materialFields} sectionField={sectionField} topStorey={loadKind(model, model.levels.find((l) => l.id === m.levelId)) === "roof"} />
       ) : null}
       {m.type === "raft" ? <RaftEditor m={m} site={model.site} locked={locked} set={set} /> : null}
+      {m.type === "deck" && m.deck ? <DeckEditor m={m} locked={locked} set={set} sectionField={sectionField} /> : null}
+      {m.type === "stair" && m.stair ? <StairEditor m={m} locked={locked} set={set} /> : null}
       {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} /> : null}
       {m.type === "bracing" ? (
         <Section title="Bracing element">
@@ -517,6 +520,66 @@ function loadSurface(model: DesignModel, m: Member) {
   if (!level) return "floor";
   const above = [...model.levels].filter((l) => l.elevation > level.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation)[0];
   return level.kind === "roof" || above?.kind === "roof" ? "roof" : "floor";
+}
+
+function DeckEditor({ m, locked, set, sectionField }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void; sectionField: ReactNode }) {
+  const d = m.deck!;
+  const upd = (p: Partial<DeckSpec>, w: string) => set({ deck: { ...d, ...p } }, w);
+  return (
+    <Section title="Deck">
+      <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+        {sectionField}
+        <NumberField label="Joists at" unit="mm" value={d.spacing} min={300} onCommit={(v) => v && upd({ spacing: v }, `deck joists @ ${v}`)} />
+        <Select
+          label="Joists span"
+          value={d.dir}
+          options={[
+            { value: "y", label: "North–south (↕)" },
+            { value: "x", label: "East–west (↔)" },
+          ]}
+          onChange={(v) => upd({ dir: v }, `deck joists ${v === "x" ? "E–W" : "N–S"}`)}
+        />
+        <Select<DeckSpec["ledger"]>
+          label="Fixed to the building"
+          value={d.ledger}
+          options={[
+            { value: "none", label: "No: free-standing" },
+            { value: "start", label: d.dir === "y" ? "North edge" : "West edge" },
+            { value: "end", label: d.dir === "y" ? "South edge" : "East edge" },
+          ]}
+          onChange={(v) => upd({ ledger: v }, v === "none" ? "free-standing deck" : "deck stringer on the building")}
+        />
+        <NumberField label="Bearers at most" unit="m" value={d.bearerSpan} min={0.6} onCommit={(v) => v && upd({ bearerSpan: v }, `bearers ≤ ${v} m`)} />
+        <NumberField label="Piles at most" unit="m" value={d.pileSpan} min={0.6} onCommit={(v) => v && upd({ pileSpan: v }, `piles ≤ ${v} m`)} />
+        <NumberField label="Surface above the floor" unit="m" value={d.height} onCommit={(v) => upd({ height: v ?? 0 }, `deck surface ${v ?? 0} m`)} />
+        <NumberField label="Down to the ground" unit="m" value={d.drop} min={0.2} onCommit={(v) => v && upd({ drop: v }, `ground ${v} m below the deck`)} />
+      </fieldset>
+      <p className="mt-2 text-xs text-muted">Joists on 2/190×45 (or as designed) bearers, bearers on 125×125 H5 piles with 400 × 400 footings, 140×20 boards. Designed for balcony loads.</p>
+    </Section>
+  );
+}
+
+function StairEditor({ m, locked, set }: { m: Member; locked: boolean; set: (p: Partial<Member>, w: string) => void }) {
+  const s = m.stair!;
+  const upd = (p: Partial<StairSpec>, w: string) => set({ stair: { ...s, ...p } }, w);
+  return (
+    <Section title="Stair">
+      <fieldset disabled={locked} className="grid grid-cols-2 gap-2.5">
+        <NumberField label="Width" unit="m" value={s.width} min={0.6} onCommit={(v) => v && upd({ width: v }, `stair ${v} m wide`)} />
+        <NumberField label="Rise" unit="m" value={s.rise} min={0.2} placeholder="floor to floor" onCommit={(v) => upd({ rise: v }, `stair rise ${v ?? "floor to floor"}`)} />
+        <Select
+          label="Stringers"
+          value={String(s.stringers) as "2" | "3"}
+          options={[
+            { value: "2", label: "2 stringers" },
+            { value: "3", label: "3 stringers" },
+          ]}
+          onChange={(v) => upd({ stringers: Number(v) as 2 | 3 }, `${v} stringers`)}
+        />
+      </fieldset>
+      <p className="mt-2 text-xs text-muted">Draw from the foot of the stair to the head. The risers and goings are worked out from the rise and the run.</p>
+    </Section>
+  );
 }
 
 function RaftEditor({ m, site, locked, set }: { m: Member; site: SiteData | undefined; locked: boolean; set: (p: Partial<Member>, w: string) => void }) {

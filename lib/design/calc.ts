@@ -21,6 +21,7 @@ import { ALL_FAMILIES, candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, 
 import { along, describeMember, framingTop, MEMBER_INFO, memberLength, roofHalfSpan, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type RoofSpec, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
 import { defaultRaft, designRaft, type RaftPost, type RaftWall } from "./raft";
+import { DECK_G, DECK_Q, deckLayout, STAIR_G, STAIR_Q, stairLayout } from "./deck";
 
 export { parseTimberSection, SG8_DEPTHS } from "./materials";
 
@@ -1401,6 +1402,94 @@ function runCalcsOnce(model: DesignModel): Calcs {
     r.summary = r.sec ? `${z.section} @ ${z.zone.spacing} · span ${fmt(span)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
     r.ends = undefined; // joist zones don't load posts directly
     results.set(z.id, r);
+  }
+
+  // decks: joists on bearers, bearers on piles, piles on pad footings (balcony loads)
+  for (const z of model.members) {
+    if (z.type !== "deck" || !z.deck) continue;
+    const lay = deckLayout(z);
+    if (!lay) continue;
+    const pd = { ...p, Gf: DECK_G, Qf: DECK_Q, Ppt: 0 };
+    const s = z.deck.spacing / 1000;
+    const joists = designBeam(
+      { id: z.id, mark: z.label, role: "Deck joists (H3.2)", span: lay.joistSpan, trib: { floor: s }, sizing: { mode: "fixed" }, fixed: fixedCandidate(z.section, "timber", "SG8"), point: false, selfWeight: false, fallbackMaxD: 0 },
+      pd,
+    );
+    const bearer = designBeam(
+      { id: z.id + "~b", mark: z.label, role: "Deck bearers (H3.2)", span: lay.pileSpan, trib: { floor: lay.joistSpan }, sizing: { mode: "auto", families: ["SG8"], maxB: 90, maxD: 290, minD: 140 }, fixed: null, point: false, selfWeight: true, fallbackMaxD: 0 },
+      pd,
+    );
+    // an interior pile carries a bay of deck each way
+    const area = lay.joistSpan * lay.pileSpan;
+    const pl: Loads = { G: DECK_G * area, Qf: DECK_Q * area, Qr: 0, S: 0 };
+    const pile = designPost(pl, Math.max(0.3, z.deck.drop - 0.25), p, { name: "125×125 H5 pile", fam: "SG8", b: 125, d: 125 });
+    const Np = rStar(pl);
+    const pad = designPad(Np, 125, site, { B: 400, D: 600 });
+    const uPad = Math.max(pad.uBearing, pad.uPunch, pad.uShear);
+    const util = Math.max(joists.ratio ?? 0, bearer.ratio ?? 0, pile.util, uPad);
+    const nPiles = lay.bearers.reduce((a, b) => a + b.piles.length, 0);
+    results.set(z.id, {
+      ...joists,
+      status: statusFor(util),
+      ratio: util,
+      govName: util === (joists.ratio ?? 0) ? `joists: ${joists.govName ?? ""}` : util === (bearer.ratio ?? 0) ? `bearers: ${bearer.govName ?? ""}` : util === pile.util ? "pile axial" : "pile footing",
+      summary: `Deck · ${z.section} @ ${z.deck.spacing} on ${bearer.sec?.name ?? "bearers"} · ${nPiles} piles · ${Math.round(util * 100)}%`,
+      utils: [
+        { label: "Joists", u: joists.ratio ?? 0 },
+        { label: "Bearers", u: bearer.ratio ?? 0 },
+        { label: "Piles", u: pile.util },
+        { label: "Pile footings", u: uPad },
+      ],
+      kv: [
+        { label: "Joists", value: `${z.section} SG8 H3.2 @ ${z.deck.spacing}, span ${fmt(lay.joistSpan)} m · ${Math.round((joists.ratio ?? 0) * 100)}%` },
+        { label: "Bearers", value: `${bearer.sec?.name ?? "–"} H3.2, ${lay.bearers.filter((b) => !b.ledger).length} lines, span ${fmt(lay.pileSpan)} m · ${Math.round((bearer.ratio ?? 0) * 100)}%` },
+        { label: "Piles", value: `${nPiles} × 125×125 H5, N* ${fmt(Np, 1)} kN · ${Math.round(pile.util * 100)}%` },
+        { label: "Pile footings", value: `400 × 400 × 600 deep · ${Math.round(uPad * 100)}%` },
+        ...(z.deck.ledger !== "none" ? [{ label: "Stringer to the building", value: `${z.section} bolted, R* ${fmt(rStar({ G: (DECK_G * lay.joistSpan) / 2, Qf: (DECK_Q * lay.joistSpan) / 2, Qr: 0, S: 0 }), 1)} kN/m` }] : []),
+        { label: "Boards", value: "140×20 H3.2 at 145 centres" },
+      ],
+      inputs: [{ label: "Loads", value: `G ${DECK_G} kPa, Q ${DECK_Q} kPa (balconies and decks)` }],
+      loads: [],
+      notes: [
+        `Deck joists and bearers SG8 H3.2 (NZS 3602), checked to NZS 3603 for G ${DECK_G} kPa and Q ${DECK_Q} kPa; 125×125 H5 piles on 400 × 400 × 600 footings. A deck more than 1 m above the ground needs a barrier (by others) and bracing piles or a braced connection to the building (NZS 3604 Section 6).`,
+      ],
+    });
+  }
+
+  // external stairs: stringers spanning the run
+  for (const z of model.members) {
+    if (z.type !== "stair" || !z.stair || !z.b) continue;
+    const lvl = levelOf(model, z.levelId);
+    const above = lvl ? levelAbove(model, lvl) : undefined;
+    const rise = z.stair.rise ?? (lvl && above ? above.elevation - lvl.elevation : (lvl?.height ?? 2.4));
+    const lay = stairLayout(z, rise);
+    if (!lay) continue;
+    const n = z.stair.stringers;
+    const ps = { ...p, Gf: STAIR_G, Qf: STAIR_Q, Ppt: 0 };
+    const r = designBeam(
+      { id: z.id, mark: z.label, role: "Stair stringers (H3.2)", span: lay.run, trib: { floor: z.stair.width / (n - 1) }, sizing: { mode: "auto", families: ["SG8"], maxB: 45, minD: 190, maxD: 300 }, fixed: null, point: false, selfWeight: true, fallbackMaxD: 0 },
+      ps,
+    );
+    const uGeom = Math.max(lay.R / 0.19, 0.28 / lay.G);
+    const util = Math.max(r.ratio ?? 0, uGeom);
+    results.set(z.id, {
+      ...r,
+      status: statusFor(util),
+      ratio: util,
+      govName: util === uGeom && uGeom > (r.ratio ?? 0) ? "rise / going" : r.govName,
+      summary: `Stair · ${n} × ${r.sec?.name ?? "stringers"} · ${lay.risers} risers ${Math.round(lay.R * 1000)} / going ${Math.round(lay.G * 1000)} · ${Math.round(util * 100)}%`,
+      utils: [...r.utils, { label: "Rise / going (D1/AS1)", u: uGeom }],
+      kv: [
+        ...r.kv,
+        { label: "Rise / run", value: `${fmt(lay.rise)} / ${fmt(lay.run)} m, ${lay.pitch.toFixed(0)}°` },
+        { label: "Risers / going", value: `${lay.risers} × ${Math.round(lay.R * 1000)} mm / ${lay.risers - 1} × ${Math.round(lay.G * 1000)} mm` },
+        { label: "Treads", value: `2/140×30 H3.2 slats, ${Math.round(z.stair.width * 1000)} wide` },
+      ],
+      notes: [
+        ...r.notes,
+        `Stringers SG8 H3.2 on their horizontal run for G ${STAIR_G} kPa and Q ${STAIR_Q} kPa, each carrying ${fmt(z.stair.width / (n - 1))} m of stair. Private stairway geometry checked against rise ≤ 190 mm and going ≥ 280 mm (confirm against D1/AS1); handrail and barrier by others.`,
+      ],
+    });
   }
 
   // retaining walls

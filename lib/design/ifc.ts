@@ -156,7 +156,7 @@ export function exportIfc(model: DesignModel, calcs: Calcs, job: { title: string
     byMaterial.set(mat, [...(byMaterial.get(mat) ?? []), ref]);
   };
 
-  const all = allParts(model, calcs).filter(({ part }) => !["framing", "glass", "flooring", "roofing"].includes(part.layer));
+  const all = allParts(model, calcs).filter(({ part }) => !["framing", "glass", "flooring", "roofing", "deckboards"].includes(part.layer));
   const grouped = new Map<string, Part[]>();
   for (const { part } of all) grouped.set(part.id, [...(grouped.get(part.id) ?? []), part]);
 
@@ -219,6 +219,10 @@ function entityFor(m: Member, head: string) {
       return `IFCPILE(${head},.NOTDEFINED.,$)`;
     case "raft":
       return `IFCSLAB(${head},.BASESLAB.)`;
+    case "deck":
+      return `IFCMEMBER(${head},.MEMBER.)`;
+    case "stair":
+      return `IFCMEMBER(${head},.STRINGER.)`;
   }
 }
 

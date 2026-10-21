@@ -573,6 +573,63 @@ export function PlanView(props: Props) {
             );
           })}
 
+          {/* decks: outline, boards across the joists */}
+          {shapes.map(({ m, a, b }) => {
+            if (m.type !== "deck" || !b || !m.deck) return null;
+            const x0 = Math.min(a.x, b.x),
+              x1 = Math.max(a.x, b.x),
+              y0 = Math.min(a.y, b.y),
+              y1 = Math.max(a.y, b.y);
+            const ns = m.deck.dir === "y";
+            const step = Math.max(px(3), 0.145 / scaleK);
+            const lines: number[] = [];
+            for (let v = (ns ? y0 : x0) + step; v < (ns ? y1 : x1) && lines.length < 400; v += step) lines.push(v);
+            const colour = colourOf(m);
+            const selected = isSel(m.id);
+            return (
+              <g key={m.id}>
+                <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={colour} fillOpacity={selected ? 0.18 : 0.08} stroke={colour} strokeWidth={selected ? 3 : 2} vectorEffect="non-scaling-stroke" />
+                <g stroke={colour} strokeOpacity={0.35} strokeWidth={1} vectorEffect="non-scaling-stroke">
+                  {lines.map((v, i) => (ns ? <line key={i} x1={x0} y1={v} x2={x1} y2={v} vectorEffect="non-scaling-stroke" /> : <line key={i} x1={v} y1={y0} x2={v} y2={y1} vectorEffect="non-scaling-stroke" />))}
+                </g>
+                <text x={(x0 + x1) / 2} y={(y0 + y1) / 2} textAnchor="middle" fontSize={px(11)} fontWeight={700} fill={colour} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                  {m.label} · deck {m.section} @ {m.deck.spacing}
+                  {results.get(m.id)?.status === "fail" ? " ✕" : ""}
+                </text>
+                {selected ? (
+                  <>
+                    <circle cx={a.x} cy={a.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                    <circle cx={b.x} cy={b.y} r={px(5)} fill="white" stroke="#1da9e3" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  </>
+                ) : null}
+              </g>
+            );
+          })}
+          {/* stairs: the flight's width with a line per tread */}
+          {shapes.map(({ m, a, b }) => {
+            if (m.type !== "stair" || !b || !m.stair) return null;
+            const L = Math.hypot(b.x - a.x, b.y - a.y);
+            if (L < 1e-6) return null;
+            const tx = (b.x - a.x) / L,
+              ty = (b.y - a.y) / L;
+            const hw = m.stair.width / 2 / scaleK;
+            const nx = -ty * hw,
+              ny = tx * hw;
+            const n = Math.max(2, Math.round((L * scaleK) / 0.28));
+            const colour = colourOf(m);
+            return (
+              <g key={`st${m.id}`} pointerEvents="none">
+                <polygon points={`${a.x + nx},${a.y + ny} ${b.x + nx},${b.y + ny} ${b.x - nx},${b.y - ny} ${a.x - nx},${a.y - ny}`} fill={colour} fillOpacity={0.08} stroke={colour} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+                {Array.from({ length: n - 1 }, (_, i) => {
+                  const f = (i + 1) / n;
+                  const cx = a.x + (b.x - a.x) * f,
+                    cy = a.y + (b.y - a.y) * f;
+                  return <line key={i} x1={cx + nx} y1={cy + ny} x2={cx - nx} y2={cy - ny} stroke={colour} strokeOpacity={0.6} strokeWidth={1} vectorEffect="non-scaling-stroke" />;
+                })}
+              </g>
+            );
+          })}
+
           {/* joist zones under everything else */}
           {shapes.map(({ m, a, b }) => {
             if (m.type !== "joistzone" || !b || !m.zone) return null;

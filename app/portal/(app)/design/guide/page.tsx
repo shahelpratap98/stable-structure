@@ -124,6 +124,7 @@ export default async function DesignGuidePage() {
           </li>
           <li>
             <T>Bracing elements</T> (G), <T>pad footings</T> (F), <T>timber piles</T> (I) and <T>retaining walls</T> (T) work the same way. A{" "}
+            <T>deck</T> (D) is drawn corner to corner and designs its joists, bearers and piles; a <T>stair</T> (E) is drawn from its foot to its head. A{" "}
             <T>rib raft slab</T> (K) is drawn like a joist zone, corner to corner, and carries the walls and posts standing on it. A{" "}
             <T>joist zone</T> drawn on the top storey is roof framing: choose gable, hip, mono or flat, the pitch, eaves and purlins, and rafters (designed) or trusses (by the supplier).
             The beams and walls along its eaves and ridge pick up the roof load.

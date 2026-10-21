@@ -15,6 +15,7 @@ import { designPortal } from "./lateral";
 import { fbAt, LVL, STEEL } from "./materials";
 import { defaultRoof, defaultZone, emptyModel, type Level, type Member, type RoofSpec } from "./model";
 import { defaultRaft, designRaft, raftSelfWeight } from "./raft";
+import { deckLayout, defaultDeck, stairLayout } from "./deck";
 import { DEFAULT_SITE, quakeBasis, windBasis } from "./site";
 
 export type VCase = {
@@ -148,6 +149,16 @@ const ROOF: VCase[] = [
   { name: "Hip roof: the end beam takes the jack rafters, a quarter of the width", want: 1.5, unit: "m", run: () => roofTrib({ ...defaultRoof(), form: "hip" }, "end") },
 ].map((c) => ({ ...c, group: "Roof framing", source: "Hand (tributary widths)" }));
 
+// ---------------------------------------------------------------- decks and stairs
+// a 5.0 m (joist direction) × 6.4 m deck, bearers at most 1.85 m apart, piles at most 2.5 m
+const deck: Member = { id: "D", type: "deck", label: "DK1", levelId: "L", a: { x: 0, y: 0 }, b: { x: 6.4, y: 5 }, material: "timber", section: "240x45", deck: defaultDeck() };
+const DECK: VCase[] = [
+  { name: "Deck 5.0 m across the joists, bearers ≤ 1.85 m: 3 bays of 5.0/3", want: 5 / 3, unit: "m", source: "Hand", run: () => deckLayout(deck)!.joistSpan },
+  { name: "Piles along a 6.4 m bearer ≤ 2.5 m apart: 3 bays of (6.4 − 0.12)/3", want: 6.28 / 3, unit: "m", source: "Hand (60 mm in from each end)", run: () => deckLayout(deck)!.pileSpan },
+  { name: "Stair 2.7 m rise: 15 risers of 180 mm (≤ 190)", want: 0.18, unit: "m", source: "Hand", run: () => stairLayout({ ...deck, type: "stair", a: { x: 0, y: 0 }, b: { x: 3.6, y: 0 } }, 2.7)!.R },
+  { name: "Same stair on a 3.6 m run: going 3.6/14 = 257 mm, under 280, so it fails", want: "fails", source: "D1/AS1 private stairway going ≥ 280 mm", run: () => (stairLayout({ ...deck, type: "stair", a: { x: 0, y: 0 }, b: { x: 3.6, y: 0 } }, 2.7)!.ok ? "passes" : "fails") },
+].map((c) => ({ ...c, group: "Decks and stairs" }));
+
 // ---------------------------------------------------------------- concrete beam
 // SS 6 m, 300 × 500, f'c 30, G 10 + self-weight 3.6, Q 10: w* = 1.2×13.6 + 1.5×10 = 31.32 kN/m
 const rc = once(() => designConcreteBeam({ L: 6, supports: [0, 6], b: 300, D: 500, fc: 30, G: 10, Q: 10, points: [] }));
@@ -237,7 +248,7 @@ const BRACE: VCase[] = (
   })),
 );
 
-export const VERIFICATION_CASES: VCase[] = [...FRAME, ...STEELCASES, ...TIMBERCASES, ...SITE, ...FDN, ...RAFT, ...ROOF, ...CONC, ...CONN, ...LATERAL, ...LOT6, ...BRACE];
+export const VERIFICATION_CASES: VCase[] = [...FRAME, ...STEELCASES, ...TIMBERCASES, ...SITE, ...FDN, ...RAFT, ...ROOF, ...DECK, ...CONC, ...CONN, ...LATERAL, ...LOT6, ...BRACE];
 
 export function checkCase(c: VCase): VResult {
   const { run, ...rest } = c;

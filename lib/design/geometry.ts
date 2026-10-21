@@ -10,8 +10,9 @@ import { parseTimberSection, STEEL } from "./materials";
 import { along, framingTop, memberLength, type DesignModel, type Level, type Member, type Pt, type RoofSpec } from "./model";
 import { poleLayout } from "./retaining";
 import { defaultRaft } from "./raft";
+import { deckLayout, stairLayout } from "./deck";
 
-export type Layer = "walls" | "framing" | "glass" | "joists" | "flooring" | "roof" | "purlins" | "roofing" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining";
+export type Layer = "walls" | "framing" | "glass" | "joists" | "flooring" | "roof" | "purlins" | "roofing" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining" | "deck" | "deckboards" | "stairs";
 export type Tone =
   | "member"
   | "framing"
@@ -26,6 +27,11 @@ export type Tone =
   | "joist"
   | "joistDbl"
   | "floorSheet"
+  | "deckJoist"
+  | "deckBoard"
+  | "pile"
+  | "stringer"
+  | "tread"
   | "rafter"
   | "truss"
   | "purlin"
@@ -216,6 +222,70 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
     case "pile": {
       const dia = (Number.parseFloat(m.section) || 125) / 1000;
       return [{ kind: "col", id: m.id, layer: "foundations", tone: "member", x: m.a.x, y: m.a.y, z0: base - 0.9, z1: base + Math.max(0, level.height - 0.15), w: dia, d: dia, round: true }];
+    }
+    case "deck": {
+      const lay = deckLayout(m);
+      if (!lay || !m.deck) return [];
+      const top = base + m.deck.height;
+      const jd = secOf(m, undefined).d;
+      const bs = parseTimberSection((r?.kv.find((k) => k.label === "Bearers")?.value.split(" ")[0] ?? "").replace("×", "x")) ?? { d: 190, b: 90 };
+      const bd = bs.d / 1000,
+        bw = bs.b / 1000;
+      const P = (u: number, v: number): Pt => (lay.ns ? { x: v, y: u } : { x: u, y: v });
+      const zj1 = top - 0.02,
+        zj0 = zj1 - jd;
+      // boards across the joists
+      for (let u = lay.u0 + 0.072, k = 0; u < lay.u1 && k < 400; u += 0.145, k++)
+        out.push({ kind: "bar", id: m.id, layer: "deckboards", tone: "deckBoard", a: P(u, lay.v0), b: P(u, lay.v1), z0: top - 0.02, z1: top, w: 0.14 });
+      // joists, with an edge joist each side
+      const vs: number[] = [];
+      for (let v = lay.v0 + 0.0225; v <= lay.v1 - 0.0225 + 1e-6 && vs.length < 400; v += m.deck.spacing / 1000) vs.push(v);
+      if (lay.v1 - 0.0225 - vs[vs.length - 1] > 0.05) vs.push(lay.v1 - 0.0225);
+      for (const v of vs) out.push({ kind: "bar", id: m.id, layer: "deck", tone: "deckJoist", a: P(lay.u0, v), b: P(lay.u1, v), z0: zj0, z1: zj1, w: 0.045 });
+      for (const bline of lay.bearers) {
+        if (bline.ledger) {
+          // stringer bolted to the building, beside the joist ends
+          out.push({ kind: "bar", id: m.id, layer: "deck", tone: "deckJoist", a: P(bline.u, lay.v0), b: P(bline.u, lay.v1), z0: zj0, z1: zj1, w: 0.045 });
+          continue;
+        }
+        out.push({ kind: "bar", id: m.id, layer: "deck", tone: "deckJoist", a: P(bline.u, lay.v0), b: P(bline.u, lay.v1), z0: zj0 - bd, z1: zj0, w: bw });
+        for (const v of bline.piles) {
+          const q = P(bline.u, v);
+          const ground = top - m.deck.drop;
+          out.push({ kind: "col", id: m.id, layer: "foundations", tone: "pile", x: q.x, y: q.y, z0: ground - 0.45, z1: zj0 - bd, w: 0.125, d: 0.125 });
+          out.push({ kind: "col", id: m.id, layer: "foundations", tone: "concrete", x: q.x, y: q.y, z0: ground - 0.6, z1: ground - 0.05, w: 0.4, d: 0.4 });
+        }
+      }
+      return out;
+    }
+    case "stair": {
+      if (!m.b || !m.stair) return [];
+      const lvl = model.levels.find((l) => l.id === m.levelId)!;
+      const above = levelAbove(model, lvl);
+      const lay = stairLayout(m, m.stair.rise ?? (above ? above.elevation - lvl.elevation : lvl.height));
+      if (!lay) return [];
+      const L = lay.run;
+      const tx = (m.b.x - m.a.x) / L,
+        ty = (m.b.y - m.a.y) / L;
+      const nx = -ty,
+        ny = tx;
+      const at = (s: number, lat: number): Pt => ({ x: m.a.x + tx * s + nx * lat, y: m.a.y + ty * s + ny * lat });
+      const w = m.stair.width;
+      const lats = m.stair.stringers === 3 ? [-(w / 2 - 0.0225), 0, w / 2 - 0.0225] : [-(w / 2 - 0.0225), w / 2 - 0.0225];
+      const sd = secOf(m, r).d;
+      // stringer centre line, just under the tread nosings
+      const zc = (s: number) => base + (lay.R * s) / lay.G + lay.R - 0.03 - (sd / 2) * Math.hypot(lay.R, lay.G) / lay.G;
+      for (const lat of lats) {
+        const a = at(-0.05, lat),
+          b = at(L, lat);
+        out.push({ kind: "beam3", id: m.id, layer: "stairs", tone: "stringer", a: { ...a, z: zc(-0.05) }, b: { ...b, z: zc(L) }, w: 0.045, d: sd });
+      }
+      for (let k = 1; k < lay.risers; k++) {
+        const zt = base + k * lay.R;
+        for (const sc of [(k - 1) * lay.G + 0.07, (k - 1) * lay.G + Math.min(0.21, lay.G - 0.07)])
+          out.push({ kind: "bar", id: m.id, layer: "stairs", tone: "tread", a: at(sc, -w / 2), b: at(sc, w / 2), z0: zt - 0.03, z1: zt, w: 0.14 });
+      }
+      return out;
     }
     case "raft": {
       if (!m.b) return [];
@@ -453,6 +523,8 @@ export function tagPoint(model: DesignModel, calcs: Calcs, id: string): { x: num
   const level = model.levels.find((l) => l.id === (vl?.wall.levelId ?? m.levelId));
   if (!level) return null;
   const mid = m.b ? { x: (m.a.x + m.b.x) / 2, y: (m.a.y + m.b.y) / 2 } : m.a;
+  if (m.type === "deck") return { x: mid.x, y: mid.y, z: level.elevation + (m.deck?.height ?? 0) + 0.4 };
+  if (m.type === "stair") return { x: mid.x, y: mid.y, z: level.elevation + (level.height / 2) };
   const z =
     m.type === "post" || m.type === "pile" || m.type === "footing"
       ? level.elevation + 0.6

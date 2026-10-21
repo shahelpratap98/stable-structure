@@ -183,7 +183,17 @@ export async function planImage(
     line(m.a, m.b, fail(l.id) ? "#b8342a" : MEMBER_INFO.lintel.colour, px * 2.2);
     tags.push({ at: { x: (m.a.x + m.b.x) / 2, y: (m.a.y + m.b.y) / 2 }, text: calcs.results.get(l.id)?.mark ?? m.label, colour: MEMBER_INFO.lintel.colour });
   }
-  for (const m of members.filter((x) => x.b && ["beam", "lintel", "joist", "rafter", "bracing"].includes(x.type))) {
+  for (const m of members.filter((x) => x.type === "deck" && x.b)) {
+    const a = P({ x: Math.min(m.a.x, m.b!.x), y: Math.min(m.a.y, m.b!.y) }),
+      c = P({ x: Math.max(m.a.x, m.b!.x), y: Math.max(m.a.y, m.b!.y) });
+    ctx.fillStyle = MEMBER_INFO.deck.colour + "18";
+    ctx.fillRect(a.x, a.y, c.x - a.x, c.y - a.y);
+    ctx.strokeStyle = fail(m.id) ? "#b8342a" : MEMBER_INFO.deck.colour;
+    ctx.lineWidth = px * 1.4;
+    ctx.strokeRect(a.x, a.y, c.x - a.x, c.y - a.y);
+    tags.push({ at: { x: (m.a.x + m.b!.x) / 2, y: (m.a.y + m.b!.y) / 2 }, text: m.label, colour: MEMBER_INFO.deck.colour });
+  }
+  for (const m of members.filter((x) => x.b && ["beam", "lintel", "joist", "rafter", "bracing", "stair"].includes(x.type))) {
     const colour = fail(m.id) ? "#b8342a" : MEMBER_INFO[m.type].colour;
     const w = m.type === "bracing" ? px * 1.6 : px * 2.2;
     line(m.a, m.b!, "#ffffff", w + px * 2); // halo, so members stand clear of the underlay

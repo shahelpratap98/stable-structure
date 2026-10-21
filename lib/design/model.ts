@@ -14,6 +14,7 @@
 import { normaliseSite, type SiteData } from "./site";
 import { normalisePaperwork, type Paperwork } from "./paperwork";
 import { defaultRaft, type RaftSpec } from "./raft";
+import { defaultDeck, defaultStair, type DeckSpec, type StairSpec } from "./deck";
 export type Pt = { x: number; y: number };
 
 export type MemberType =
@@ -23,6 +24,8 @@ export type MemberType =
   | "rafter"
   | "joistzone"
   | "raft"
+  | "deck"
+  | "stair"
   | "wall"
   | "post"
   | "bracing"
@@ -128,6 +131,8 @@ export type Member = {
   wall?: WallSpec;
   zone?: ZoneSpec;
   raft?: RaftSpec;
+  deck?: DeckSpec;
+  stair?: StairSpec;
   brace?: { system: BraceSystem; line?: string; bu?: number; base?: "fixed" | "pinned" }; // bu: rating for specifically designed elements; base: portal leg bases
   rw?: RetainSpec;
   height?: number; // m, post height override
@@ -185,7 +190,7 @@ export const gridFromText = (text: string): GridLine[] =>
     .filter((g) => Number.isFinite(g.at));
 export const gridToText = (g: GridLine[]) => g.map((l) => `${l.n}=${l.at}`).join(", ");
 
-export const MEMBER_TYPES: MemberType[] = ["beam", "lintel", "joist", "rafter", "joistzone", "wall", "post", "bracing", "footing", "pile", "raft", "retaining"];
+export const MEMBER_TYPES: MemberType[] = ["beam", "lintel", "joist", "rafter", "joistzone", "wall", "post", "bracing", "footing", "pile", "raft", "deck", "stair", "retaining"];
 
 export const MEMBER_INFO: Record<MemberType, { label: string; prefix: string; line: boolean; colour: string; key: string; area?: boolean }> = {
   beam: { label: "Beam", prefix: "B", line: true, colour: "#2563eb", key: "b" },
@@ -199,6 +204,8 @@ export const MEMBER_INFO: Record<MemberType, { label: string; prefix: string; li
   footing: { label: "Pad footing", prefix: "F", line: false, colour: "#57534e", key: "f" },
   pile: { label: "Timber pile", prefix: "PL", line: false, colour: "#a16207", key: "i" },
   raft: { label: "Rib raft slab", prefix: "RF", line: true, colour: "#0f766e", key: "k", area: true },
+  deck: { label: "Deck", prefix: "DK", line: true, colour: "#6b7a3a", key: "d", area: true },
+  stair: { label: "Stair", prefix: "ST", line: true, colour: "#7d6a4f", key: "e" },
   retaining: { label: "Retaining wall", prefix: "RW", line: true, colour: "#7c5a35", key: "t" },
 };
 
@@ -214,6 +221,8 @@ export const DEFAULT_SECTION: Record<MemberType, string> = {
   footing: "600x600x300",
   pile: "125",
   raft: "",
+  deck: "240x45",
+  stair: "240x45",
   retaining: "",
 };
 
@@ -293,6 +302,8 @@ export function normaliseModel(raw: unknown): DesignModel {
       if (out.type === "wall") out.wall = { ...defaultWall(), ...(out.wall ?? {}), openings: Array.isArray(out.wall?.openings) ? out.wall!.openings : [] };
       if (out.type === "joistzone") out.zone = { ...defaultZone(), ...(out.zone ?? {}), ...(out.zone?.roof ? { roof: { ...defaultRoof(), ...out.zone.roof } } : {}) };
       if (out.type === "raft") out.raft = { ...defaultRaft(), ...(out.raft ?? {}) };
+      if (out.type === "deck") out.deck = { ...defaultDeck(), ...(out.deck ?? {}) };
+      if (out.type === "stair") out.stair = { ...defaultStair(), ...(out.stair ?? {}) };
       if (out.type === "retaining") out.rw = { kind: "pole", h0: 1, h1: 1, ...(out.rw ?? {}) };
       // v1 loaded width -> tributaries on whatever surface the level carries
       if (!out.trib && out.tribWidth !== undefined && (out.type === "beam" || out.type === "lintel")) {
@@ -393,6 +404,10 @@ export function describeMember(m: Member) {
       return `${m.section} mm pad`;
     case "pile":
       return `${m.section} mm pile`;
+    case "deck":
+      return `Deck, ${m.section} H3.2 joists @ ${m.deck?.spacing ?? 400}`;
+    case "stair":
+      return `Stair, ${m.stair?.stringers ?? 3} × ${m.section} H3.2 stringers, ${((m.stair?.width ?? 1) * 1000).toFixed(0)} wide`;
     case "raft": {
       const r = m.raft ?? defaultRaft();
       return `Rib raft, ${r.pod + r.topping} deep, ribs ${r.ribWidth} @ ${r.ribSpacing}`;

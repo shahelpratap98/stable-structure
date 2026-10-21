@@ -6,6 +6,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadKind, runCalcs, type Calcs } from "@/lib/design/calc";
 import { cloudsOn, diffModels } from "@/lib/design/diff";
 import { defaultRaft } from "@/lib/design/raft";
+import { defaultDeck, defaultStair } from "@/lib/design/deck";
+import { joinWallRuns } from "@/lib/design/walls";
 import { exportIfc } from "@/lib/design/ifc";
 import { FAMILY_COLOUR, FAMILY_LABEL } from "@/lib/design/materials";
 import {
@@ -67,9 +69,13 @@ function newMember(model: DesignModel, type: MemberType, levelId: string, a: Pt,
     ...(type === "bracing" ? { brace: { system: "GS2N" as const } } : {}),
     ...(type === "retaining" ? { rw: { kind: "pole" as const, h0: 1, h1: 1 } } : {}),
     ...(type === "raft" ? { material: "concrete" as const, raft: defaultRaft() } : {}),
+    ...(type === "deck" ? { grade: "SG8" as const, deck: defaultDeck() } : {}),
+    ...(type === "stair" ? { grade: "SG8" as const, stair: defaultStair() } : {}),
   };
   if (MEMBER_INFO[type].area && b) {
     // joists span the shorter way across the zone
+    // deck joists span the shorter way, like a joist zone
+    if (type === "deck" && m.deck) m.deck = { ...m.deck, dir: Math.abs(b.y - a.y) <= Math.abs(b.x - a.x) ? "y" : "x" };
     if (type === "joistzone") {
       m.zone = { ...defaultZone(), dir: Math.abs(b.y - a.y) <= Math.abs(b.x - a.x) ? "y" : "x" };
       // over the top storey it is roof framing: rafters at 900 to a ridge
@@ -466,14 +472,33 @@ export function DesignEditor({
     const add: Member[] = [];
     // blue-filled walls on an engineer's plan are blockwork (15 series)
     const blue = hue === 7 || hue === 8;
-    for (const l of found.lines.filter((x) => x.hue === hue)) {
-      const mem = newMember({ ...m, members: [...m.members, ...add] }, as, level.id, toWorld(frameNow, l.a), toWorld(frameNow, l.b));
-      if (as === "beam" && l.label) mem.label = l.label;
-      if (as === "wall" && blue && mem.wall) mem.wall = { ...mem.wall, kind: "block", thickness: 140 };
-      add.push(mem);
+    const lines = found.lines.filter((x) => x.hue === hue);
+    let openings = 0;
+    if (as === "beam")
+      for (const l of lines) {
+        const mem = newMember({ ...m, members: [...m.members, ...add] }, "beam", level.id, toWorld(frameNow, l.a), toWorld(frameNow, l.b));
+        if (l.label) mem.label = l.label;
+        add.push(mem);
+      }
+    else {
+      // wall pieces in line become one wall; the breaks between them become windows and doors
+      const prefix = level.elevation > 0.5 ? "LF" : "L";
+      for (const run of joinWallRuns(lines.map((l) => ({ a: toWorld(frameNow, l.a), b: toWorld(frameNow, l.b) })))) {
+        const work = { ...m, members: [...m.members, ...add] };
+        const mem = newMember(work, "wall", level.id, run.a, run.b);
+        if (mem.wall) {
+          mem.wall = { ...mem.wall, ...(blue ? { kind: "block" as const, thickness: 140 } : {}), openings: [] };
+          for (const o of run.openings) {
+            const op: Opening = { id: newId().slice(0, 8), label: nextMark({ members: [...work.members, mem] }, prefix), offset: o.offset, width: o.width, sill: o.sill };
+            mem.wall.openings.push(op);
+            openings++;
+          }
+        }
+        add.push(mem);
+      }
     }
     m = { ...m, members: [...m.members, ...add] };
-    commit(m, `Added ${add.length} ${as === "beam" ? "beams" : blue ? "block walls" : "walls"} found on the sheet`);
+    commit(m, `Added ${add.length} ${as === "beam" ? "beams" : blue ? "block walls" : "walls"}${openings ? ` with ${openings} openings` : ""} found on the sheet`);
     setFound({ ...found, lines: found.lines.filter((x) => x.hue !== hue) });
   };
   const foundHere = found && found.levelId === level.id ? found.lines : [];

@@ -150,6 +150,16 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   ID tags in the model, set-out grid lines with bubbles (`model.grids`,
   entered on the Levels tab and shown on the plans too), grouped layers,
   a toggle per level and a "lift roof" slider.
+- **Decks and stairs** (`lib/design/deck.ts`): a deck is an area of H3.2
+  joists on 2/190×45-class bearers on 125×125 H5 piles with 400 × 400 × 600
+  footings and 140×20 boards (optionally bolted to the building along one
+  edge), designed for G 0.7 / Q 2.0 kPa. A stair is a line from foot to head:
+  risers ≤ 190 and goings ≥ 280 are checked and the stringers designed on
+  their run. Both draw like the 26121 framing model.
+- **Windows from the drawing** (`lib/design/walls.ts`): wall pieces found on
+  the sheet that lie in line are joined into one wall, and breaks of
+  0.5–3.6 m become openings (windows, sill 0.9; 2.4 m or more, doors), each
+  with its own lintel.
 - **Rib rafts**: `lib/design/raft.ts`. Drawn as a rectangle; carries the
   walls and posts on its level (or the storey above, when drawn on the
   foundation level). Average, edge beam and under-wall bearing, post
