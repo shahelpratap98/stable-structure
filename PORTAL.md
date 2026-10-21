@@ -155,7 +155,9 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   a "lift roof" slider. Like those models it uses three.js colours as given
   (colour management off, linear output), has a toolbar across the top
   (Iso / Plan / elevations, then a toggle per set: each storey's walls, the
-  floor framing over it, the roof, retaining walls) and a Selected card.
+  floor framing over it, the roof, retaining walls) and a Selected card,
+  plus a 1 m ground grid (a layer) and an X / Y / Z axes gizmo in the
+  bottom-right corner that turns with the camera.
   Tags are coloured by kind; failing members' tags turn red only when
   colouring by result. Headers in non-loadbearing walls are not tagged.
 - **Supports read off the model** (as the 26121 calcs take them): a

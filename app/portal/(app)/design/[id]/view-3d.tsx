@@ -34,7 +34,7 @@ type Props = {
 };
 
 type TagCat = "id_beam" | "id_lintel" | "id_post" | "id_wall" | "id_rw";
-type Key = Layer | "grid" | TagCat;
+type Key = Layer | "grid" | "ground" | TagCat;
 
 // role colours, as in the framing models
 const FRAME = {
@@ -74,6 +74,7 @@ const LAYERS: { key: Key; label: string; on: boolean; sw: string; group: string 
   { key: "bracing", label: "Bracing elements (GIB)", on: true, sw: "#d1495b", group: "Walls & bracing" },
   { key: "roofing", label: "Roofing", on: false, sw: "#59626b", group: "Walls & bracing" },
   { key: "grid", label: "Grid lines", on: true, sw: FRAME.grid, group: "Walls & bracing" },
+  { key: "ground", label: "Ground grid (1 m)", on: true, sw: "#b7c2ce", group: "Site" },
   { key: "retaining", label: "Retaining walls", on: true, sw: "#8a6f4a", group: "Site" },
   { key: "id_beam", label: "Beam IDs", on: true, sw: "#2f5f86", group: "IDs" },
   { key: "id_lintel", label: "Lintel IDs", on: true, sw: "#b25820", group: "IDs" },
@@ -343,6 +344,45 @@ function extents(model: DesignModel) {
   return Number.isFinite(x0) ? { x0, x1, y0, y1 } : null;
 }
 
+// X / Y / Z arrows drawn in a corner of the view, turning with the camera:
+// X along plan x, Y along plan y, Z up (three.js x, z and y).
+function axesGizmo() {
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#f8f9f6");
+  const axis = (to: [number, number, number], colour: number, label: string) => {
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1, 8), new THREE.MeshBasicMaterial({ color: colour }));
+    shaft.position.set(to[0] / 2, to[1] / 2, to[2] / 2);
+    shaft.lookAt(to[0], to[1], to[2]);
+    shaft.rotateX(Math.PI / 2);
+    scene.add(shaft);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.26, 12), new THREE.MeshBasicMaterial({ color: colour }));
+    cone.position.set(...to);
+    cone.lookAt(to[0] * 2, to[1] * 2, to[2] * 2);
+    cone.rotateX(Math.PI / 2);
+    scene.add(cone);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: bubbleTexture(label), depthTest: false }));
+    sp.scale.set(0.5, 0.5, 1);
+    sp.position.set(to[0] * 1.38, to[1] * 1.38, to[2] * 1.38);
+    scene.add(sp);
+  };
+  axis([1, 0, 0], 0xd1495b, "X");
+  axis([0, 0, 1], 0x2a9d8f, "Y");
+  axis([0, 1, 0], 0x2c5e7d, "Z");
+  const camera = new THREE.OrthographicCamera(-1.7, 1.7, 1.7, -1.7, 0.1, 10);
+  return { scene, camera };
+}
+
+// A 1 m ground grid under the model at floor level 0.
+function groundObjects(model: DesignModel): THREE.Object3D[] {
+  const ex = extents(model);
+  const cx = ex ? Math.round((ex.x0 + ex.x1) / 2) : 0,
+    cy = ex ? Math.round((ex.y0 + ex.y1) / 2) : 0;
+  const size = ex ? Math.max(20, 2 * Math.ceil((Math.max(ex.x1 - ex.x0, ex.y1 - ex.y0) * 1.5) / 2)) : 40;
+  const grid = new THREE.GridHelper(size, size, 0xb7c2ce, 0xd6dde5);
+  grid.position.set(cx, -0.002, cy);
+  return [grid];
+}
+
 function gridObjects(model: DesignModel): THREE.Object3D[] {
   const out: THREE.Object3D[] = [];
   const gx = model.grids?.x ?? [],
@@ -411,10 +451,28 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     scene.add(root);
     stage.current = { renderer, scene, camera, controls, root, framed: false };
 
+    const gizmo = axesGizmo();
+    const dir = new THREE.Vector3();
     let frame = 0;
     const loop = () => {
       controls.update();
       renderer.render(scene, camera);
+      // the axes gizmo, bottom right above the hint, looking the same way as the camera
+      const size = 96,
+        w = el.clientWidth;
+      dir.copy(camera.position).sub(controls.target).normalize().multiplyScalar(4);
+      gizmo.camera.position.copy(dir);
+      gizmo.camera.up.copy(camera.up);
+      gizmo.camera.lookAt(0, 0, 0);
+      renderer.autoClear = false;
+      renderer.setScissorTest(true);
+      renderer.setScissor(w - size - 8, 34, size, size);
+      renderer.setViewport(w - size - 8, 34, size, size);
+      renderer.clearDepth();
+      renderer.render(gizmo.scene, gizmo.camera);
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, w, el.clientHeight);
+      renderer.autoClear = true;
       frame = requestAnimationFrame(loop);
     };
     loop();
@@ -562,6 +620,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     }
 
     if (layers.grid) for (const o of gridObjects(model)) s.root.add(o);
+    if (layers.ground) for (const o of groundObjects(model)) s.root.add(o);
 
     if (box.isEmpty())
       s.root.children.forEach((o) => {

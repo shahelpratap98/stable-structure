@@ -203,7 +203,7 @@ export default async function DesignGuidePage() {
         <H id="views">9. 3D, sheets and IFC</H>
         <Points>
           <li>
-            <T>Plan + 3D</T> shows both side by side. The 3D model is drawn like our framing models: the bar across the top has the views (Iso, Plan, South, East…) and a button for each set (each floor&apos;s walls, the floor framing, the roof, retaining walls) to show or hide it; <T>Layers</T> has the layer switches and sliders to lift the roof and pull the levels apart. Click a member to see it in the Selected card.
+            <T>Plan + 3D</T> shows both side by side. The 3D model is drawn like our framing models: the bar across the top has the views (Iso, Plan, South, East…) and a button for each set (each floor&apos;s walls, the floor framing, the roof, retaining walls) to show or hide it; <T>Layers</T> has the layer switches and sliders to lift the roof and pull the levels apart. Click a member to see it in the Selected card. The 1 m ground grid can be switched off under Layers, and the X / Y / Z arrows in the corner show which way you&apos;re looking (X and Y along the plan, Z up).
           </li>
           <li>
             <T>Sheets</T> is the long-form schedule: members, joists, lintels, posts and foundations, walls, bracing sheets and retaining walls. Click a row to jump to the member.
