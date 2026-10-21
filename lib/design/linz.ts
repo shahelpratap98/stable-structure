@@ -23,16 +23,20 @@ function key() {
 async function wfs(params: Record<string, string>): Promise<LinzResult<{ features?: { geometry?: { type: string; coordinates: unknown }; properties?: Record<string, unknown> }[] }>> {
   const k = key();
   if (!k) return { ok: false, message: "The LINZ key isn't set on this deployment (LINZ_KEY)." };
-  const qs = new URLSearchParams({ service: "WFS", version: "1.0.0", request: "GetFeature", srsName: "EPSG:4326", outputFormat: "application/json", ...params });
+  const qs = new URLSearchParams({ service: "WFS", version: "1.0.0", request: "GetFeature", srsName: "EPSG:4326", outputFormat: "json", ...params });
   try {
     const res = await fetch(`${LDS};key=${encodeURIComponent(k)}/wfs?${qs}`, { cache: "no-store", signal: AbortSignal.timeout(10000) });
     const text = await res.text();
-    // never pass the URL (it holds the key) back to the browser
-    if (!res.ok) return { ok: false, message: `LINZ answered ${res.status}${text ? `: ${text.replaceAll(k, "…").slice(0, 160)}` : ""}` };
+    // LINZ's own words from an exception report, never the URL (it holds the key)
+    const why = () => {
+      const m = text.match(/<(?:ows:)?(?:ServiceException|ExceptionText)[^>]*>([\s\S]*?)<\//);
+      return (m ? m[1] : text).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().replaceAll(k, "…").slice(0, 300);
+    };
+    if (!res.ok) return { ok: false, message: `LINZ answered ${res.status}: ${why()}` };
     try {
       return { ok: true, value: JSON.parse(text) };
     } catch {
-      return { ok: false, message: `LINZ sent something other than JSON: ${text.replaceAll(k, "…").slice(0, 160)}` };
+      return { ok: false, message: `LINZ: ${why()}` };
     }
   } catch (e) {
     return { ok: false, message: e instanceof Error && e.name === "TimeoutError" ? "LINZ took too long to answer." : "Couldn't reach LINZ." };
@@ -48,7 +52,12 @@ function lonLat(c: unknown): [number, number] | null {
 export async function findAddresses(q: string): Promise<LinzResult<FoundAddress[]>> {
   const filter = addressFilter(q);
   if (!filter) return { ok: false, message: "Type more of the address." };
-  const r = await wfs({ typeName: ADDRESSES, maxFeatures: "8", cql_filter: filter });
+  // WFS 1.0.0 first; LINZ's own examples use 2.0.0, so fall back to it
+  let r = await wfs({ typeName: ADDRESSES, maxFeatures: "8", cql_filter: filter });
+  if (!r.ok) {
+    const r2 = await wfs({ version: "2.0.0", typeNames: ADDRESSES, count: "8", cql_filter: filter });
+    r = r2.ok ? r2 : { ok: false, message: `${r.message} (2.0.0: ${r2.message})` };
+  }
   if (!r.ok) return r;
   const out: FoundAddress[] = [];
   for (const f of r.value.features ?? []) {
