@@ -19,12 +19,17 @@ import { type BraceSystem, type DesignModel, type MemberType } from "@/lib/desig
 
 export type ColourBy = "type" | "result" | "material";
 
+// The framing models were drawn with three.js r147, which applied hex colours as
+// they are and wrote the result without colour conversion. Match that, so the
+// timber and steel come out the same shades.
+THREE.ColorManagement.enabled = false;
+
 type Props = {
   model: DesignModel;
   calcs: Calcs;
   selectedId: string | null;
   colourBy: ColourBy;
-  upToLevel: string | "all";
+  upToLevel?: string | "all";
   onSelect: (id: string | null) => void;
 };
 
@@ -58,14 +63,14 @@ const LAYERS: { key: Key; label: string; on: boolean; sw: string; group: string 
   { key: "posts", label: "Posts", on: true, sw: FRAME.postSteel, group: "Structure" },
   { key: "framing", label: "Wall framing (studs, plates, nogs)", on: true, sw: FRAME.stud, group: "Structure" },
   { key: "roof", label: "Rafters & trusses", on: true, sw: FRAME.rafter, group: "Structure" },
-  { key: "purlins", label: "Purlins", on: true, sw: FRAME.purlin, group: "Structure" },
+  { key: "purlins", label: "Firrings & purlins", on: true, sw: FRAME.purlin, group: "Structure" },
   { key: "flooring", label: "Flooring", on: false, sw: "#cdb58a", group: "Structure" },
   { key: "foundations", label: "Footings, piles & slabs", on: true, sw: FRAME.concrete, group: "Structure" },
   { key: "deck", label: "Deck framing H3.2", on: true, sw: "#8c9a5b", group: "Structure" },
   { key: "deckboards", label: "Deck boards", on: true, sw: "#a58a63", group: "Structure" },
   { key: "stairs", label: "External stairs", on: true, sw: "#7d6a4f", group: "Structure" },
   { key: "walls", label: "Wall shading", on: true, sw: "#9fb6c4", group: "Walls & bracing" },
-  { key: "glass", label: "Glazing", on: true, sw: "#8fc3e8", group: "Walls & bracing" },
+  { key: "glass", label: "Glazing", on: false, sw: "#8fc3e8", group: "Walls & bracing" },
   { key: "bracing", label: "Bracing elements (GIB)", on: true, sw: "#d1495b", group: "Walls & bracing" },
   { key: "roofing", label: "Roofing", on: false, sw: "#59626b", group: "Walls & bracing" },
   { key: "grid", label: "Grid lines", on: true, sw: FRAME.grid, group: "Walls & bracing" },
@@ -114,6 +119,35 @@ const TONE: Record<Exclude<Tone, "member" | `brace:${string}`>, { c: string; o?:
   rail: { c: "#8a6f4a" },
 };
 const ROOF_LAYERS = new Set<Layer>(["roof", "purlins", "roofing"]);
+const WALL_LAYERS = new Set<Layer>(["walls", "framing", "glass", "bracing", "posts", "lintels", "foundations"]);
+
+// The model's sets, as the framing models have them: "GF walls", "Mid floor", "FF walls", "Roof", "Retaining walls".
+type ViewSet = { key: string; label: string };
+const short = (name: string) => (/^ground/i.test(name) ? "GF" : /^first/i.test(name) ? "FF" : /^second/i.test(name) ? "SF" : /^found|^lower|^base/i.test(name) ? "Lower" : name);
+function viewSets(model: DesignModel) {
+  const levels = [...model.levels].sort((a, b) => a.elevation - b.elevation);
+  const storeys = levels.filter((l) => l.kind !== "roof");
+  const sets: ViewSet[] = [];
+  const top = storeys[storeys.length - 1];
+  const floors = storeys.slice(0, -1);
+  for (const l of storeys) {
+    if (model.members.some((m) => m.levelId === l.id && ["wall", "post", "bracing", "footing", "pile", "raft"].includes(m.type))) sets.push({ key: `w:${l.id}`, label: `${short(l.name)} walls` });
+    if (l !== top && model.members.some((m) => m.levelId === l.id && !["wall", "post", "bracing", "footing", "pile", "raft", "retaining"].includes(m.type)))
+      sets.push({ key: `f:${l.id}`, label: floors.length === 1 ? "Mid floor" : `${short(storeys[storeys.indexOf(l) + 1].name)} floor` });
+  }
+  sets.push({ key: "roof", label: "Roof" });
+  if (model.members.some((m) => m.type === "retaining")) sets.push({ key: "rw", label: "Retaining walls" });
+  return { sets, top };
+}
+// which set a part (or a member's tag) belongs to
+function setOf(model: DesignModel, top: { id: string } | undefined, levelId: string, layer: Layer | "tag", type?: MemberType | "lintel") {
+  const level = model.levels.find((l) => l.id === levelId);
+  if (layer === "retaining" || type === "retaining") return "rw";
+  if (level?.kind === "roof" || ROOF_LAYERS.has(layer as Layer)) return "roof";
+  const wallish = layer === "tag" ? ["wall", "post", "bracing", "footing", "pile", "raft", "lintel"].includes(type ?? "") : WALL_LAYERS.has(layer);
+  if (wallish) return `w:${levelId}`;
+  return levelId === top?.id ? "roof" : `f:${levelId}`;
+}
 
 type Stage = {
   renderer: THREE.WebGLRenderer;
@@ -137,6 +171,23 @@ function partGeometry(p: Part): THREE.BufferGeometry | null {
     g.rotateZ(Math.atan2(dz, run));
     g.rotateY(-Math.atan2(dy, dx));
     g.translate((p.a.x + p.b.x) / 2, (p.a.z + p.b.z) / 2, (p.a.y + p.b.y) / 2);
+    return g;
+  }
+  if (p.kind === "wedge") {
+    const dx = p.b.x - p.a.x,
+      dy = p.b.y - p.a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.003) return null;
+    const g = new THREE.BoxGeometry(len, 1, Math.max(0.004, p.w));
+    const pos = g.attributes.position;
+    // flat underside, top rising from h0 at a to h1 at b
+    for (let i = 0; i < pos.count; i++) {
+      const f = pos.getX(i) / len + 0.5;
+      pos.setY(i, pos.getY(i) > 0 ? p.h0 + (p.h1 - p.h0) * f : 0);
+    }
+    g.computeVertexNormals();
+    g.rotateY(-Math.atan2(dy, dx));
+    g.translate((p.a.x + p.b.x) / 2, p.z0, (p.a.y + p.b.y) / 2);
     return g;
   }
   if (p.kind === "poly") {
@@ -208,7 +259,7 @@ function memberColour(model: DesignModel, calcs: Calcs, id: string): string {
   const roof = loadKind(model, model.levels.find((l) => l.id === m.levelId)) === "roof";
   switch (m.type) {
     case "post":
-      return steel ? FRAME.postSteel : FRAME.postTimber;
+      return steel || m.material === "steel" ? FRAME.postSteel : FRAME.postTimber;
     case "pile":
       return FRAME.pile;
     case "footing":
@@ -241,7 +292,6 @@ function tagTexture(text: string, bg: string) {
   g.textBaseline = "middle";
   g.fillText(text, 14, 34);
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
   t.userData = { ratio: c.width / c.height };
   texCache.set(key, t);
   return t;
@@ -266,7 +316,6 @@ function bubbleTexture(text: string) {
   g.textBaseline = "middle";
   g.fillText(text, 64, 68);
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
   texCache.set(key, t);
   return t;
 }
@@ -331,7 +380,8 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const [explode, setExplode] = useState(0);
   const [liftRoof, setLiftRoof] = useState(0);
   const [panel, setPanel] = useState(false);
-  const [hidden, setHidden] = useState<string[]>([]); // levels switched off
+  const [hidden, setHidden] = useState<string[]>([]); // sets switched off (storey walls, floor framing, roof, retaining)
+  const [view, setViewName] = useState<"iso" | "top" | "north" | "south" | "east" | "west" | null>("iso"); // null once orbited
   const [built, setBuilt] = useState(0); // bumps after each rebuild, so the selection is reapplied
   useEffect(() => {
     select.current = onSelect;
@@ -342,6 +392,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     const el = host.current;
     if (!el) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     renderer.setSize(el.clientWidth, el.clientHeight);
     el.appendChild(renderer.domElement);
@@ -355,6 +406,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
+    controls.addEventListener("start", () => setViewName(null)); // orbiting leaves the named view
     const root = new THREE.Group();
     scene.add(root);
     stage.current = { renderer, scene, camera, controls, root, framed: false };
@@ -431,12 +483,13 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     }
 
     const levels = [...model.levels].sort((a, b) => a.elevation - b.elevation);
-    const cutoff = upToLevel === "all" ? Infinity : (model.levels.find((l) => l.id === upToLevel)?.elevation ?? Infinity);
+    const cutoff = !upToLevel || upToLevel === "all" ? Infinity : (model.levels.find((l) => l.id === upToLevel)?.elevation ?? Infinity);
     const lift = new Map(levels.map((l, i) => [l.id, i * explode]));
     const typeOf = (id: string): MemberType | "lintel" | undefined => (id.includes("#") ? "lintel" : model.members.find((m) => m.id === id)?.type);
-    const shown = (levelId: string | undefined) => {
+    const { top } = viewSets(model);
+    const shown = (levelId: string | undefined, layer: Layer | "tag", type?: MemberType | "lintel") => {
       const l = model.levels.find((x) => x.id === levelId);
-      return !!l && l.elevation <= cutoff + 1e-6 && !hidden.includes(l.id);
+      return !!l && l.elevation <= cutoff + 1e-6 && !hidden.includes(setOf(model, top, l.id, layer, type));
     };
 
     const colourFor = (id: string, tone: Tone): { c: string; o?: number } => {
@@ -455,7 +508,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     // merge each member's parts by tone, so a whole joist zone or wall frame is one mesh
     const buckets = new Map<string, { id: string; tone: Tone; layer: Layer; geos: THREE.BufferGeometry[] }>();
     for (const { part, level } of allParts(model, calcs)) {
-      if (!shown(level.id) || !layers[part.layer]) continue;
+      if (!shown(level.id, part.layer) || !layers[part.layer]) continue;
       const g = partGeometry(part);
       if (!g) continue;
       g.translate(0, (lift.get(level.id) ?? 0) + (ROOF_LAYERS.has(part.layer) ? liftRoof : 0), 0);
@@ -478,25 +531,28 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       mesh.userData.see = o !== undefined && o < 0.8 && !b.tone.startsWith("brace:");
       if ((o === undefined || b.tone.startsWith("brace:")) && b.layer !== "roofing") mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), edgeMat));
       if (o !== undefined) mesh.renderOrder = 2;
+      // the camera frames the building; site retaining walls can run well past it
+      mesh.userData.frame = b.layer !== "glass" && b.layer !== "retaining";
       s.root.add(mesh);
-      if (b.layer !== "glass") box.expandByObject(mesh);
+      if (mesh.userData.frame) box.expandByObject(mesh);
     }
 
-    // ID tags, coloured by kind; failing members in red, the selected one in orange
+    // ID tags, coloured by kind as the framing models have them (failing members in red when colouring by result); the selected one in orange
     const tagIds = [...model.members.map((m) => m.id), ...calcs.lintels.map((l) => l.id)];
     for (const id of tagIds) {
       const t = typeOf(id);
       if (!t) continue;
       const cat = tagCat(t);
       if (!cat || !layers[cat]) continue;
+      if (t === "lintel" && calcs.lintels.find((l) => l.id === id)?.wall.wall?.loadbearing === false) continue;
       const lvlId = id.includes("#") ? calcs.lintels.find((l) => l.id === id)?.wall.levelId : model.members.find((m) => m.id === id)?.levelId;
-      if (!shown(lvlId)) continue;
+      if (!shown(lvlId, "tag", t)) continue;
       const p = tagPoint(model, calcs, id);
       const r = calcs.results.get(id);
       const mark = r?.mark ?? model.members.find((m) => m.id === id)?.label;
       if (!p || !mark) continue;
       const roofTag = t === "joistzone" && !!model.members.find((m) => m.id === id)?.zone?.roof;
-      const bg = r?.status === "fail" ? "rgba(178,58,42,.95)" : TAG_BG[cat];
+      const bg = colourBy === "result" && r?.status === "fail" ? "rgba(178,58,42,.95)" : TAG_BG[cat];
       const tex = tagTexture(mark, bg);
       const sp = sprite(tex, cat === "id_wall" ? 0.3 : 0.34, tex.userData.ratio as number, p.x, p.y, p.z + (lift.get(lvlId ?? "") ?? 0) + (roofTag ? liftRoof : 0));
       sp.userData.id = id;
@@ -507,11 +563,15 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
 
     if (layers.grid) for (const o of gridObjects(model)) s.root.add(o);
 
+    if (box.isEmpty())
+      s.root.children.forEach((o) => {
+        if (o instanceof THREE.Mesh) box.expandByObject(o);
+      });
     if (!s.framed && !box.isEmpty()) {
       const centre = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3()).length();
       s.controls.target.copy(centre);
-      s.camera.position.set(centre.x - size * 0.55, centre.y + size * 0.75, centre.z + size * 0.95);
+      s.camera.position.set(centre.x - size * 0.62, centre.y + size * 0.51, centre.z + size * 0.61);
       s.framed = true;
     }
     setBuilt((n) => n + 1);
@@ -544,15 +604,20 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const setView = (v: "iso" | "top" | "north" | "south" | "east" | "west") => {
     const s = stage.current;
     if (!s) return;
+    setViewName(v);
     const box = new THREE.Box3();
     s.root.children.forEach((o) => {
-      if (o instanceof THREE.Mesh) box.expandByObject(o);
+      if (o instanceof THREE.Mesh && o.userData.frame) box.expandByObject(o);
     });
+    if (box.isEmpty())
+      s.root.children.forEach((o) => {
+        if (o instanceof THREE.Mesh) box.expandByObject(o);
+      });
     if (box.isEmpty()) return;
     const c = box.getCenter(new THREE.Vector3());
     const r = Math.max(6, box.getSize(new THREE.Vector3()).length());
     const pos: Record<typeof v, [number, number, number]> = {
-      iso: [c.x - r * 0.55, c.y + r * 0.75, c.z + r * 0.95],
+      iso: [c.x - r * 0.62, c.y + r * 0.51, c.z + r * 0.61],
       top: [c.x, c.y + r * 1.6, c.z + 0.01],
       north: [c.x, c.y + r * 0.15, c.z - r * 1.4],
       south: [c.x, c.y + r * 0.15, c.z + r * 1.4],
@@ -571,41 +636,56 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div ref={host} className="absolute inset-0 overflow-hidden" />
-      <div className="absolute top-2 right-2 flex max-w-[70%] flex-wrap justify-end gap-1">
+      <div className="absolute top-2 right-2 left-2 flex flex-wrap items-start gap-1.5">
         {(
           [
             ["iso", "Iso"],
             ["top", "Plan"],
-            ["north", "North"],
             ["south", "South"],
             ["east", "East"],
+            ["north", "North"],
             ["west", "West"],
           ] as const
         ).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setView(k)} className={btn(false)}>
+          <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)} className={btn(view === k)}>
             {l}
           </button>
         ))}
-        <button type="button" onClick={() => setPanel((p) => !p)} aria-expanded={panel} className={btn(panel)}>
+        <span className="w-2" />
+        {viewSets(model).sets.map((v) => {
+          const on = !hidden.includes(v.key);
+          return (
+            <button key={v.key} type="button" aria-pressed={on} onClick={() => setHidden((h) => (on ? [...h, v.key] : h.filter((x) => x !== v.key)))} className={btn(on)}>
+              {v.label}
+            </button>
+          );
+        })}
+        <button type="button" onClick={() => setPanel((p) => !p)} aria-expanded={panel} className={`${btn(panel)} ml-auto`}>
           Layers
         </button>
       </div>
-      {model.levels.length > 1 ? (
-        <div className="absolute bottom-2 left-2 flex max-w-[65%] flex-wrap gap-1">
-          {[...model.levels]
-            .sort((a, b) => a.elevation - b.elevation)
-            .map((l) => {
-              const on = !hidden.includes(l.id);
-              return (
-                <button key={l.id} type="button" aria-pressed={on} title={on ? `Hide ${l.name}` : `Show ${l.name}`} onClick={() => setHidden((h) => (on ? [...h, l.id] : h.filter((x) => x !== l.id)))} className={btn(on)}>
-                  {l.name}
-                </button>
-              );
-            })}
+      {selectedId && calcs.results.get(selectedId) ? (
+        <div className="absolute bottom-9 left-2 w-64 rounded-sm border border-[#c9cfca] bg-[#f8f9f6]/95 p-3 text-[#1c2326] shadow-sm">
+          <div className="font-mono text-[11px] font-semibold tracking-wider text-[#4b575c] uppercase">Selected</div>
+          <div className="mt-1 text-2xl leading-none font-bold" style={{ fontFamily: '"Barlow Condensed","Arial Narrow",Arial,sans-serif' }}>
+            {calcs.results.get(selectedId)!.mark}
+          </div>
+          <div className="mt-1 text-xs text-[#4b575c]">{calcs.results.get(selectedId)!.summary}</div>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+            {calcs.results
+              .get(selectedId)!
+              .kv.slice(0, 6)
+              .map((k, i) => (
+                <div key={i} className="contents">
+                  <dt className="text-[#4b575c]">{k.label}</dt>
+                  <dd className="text-right tabular-nums">{k.value}</dd>
+                </div>
+              ))}
+          </dl>
         </div>
       ) : null}
       {panel ? (
-        <div className="absolute top-11 right-2 max-h-[calc(100%-3.5rem)] w-64 overflow-y-auto rounded-sm border border-[#c9cfca] bg-[#f8f9f6]/95 p-3 text-xs text-[#1c2326] shadow-lg">
+        <div className="absolute top-12 right-2 max-h-[calc(100%-3.5rem)] w-64 overflow-y-auto rounded-sm border border-[#c9cfca] bg-[#f8f9f6]/95 p-3 text-xs text-[#1c2326] shadow-lg">
           {groups.map((g) => (
             <div key={g} className="mb-1.5">
               <div className="mt-1 mb-1 font-mono text-[11px] font-semibold tracking-wider text-[#4b575c] uppercase">{g}</div>
@@ -644,6 +724,7 @@ export function snapshot3d(model: DesignModel, calcs: Calcs, width = 1600, heigh
   if (!parts.length) return null;
   const canvas = document.createElement("canvas");
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   renderer.setPixelRatio(1);
   renderer.setSize(width, height, false);
   const scene = new THREE.Scene();

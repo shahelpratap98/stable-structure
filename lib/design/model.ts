@@ -72,6 +72,7 @@ export type Opening = {
   offset: number; // m from the wall's start to the opening's near edge
   width: number; // m, clear
   sill: number; // m above floor; 0 = door
+  head?: number; // m above floor to the top of the opening; default under the lintel at the top plates
   trib?: Trib;
   sizing?: Sizing;
   note?: string;
@@ -97,13 +98,15 @@ export type ZoneSpec = {
 
 // Roof framing over a zone: the rafters (or trusses) span the zone's `dir`;
 // gable and hip roofs have their ridge down the middle, across that span.
-export type RoofForm = "flat" | "mono" | "gable" | "hip";
+// "low": level rafters on the plates, tapered firrings giving the fall to a box gutter, purlins on the firrings
+export type RoofForm = "flat" | "mono" | "gable" | "hip" | "low";
 export type RoofSpec = {
   form: RoofForm;
   pitch: number; // degrees
   framing: "rafters" | "trusses";
   purlins: number; // mm centres along the slope, 0 = none
   overhang: number; // m, eaves past the zone edge
+  gutter?: number; // low roofs: m from the zone's start edge (north or west) to the box gutter the firrings fall to; default the far edge
 };
 export const defaultRoof = (): RoofSpec => ({ form: "gable", pitch: 20, framing: "rafters", purlins: 900, overhang: 0.45 });
 export const roofHalfSpan = (r: RoofSpec) => r.framing === "rafters" && (r.form === "gable" || r.form === "hip");

@@ -48,7 +48,9 @@ export type Part =
   | { kind: "beam3"; id: string; layer: Layer; tone: Tone; a: P3; b: P3; w: number; d: number }
   // a flat plane through 3+ points (roofing): drawn only, not exported
   | { kind: "poly"; id: string; layer: Layer; tone: Tone; pts: P3[] }
-  | { kind: "col"; id: string; layer: Layer; tone: Tone; x: number; y: number; z0: number; z1: number; w: number; d: number; round?: boolean };
+  | { kind: "col"; id: string; layer: Layer; tone: Tone; x: number; y: number; z0: number; z1: number; w: number; d: number; round?: boolean }
+  // a tapered strip (roof firrings): flat underside at z0, top rising from z0 + h0 at a to z0 + h1 at b
+  | { kind: "wedge"; id: string; layer: Layer; tone: Tone; a: Pt; b: Pt; z0: number; h0: number; h1: number; w: number };
 
 export function levelAbove(model: DesignModel, level: Level) {
   return [...model.levels].filter((l) => l.elevation > level.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation)[0];
@@ -144,11 +146,13 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
       // shading by storey, as on a framing model: ground floor walls tan, upper floors blue-grey
       const tone: Tone = w.kind === "block" ? "block" : w.kind === "int" ? "wallInt" : level.floor === "slab" ? "wallGround" : "wallUpper";
       const ops = [...w.openings].sort((a, b) => a.offset - b.offset);
-      const lintelTop = top - 0.045;
+      const lintelTop = top - 0.09;
       const head = (o: (typeof ops)[number]) => {
+        if (o.head != null && o.head > 0) return base + o.head;
         const lr = calcs.results.get(`${m.id}#${o.id}`);
         return lintelTop - (lr?.sec?.d ?? 190) / 1000;
       };
+      const headTop = (o: (typeof ops)[number]) => (o.head != null && o.head > 0 ? base + o.head + (calcs.results.get(`${m.id}#${o.id}`)?.sec?.d ?? 90) / 1000 : lintelTop);
       const panel = (s0: number, s1: number, z0: number, z1: number) => {
         if (s1 - s0 < 0.001 || z1 - z0 < 0.005) return;
         out.push({ kind: "bar", id: m.id, layer: "walls", tone, ...sub(m, s0, s1), z0, z1, w: th + (w.kind === "block" ? 0 : 0.016) });
@@ -156,7 +160,7 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
       let cur = 0;
       for (const o of ops) {
         panel(cur, o.offset, base, top);
-        panel(o.offset, o.offset + o.width, lintelTop, top); // plates over the lintel
+        panel(o.offset, o.offset + o.width, Math.min(head(o), lintelTop), top); // lintel and plates over the opening
         if (o.sill > 0) {
           panel(o.offset, o.offset + o.width, base, base + o.sill);
           out.push({ kind: "bar", id: m.id, layer: "glass", tone: "glass", ...sub(m, o.offset, o.offset + o.width), z0: base + o.sill, z1: head(o), w: 0.012 });
@@ -209,7 +213,8 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
           fr(o.offset, o.offset + o.width, base + o.sill - 0.045, base + o.sill);
           for (let s = o.offset + 0.0225; s <= o.offset + o.width - 0.0225; s += sp) fr(s - 0.0225, s + 0.0225, zb, base + o.sill - 0.045);
         }
-        for (let s = o.offset + 0.0225; s <= o.offset + o.width - 0.0225; s += sp) fr(s - 0.0225, s + 0.0225, lintelTop, zt);
+        // cripple studs over the lintel
+        if (zt - headTop(o) > 0.03) for (let s = o.offset + 0.0225; s <= o.offset + o.width - 0.0225; s += sp) fr(s - 0.0225, s + 0.0225, headTop(o), zt);
       }
       return out;
     }
@@ -318,8 +323,11 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
     }
     case "bracing": {
       if (!m.b) return [];
-      // a lined panel on the wall face
-      return [{ kind: "bar", id: m.id, layer: "bracing", tone: `brace:${m.brace?.system ?? "GS2N"}`, a: m.a, b: m.b, z0: base + 0.045, z1: top - 0.09, w: 0.014, off: 0.06 }];
+      // a lined panel on the face of the wall it is on
+      const wall = wallUnder(model, m);
+      const th = (wall?.wall?.thickness ?? 90) / 1000;
+      const block = wall?.wall?.kind === "block";
+      return [{ kind: "bar", id: m.id, layer: "bracing", tone: `brace:${m.brace?.system ?? "GS2N"}`, a: m.a, b: m.b, z0: base + (block ? 0.06 : 0.045), z1: top - (block ? 0.06 : 0.09), w: 0.014, off: th / 2 + 0.012 }];
     }
     case "retaining": {
       if (!m.b || !m.rw) return [];
@@ -366,7 +374,9 @@ export function allParts(model: DesignModel, calcs: Calcs): { part: Part; level:
     if (!level || !vl.member.b) continue;
     const r = calcs.results.get(vl.id);
     const s = secOf(vl.member, r);
-    const top = level.elevation + level.height - 0.045;
+    const o = vl.opening;
+    // under the double top plate, or on the opening's head
+    const top = o.head != null && o.head > 0 ? level.elevation + o.head + s.d : level.elevation + level.height - 0.09;
     // lintels sit within the wall: cap the width to the wall
     const wallTh = (vl.wall.wall?.thickness ?? 90) / 1000;
     for (const part of beamParts(vl.id, "lintels", vl.member.a, vl.member.b, top, { ...s, b: Math.min(s.b, wallTh) })) out.push({ part, level });
@@ -374,9 +384,26 @@ export function allParts(model: DesignModel, calcs: Calcs): { part: Part; level:
   return out;
 }
 
+// The wall a bracing element lies along (same level, in line, overlapping).
+function wallUnder(model: DesignModel, m: Member) {
+  if (!m.b) return undefined;
+  const L = memberLength(m);
+  if (L < 1e-6) return undefined;
+  const ux = (m.b.x - m.a.x) / L,
+    uy = (m.b.y - m.a.y) / L;
+  return model.members.find((w) => {
+    if (w.type !== "wall" || w.levelId !== m.levelId || !w.b) return false;
+    const off = (p: Pt) => Math.abs((p.x - m.a.x) * -uy + (p.y - m.a.y) * ux);
+    if (off(w.a) > 0.15 || off(w.b) > 0.15) return false;
+    const s = (p: Pt) => (p.x - m.a.x) * ux + (p.y - m.a.y) * uy;
+    return Math.max(s(w.a), s(w.b)) > 0.05 && Math.min(s(w.a), s(w.b)) < L - 0.05;
+  });
+}
+
 function lift(p: Part, dz: number): Part {
   if (p.kind === "beam3") return { ...p, a: { ...p.a, z: p.a.z + dz }, b: { ...p.b, z: p.b.z + dz } };
   if (p.kind === "poly") return { ...p, pts: p.pts.map((q) => ({ ...q, z: q.z + dz })) };
+  if (p.kind === "wedge") return { ...p, z0: p.z0 + dz };
   return { ...p, z0: p.z0 + dz, z1: p.z1 + dz };
 }
 
@@ -417,6 +444,34 @@ function roofParts(m: Member, rs: RoofSpec, zE: number, s: Sec): Part[] {
   const vs: number[] = [];
   for (let v = v0 + 0.0225; v <= v1 - 0.0225 + 1e-6 && vs.length < 300; v += sp) vs.push(v);
   if (vs.length && v1 - 0.0225 - vs[vs.length - 1] > 0.1) vs.push(v1 - 0.0225);
+
+  if (rs.form === "low") {
+    // level rafters on the plates; a tapered firring on each falls to the box gutter; purlins on the firrings
+    const ua = u0 - ov,
+      ub = u1 + ov;
+    const ug = u0 + (rs.gutter ?? W);
+    const fir = (u: number) => 0.02 + Math.abs(u - ug) * tp;
+    const zt = zE + d;
+    const wedge = (va: number, ka: number, kb: number) => {
+      if (kb - ka < 0.02) return;
+      out.push({ kind: "wedge", id: m.id, layer: "purlins", tone: "purlin", a: ns ? { x: va, y: ka } : { x: ka, y: va }, b: ns ? { x: va, y: kb } : { x: kb, y: va }, z0: zt, h0: fir(ka), h1: fir(kb), w: 0.045 });
+    };
+    for (const v of vs) {
+      bar("roof", "rafter", ua, v, zE + mid, ub, v, zE + mid);
+      if (ug > ua && ug < ub) {
+        wedge(v, ua, ug);
+        wedge(v, ug, ub);
+      } else wedge(v, ua, ub);
+    }
+    if (rs.purlins > 0) for (let u = ua + 0.035, k = 0; u <= ub - 0.035 + 1e-6 && k < 200; u += rs.purlins / 1000, k++) bar("purlins", "purlin", u, v0 - ov, zt + fir(u) + 0.0225, u, v1 + ov, zt + fir(u) + 0.0225, 0.07, 0.045);
+    const zr = (u: number) => zt + fir(u) + (rs.purlins > 0 ? 0.045 : 0) + 0.005;
+    const poly = (p: number, q: number) => out.push({ kind: "poly", id: m.id, layer: "roofing", tone: "roofing", pts: [P(p, v0 - ov, zr(p)), P(p, v1 + ov, zr(p)), P(q, v1 + ov, zr(q)), P(q, v0 - ov, zr(q))] });
+    if (ug > ua && ug < ub) {
+      poly(ua, ug);
+      poly(ug, ub);
+    } else poly(ua, ub);
+    return out;
+  }
 
   if (rs.framing === "rafters") {
     // common and jack rafters from each eave, tails past the wall by the overhang

@@ -371,6 +371,8 @@ function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, 
     limL = 1,
     limS = 1;
   regions.forEach((_, k) => {
+    // coincident supports leave a region of no length, whose limit is ~0: nothing to check there
+    if (span(k) < 10) return;
     const long = maxIn(field("d", k2 * (l.G + 0.4 * l.Qf), 0, [], (qq) => k2 * (qq.G + 0.4 * qq.Qf), 0.4 * k2 * P, k), k);
     let short = 0;
     for (const pat of patterns) short = Math.max(short, maxIn(field("d", 0, 0.7 * (l.Qf + l.Qr), pat, (qq) => 0.7 * (qq.Qf + qq.Qr), 0.7 * P, k), k));
@@ -1428,6 +1430,22 @@ function runCalcsOnce(model: DesignModel): Calcs {
     const uPad = Math.max(pad.uBearing, pad.uPunch, pad.uShear);
     const util = Math.max(joists.ratio ?? 0, bearer.ratio ?? 0, pile.util, uPad);
     const nPiles = lay.bearers.reduce((a, b) => a + b.piles.length, 0);
+    if (!nPiles) {
+      // on beams or the building at both edges: just the joists and their fixings
+      results.set(z.id, {
+        ...joists,
+        summary: `Deck · ${z.section} @ ${z.deck.spacing} on beams · ${Math.round((joists.ratio ?? 0) * 100)}%`,
+        kv: [
+          { label: "Joists", value: `${z.section} SG8 H3.2 @ ${z.deck.spacing}, span ${fmt(lay.joistSpan)} m · ${Math.round((joists.ratio ?? 0) * 100)}%` },
+          { label: "Stringers", value: `${z.section} bolted each edge, R* ${fmt(rStar({ G: (DECK_G * lay.joistSpan) / 2, Qf: (DECK_Q * lay.joistSpan) / 2, Qr: 0, S: 0 }), 1)} kN/m` },
+          { label: "Boards", value: "140×20 H3.2 at 145 centres" },
+        ],
+        inputs: [{ label: "Loads", value: `G ${DECK_G} kPa, Q ${DECK_Q} kPa (balconies and decks)` }],
+        loads: [],
+        notes: [`Deck joists SG8 H3.2 (NZS 3602), checked to NZS 3603 for G ${DECK_G} kPa and Q ${DECK_Q} kPa, carried at each edge on the beams or the building (design those separately).`],
+      });
+      continue;
+    }
     results.set(z.id, {
       ...joists,
       status: statusFor(util),
@@ -1470,7 +1488,8 @@ function runCalcsOnce(model: DesignModel): Calcs {
       { id: z.id, mark: z.label, role: "Stair stringers (H3.2)", span: lay.run, trib: { floor: z.stair.width / (n - 1) }, sizing: { mode: "auto", families: ["SG8"], maxB: 45, minD: 190, maxD: 300 }, fixed: null, point: false, selfWeight: true, fallbackMaxD: 0 },
       ps,
     );
-    const uGeom = Math.max(lay.R / 0.19, 0.28 / lay.G);
+    // rounded to 0.1 mm, so a going drawn at exactly 280 is not failed by floating point
+    const uGeom = Math.max(Math.round(lay.R * 1e4) / 1e4 / 0.19, 0.28 / (Math.round(lay.G * 1e4) / 1e4));
     const util = Math.max(r.ratio ?? 0, uGeom);
     results.set(z.id, {
       ...r,

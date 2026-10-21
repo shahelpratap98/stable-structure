@@ -124,9 +124,9 @@ export default async function DesignGuidePage() {
           </li>
           <li>
             <T>Bracing elements</T> (G), <T>pad footings</T> (F), <T>timber piles</T> (I) and <T>retaining walls</T> (T) work the same way. A{" "}
-            <T>deck</T> (D) is drawn corner to corner and designs its joists, bearers and piles; a <T>stair</T> (E) is drawn from its foot to its head. A{" "}
+            <T>deck</T> (D) is drawn corner to corner and designs its joists, bearers and piles (or, set to sit on beams at both edges, just its joists); a <T>stair</T> (E) is drawn from its foot to its head. A{" "}
             <T>rib raft slab</T> (K) is drawn like a joist zone, corner to corner, and carries the walls and posts standing on it. A{" "}
-            <T>joist zone</T> drawn on the top storey is roof framing: choose gable, hip, mono or flat, the pitch, eaves and purlins, and rafters (designed) or trusses (by the supplier).
+            <T>joist zone</T> drawn on the top storey is roof framing: choose gable, hip, mono, flat or low slope on firrings (level rafters, firrings falling to a box gutter you place, purlins on top), the pitch, eaves and purlins, and rafters (designed) or trusses (by the supplier).
             The beams and walls along its eaves and ridge pick up the roof load.
           </li>
           <li>
@@ -203,7 +203,7 @@ export default async function DesignGuidePage() {
         <H id="views">9. 3D, sheets and IFC</H>
         <Points>
           <li>
-            <T>Plan + 3D</T> shows both side by side; <T>3D</T> on its own has layer switches, preset views (top, north, south…) and an explode slider to pull the levels apart.
+            <T>Plan + 3D</T> shows both side by side. The 3D model is drawn like our framing models: the bar across the top has the views (Iso, Plan, South, East…) and a button for each set (each floor&apos;s walls, the floor framing, the roof, retaining walls) to show or hide it; <T>Layers</T> has the layer switches and sliders to lift the roof and pull the levels apart. Click a member to see it in the Selected card.
           </li>
           <li>
             <T>Sheets</T> is the long-form schedule: members, joists, lintels, posts and foundations, walls, bracing sheets and retaining walls. Click a row to jump to the member.

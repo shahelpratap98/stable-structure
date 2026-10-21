@@ -134,7 +134,10 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   or larger, sized from the site bearing. Gravity only: braced and anchor
   piles follow NZS 3604 Section 6.
 - **Roof framing**: a joist zone with a `roof` spec (drawn on the top storey)
-  is rafters or trusses over a flat, mono, gable or hip roof. Rafters are
+  is rafters or trusses over a flat, mono, gable or hip roof, or a low-slope
+  roof as on the 26121 model: level rafters on the plates, a tapered firring
+  on each falling to a box gutter (`gutter`, metres in from the zone's start
+  edge, may lie outside it) and purlins on the firrings. Rafters are
   designed on their run (to the ridge for gable and hip); trusses report
   their reactions for the supplier. `autoTrib` gives eaves a quarter of the
   width and the ridge half (trusses: half to each eave; hip ends a quarter).
@@ -148,12 +151,18 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   burnt orange, steel and timber posts), faint edges, see-through wall
   shading tinted by storey, GIB bracing panels on the wall faces, coloured
   ID tags in the model, set-out grid lines with bubbles (`model.grids`,
-  entered on the Levels tab and shown on the plans too), grouped layers,
-  a toggle per level and a "lift roof" slider.
+  entered on the Levels tab and shown on the plans too), grouped layers and
+  a "lift roof" slider. Like those models it uses three.js colours as given
+  (colour management off, linear output), has a toolbar across the top
+  (Iso / Plan / elevations, then a toggle per set: each storey's walls, the
+  floor framing over it, the roof, retaining walls) and a Selected card.
+  Tags are coloured by kind; failing members' tags turn red only when
+  colouring by result. Headers in non-loadbearing walls are not tagged.
 - **Decks and stairs** (`lib/design/deck.ts`): a deck is an area of H3.2
   joists on 2/190×45-class bearers on 125×125 H5 piles with 400 × 400 × 600
   footings and 140×20 boards (optionally bolted to the building along one
-  edge), designed for G 0.7 / Q 2.0 kPa. A stair is a line from foot to head:
+  edge, or carried on beams at both edges with no piles), designed for
+  G 0.7 / Q 2.0 kPa. A stair is a line from foot to head:
   risers ≤ 190 and goings ≥ 280 are checked and the stringers designed on
   their run. Both draw like the 26121 framing model.
 - **Windows from the drawing** (`lib/design/walls.ts`): wall pieces found on

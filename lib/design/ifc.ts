@@ -109,6 +109,8 @@ export function exportIfc(model: DesignModel, calcs: Calcs, job: { title: string
   // Each part as a swept solid in absolute (storey) coordinates.
   const solid = (p: Part): string | null => {
     if (p.kind === "poly") return null;
+    // firrings: a strip at their mean depth
+    if (p.kind === "wedge") return solid({ kind: "bar", id: p.id, layer: p.layer, tone: p.tone, a: p.a, b: p.b, z0: p.z0, z1: p.z0 + (p.h0 + p.h1) / 2, w: p.w });
     if (p.kind === "beam3") {
       const dx = p.b.x - p.a.x,
         dy = -(p.b.y - p.a.y),

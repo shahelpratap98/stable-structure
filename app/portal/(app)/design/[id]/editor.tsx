@@ -134,7 +134,6 @@ export function DesignEditor({
   const [panelOpen, setPanelOpen] = useState(false); // side panel drawer on narrow screens
   const [mode, setMode] = useState<ViewMode>("split");
   const [colourBy, setColourBy] = useState<ColourBy>("type");
-  const [upTo, setUpTo] = useState<string | "all">("all");
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [scalePick, setScalePick] = useState<{ p1: Pt; p2: Pt } | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -870,20 +869,7 @@ export function DesignEditor({
           ) : null}
           {mode === "3d" || mode === "split" ? (
             <div className={`relative min-h-0 min-w-0 flex-1 ${mode === "split" ? "border-t border-line lg:border-t-0 lg:border-l" : ""}`}>
-              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} upToLevel={upTo} onSelect={(id) => pick(id, true)} />
-              <div className="absolute top-2 left-2 flex items-center gap-2 rounded-lg bg-surface/90 px-2 py-1 text-xs shadow">
-                <label htmlFor="upto" className="font-semibold text-muted">
-                  Show
-                </label>
-                <select id="upto" className="bg-transparent font-semibold" value={upTo} onChange={(e) => setUpTo(e.target.value)}>
-                  <option value="all">All levels</option>
-                  {sortedLevels.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      Up to {l.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} onSelect={(id) => pick(id, true)} />
               {colourBy === "material" ? (
                 <div className="absolute bottom-2 left-2 grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-surface/90 px-2.5 py-1.5 text-xs shadow">
                   {(Object.keys(FAMILY_COLOUR) as (keyof typeof FAMILY_COLOUR)[]).map((f) => (

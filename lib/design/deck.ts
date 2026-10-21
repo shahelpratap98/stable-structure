@@ -10,7 +10,7 @@ export type DeckSpec = {
   spacing: number; // mm, joist centres
   bearerSpan: number; // m, the joists' span between bearer lines (at most)
   pileSpan: number; // m, pile centres along a bearer (at most)
-  ledger: "none" | "start" | "end"; // the low-u or high-u edge is a stringer bolted to the building, not a bearer on piles
+  ledger: "none" | "start" | "end" | "both"; // the low-u or high-u edge (or both) is a stringer on the building or a beam, not a bearer on piles
   height: number; // m, deck surface above the level's floor
   drop: number; // m, deck surface down to the ground (piles)
 };
@@ -50,12 +50,13 @@ export function deckLayout(m: Member): DeckLayout | null {
   const [u0, u1, v0, v1] = ns ? [y0, y1, x0, x1] : [x0, x1, y0, y1];
   const W = u1 - u0,
     L = v1 - v0;
-  const n = Math.max(1, Math.ceil(W / Math.max(0.6, d.bearerSpan) - 1e-6));
+  // carried at both edges: the joists span the deck, with no bearers or piles
+  const n = d.ledger === "both" ? 1 : Math.max(1, Math.ceil(W / Math.max(0.6, d.bearerSpan) - 1e-6));
   const k = Math.max(1, Math.ceil((L - 0.12) / Math.max(0.6, d.pileSpan) - 1e-6));
   const piles = Array.from({ length: k + 1 }, (_, i) => v0 + 0.06 + (i * (L - 0.12)) / k);
   const bearers = Array.from({ length: n + 1 }, (_, i) => {
     const u = u0 + (i * W) / n;
-    const ledger = (i === 0 && d.ledger === "start") || (i === n && d.ledger === "end");
+    const ledger = d.ledger === "both" || (i === 0 && d.ledger === "start") || (i === n && d.ledger === "end");
     // edge bearers sit just inside the deck so the joists bear on them
     const uu = i === 0 ? u + 0.045 : i === n ? u - 0.045 : u;
     return { u: uu, ledger, piles: ledger ? [] : piles };

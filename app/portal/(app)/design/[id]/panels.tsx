@@ -546,6 +546,7 @@ function DeckEditor({ m, locked, set, sectionField }: { m: Member; locked: boole
             { value: "none", label: "No: free-standing" },
             { value: "start", label: d.dir === "y" ? "North edge" : "West edge" },
             { value: "end", label: d.dir === "y" ? "South edge" : "East edge" },
+            { value: "both", label: "Both edges: on beams" },
           ]}
           onChange={(v) => upd({ ledger: v }, v === "none" ? "free-standing deck" : "deck stringer on the building")}
         />
@@ -657,10 +658,11 @@ function ZoneEditor({
               { value: "hip", label: "Hip" },
               { value: "mono", label: "Mono-pitch" },
               { value: "flat", label: "Flat / low pitch" },
+              { value: "low", label: "Low slope on firrings" },
             ]}
-            onChange={(v) => updR({ form: v, ...(v === "flat" && r.pitch > 5 ? { pitch: 3 } : {}) }, `${v} roof`)}
+            onChange={(v) => updR({ form: v, ...((v === "flat" || v === "low") && r.pitch > 5 ? { pitch: 3 } : {}), ...(v === "low" ? { framing: "rafters" as const } : {}) }, `${v === "low" ? "low-slope" : v} roof`)}
           />
-          <NumberField label="Pitch" unit="°" value={r.pitch} min={0} onCommit={(v) => v !== undefined && updR({ pitch: Math.min(60, v) }, `pitch ${v}°`)} />
+          <NumberField label={r.form === "low" ? "Fall" : "Pitch"} unit="°" value={r.pitch} min={0} onCommit={(v) => v !== undefined && updR({ pitch: Math.min(60, v) }, `pitch ${v}°`)} />
           <Select<RoofSpec["framing"]>
             label="Framing"
             value={r.framing}
@@ -684,8 +686,18 @@ function ZoneEditor({
           />
           <NumberField label="Eaves overhang" unit="m" value={r.overhang} min={0} onCommit={(v) => v !== undefined && updR({ overhang: v }, `overhang ${v} m`)} />
           {r.framing === "rafters" ? <NumberField label="Purlins at" unit="mm" value={r.purlins} min={0} placeholder="none" onCommit={(v) => updR({ purlins: v ?? 0 }, v ? `purlins @ ${v}` : "no purlins")} /> : null}
+          {r.form === "low" ? (
+            <NumberField
+              label={`Box gutter from the ${z.dir === "y" ? "north" : "west"} edge`}
+              unit="m"
+              value={r.gutter}
+              placeholder="far edge"
+              onCommit={(v) => updR({ gutter: v }, v === undefined ? "gutter at the far edge" : `gutter ${v} m in`)}
+            />
+          ) : null}
         </fieldset>
         <p className="mt-2 text-xs text-muted">
+          {r.form === "low" ? "Rafters sit level on the plates; a tapered firring on each gives the fall to the box gutter, with purlins on the firrings. " : null}
           Draw the zone over the walls the roof sits on. Rafters span across it ({z.dir === "y" ? "north–south" : "east–west"}); a gable or hip ridge runs down the middle, and the eaves and ridge beams under it pick up the roof load
           automatically.
         </p>
