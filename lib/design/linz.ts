@@ -64,7 +64,9 @@ export async function findAddresses(q: string): Promise<LinzResult<FoundAddress[
     const p = f.properties ?? {};
     const c = lonLat(f.geometry?.coordinates);
     const address = typeof p.full_address === "string" ? p.full_address : null;
-    if (c && address) out.push({ address: [address, p.town_city].filter((x) => typeof x === "string" && x && !address.includes(x)).join(", "), lon: c[0], lat: c[1] });
+    // the town after the address, unless the address already names it
+    const town = typeof p.town_city === "string" && p.town_city && !address.includes(p.town_city) ? p.town_city : null;
+    if (c && address) out.push({ address: town ? `${address}, ${town}` : address, lon: c[0], lat: c[1] });
   }
   return { ok: true, value: out };
 }
