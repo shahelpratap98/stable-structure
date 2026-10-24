@@ -179,6 +179,7 @@ export type DesignModel = {
   site?: SiteData; // wind, earthquake and ground data for specific design
   paperwork?: Paperwork; // PS1 and design features report details
   grids?: { x: GridLine[]; y: GridLine[] }; // set-out grid: x lines (constant x) and y lines (constant y)
+  ack?: string[]; // completeness gaps the engineer has marked OK (a stair void, say): keys from complete.ts
 };
 
 export type GridLine = { n: string; at: number }; // label and plan coordinate, m
@@ -339,13 +340,14 @@ export function normaliseModel(raw: unknown): DesignModel {
             y: (Array.isArray(m.grids.y) ? m.grids.y : []).filter((g) => g && typeof g.n === "string" && Number.isFinite(g.at)).slice(0, 60),
           }
         : undefined,
+    ack: Array.isArray(m.ack) ? [...new Set(m.ack.filter((k): k is string => typeof k === "string" && k.length <= 120))].slice(0, 300) : undefined,
   };
 }
 
 export const defaultWall = (): WallSpec => ({ kind: "ext", thickness: 90, loadbearing: true, cladding: "light", studSpacing: 600, openings: [] });
 export const defaultZone = (): ZoneSpec => ({ dir: "y", spacing: 400, wet: false, doubled: [] });
 
-function levelAboveOf(levels: Level[], level: Level | undefined) {
+export function levelAboveOf(levels: Level[], level: Level | undefined) {
   if (!level) return undefined;
   return [...levels].filter((l) => l.elevation > level.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation)[0];
 }

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadKind, runCalcs, type Calcs } from "@/lib/design/calc";
+import { gapsFor, openGaps } from "@/lib/design/complete";
 import { cloudsOn, diffModels } from "@/lib/design/diff";
 import { defaultRaft } from "@/lib/design/raft";
 import { defaultDeck, defaultStair } from "@/lib/design/deck";
@@ -951,7 +952,21 @@ export function DesignEditor({
                   onPick={(id) => pick(id, true)}
                 />
               ) : (
-                <Overview model={model} calcs={calcs} onPick={(id) => pick(id, true)} />
+                <Overview
+                  model={model}
+                  calcs={calcs}
+                  onPick={(id) => pick(id, true)}
+                  locked={locked}
+                  onLevel={(id) => {
+                    setActiveLevelId(id);
+                    if (mode === "3d") setMode("split");
+                  }}
+                  onAck={(key, ok, what) => {
+                    const m = modelRef.current;
+                    const ack = ok ? [...new Set([...(m.ack ?? []), key])] : (m.ack ?? []).filter((k) => k !== key);
+                    commit({ ...m, ack }, ok ? `marked OK: ${what}` : `no longer OK: ${what}`);
+                  }}
+                />
               )
             ) : null}
             {tab === "schedule" ? <SchedulePanel model={model} calcs={calcs} selectedId={selectedId} onPick={(id) => pick(id, true)} /> : null}
@@ -1034,6 +1049,7 @@ export function DesignEditor({
                 revision={revision}
                 saved={save === "saved" || save === "locked"}
                 fails={[...results.values()].filter((r) => r.status === "fail").length}
+                gaps={openGaps(model, gapsFor(model, calcs)).length}
                 onReport={downloadReport}
                 reporting={reporting}
               />

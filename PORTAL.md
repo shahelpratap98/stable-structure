@@ -160,6 +160,19 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   bottom-right corner that turns with the camera.
   Tags are coloured by kind; failing members' tags turn red only when
   colouring by result. Headers in non-loadbearing walls are not tagged.
+- **Completeness** (`lib/design/complete.ts`): passing members are half of a
+  design. The Overview's "To finish" list shows what the model still lacks:
+  floors without joists and storeys without roof framing (sampled inside the
+  walls at 0.5 m, patches of 2 m² or more, placed by the set-out grid),
+  bracing missing in either direction or with no demand, outside walls with
+  no doors or windows, beams and lintels sized on an assumed metre of load,
+  posts and beams carrying nothing, and no site data. Each item opens its
+  member or level, and the engineer can mark it OK (stored in `model.ack`).
+  The summary chip says "All checks pass" only when nothing fails and
+  nothing is open, and the checker can't sign until then. Typed line loads
+  on their own no longer add an assumed metre of floor, and walls and beams
+  under flat, mono and low-slope rafters pick up their share of roof from
+  the rafters' supports.
 - **Site from its address** (`lib/design/linz.ts`, server-only): "Find site"
   on the Loads tab searches LINZ NZ Addresses (layer 123113) through the LDS
   WFS with the `LINZ_KEY` environment variable (Vercel, Preview and

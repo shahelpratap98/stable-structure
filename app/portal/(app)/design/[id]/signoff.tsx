@@ -35,6 +35,7 @@ export function SignoffPanel({
   revision,
   saved,
   fails,
+  gaps = 0,
   onReport,
   reporting,
 }: {
@@ -44,6 +45,7 @@ export function SignoffPanel({
   revision: number;
   saved: boolean;
   fails: number;
+  gaps?: number; // completeness items still open (not finished or marked OK)
   onReport: () => void;
   reporting: boolean;
 }) {
@@ -175,6 +177,7 @@ export function SignoffPanel({
         </label>
         {noteBox("Note for the checker (optional)", "e.g. B4 carries the deck; check the bearing at P2")}
         {fails ? <p className="text-xs text-warn">{fails} {fails === 1 ? "member fails" : "members fail"}. The checker can&apos;t sign until everything passes.</p> : null}
+        {gaps ? <p className="text-xs text-warn">{gaps} {gaps === 1 ? "thing isn't" : "things aren't"} finished (Overview, To finish). The checker can&apos;t sign until each is done or marked OK.</p> : null}
         {revision === 0 ? <p className="text-xs text-muted">Draw the structure first.</p> : null}
         {notSaved}
         <button
@@ -198,11 +201,12 @@ export function SignoffPanel({
               By signing you confirm you have checked revision <b>{revision}</b> of this design and its calculations, and that it is ready to issue for building consent.
             </p>
             {fails ? <p className="mt-2 text-bad">{fails} {fails === 1 ? "member fails" : "members fail"}. Send it back, or fix it, before signing.</p> : null}
+            {gaps ? <p className="mt-2 text-bad">{gaps} {gaps === 1 ? "thing isn't" : "things aren't"} finished (Overview, To finish). Finish each, mark it OK, or send it back, before signing.</p> : null}
             {notSaved}
             <button
               type="button"
               className="btn btn-primary mt-3"
-              disabled={pending || !saved || fails > 0}
+              disabled={pending || !saved || fails > 0 || gaps > 0}
               onClick={() => {
                 if (window.confirm(`Sign off revision ${revision}? The job will be locked.`)) run(() => signDesign(jobId, revision));
               }}

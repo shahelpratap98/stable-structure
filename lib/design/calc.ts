@@ -633,6 +633,21 @@ export function autoTrib(model: DesignModel, m: Member): { trib: Trib; from: str
       continue;
     }
     const c = alongY ? (m.a.y + m.b.y) / 2 : (m.a.x + m.b.x) / 2;
+    // flat, mono and low rafters over several supports: half the span each side, the eave to the outer ones
+    const sup = rs && !roofHalfSpan(rs) && rs.framing === "rafters" ? rafterSupports(model, z, rs) : null;
+    if (sup) {
+      const i = sup.at.findIndex((a) => Math.abs(sup.ua + a - c) <= TOL);
+      if (i < 0) continue;
+      const ovS = alongY ? overlap(m.a.x, m.b.x, x0, x1) : overlap(m.a.y, m.b.y, y0, y1);
+      if (ovS < 0.1) continue;
+      const fS = Math.min(1, ovS / L);
+      if (fS < 0.98) partial = true;
+      const lo = i === 0 ? sup.at[0] : (sup.at[i] - sup.at[i - 1]) / 2;
+      const hi = i === sup.at.length - 1 ? sup.length - sup.at[i] : (sup.at[i + 1] - sup.at[i]) / 2;
+      t.roof += (lo + hi) * fS;
+      from.push(z.label);
+      continue;
+    }
     const edges = alongY ? [y0, y1] : [x0, x1];
     const ridge = rs && roofHalfSpan(rs) && Math.abs(c - (alongY ? (y0 + y1) / 2 : (x0 + x1) / 2)) <= TOL;
     if (!ridge && !edges.some((e) => Math.abs(c - e) <= TOL)) continue;
@@ -865,7 +880,7 @@ function wallCrossing(m: Member, w: Member): { t: number; s: number; opening?: O
 
 // Rafters of a flat, mono or low roof zone over the loadbearing walls and beams
 // running across them (on the zone's storey), with the eaves as overhangs.
-function rafterSupports(model: DesignModel, z: Member, rs: RoofSpec): { length: number; at: number[]; maxSpan: number; over: string[] } | null {
+function rafterSupports(model: DesignModel, z: Member, rs: RoofSpec): { ua: number; length: number; at: number[]; maxSpan: number; over: string[] } | null {
   if (!z.b || !z.zone) return null;
   const ns = z.zone.dir === "y";
   const [u0, u1, v0, v1] = ns
@@ -893,7 +908,7 @@ function rafterSupports(model: DesignModel, z: Member, rs: RoofSpec): { length: 
   const length = ub - ua;
   let maxSpan = 0;
   for (let i = 1; i < at.length; i++) maxSpan = Math.max(maxSpan, at[i] - at[i - 1]);
-  return { length, at, maxSpan, over: [...new Set(found.sort((a, b) => a.u - b.u).map((f) => f.mark))] };
+  return { ua, length, at, maxSpan, over: [...new Set(found.sort((a, b) => a.u - b.u).map((f) => f.mark))] };
 }
 
 export function runCalcs(model: DesignModel): Calcs {
@@ -1260,6 +1275,8 @@ function runCalcsOnce(model: DesignModel): Calcs {
       const a = autoTrib(model, m);
       if (a) return { trib: a.trib, note: `from the drawing: ${a.from.join(", ")}${a.partial ? " (part-length loads averaged over the span)" : ""}` };
     }
+    // line loads typed in on their own: just those, not an assumed metre of floor as well
+    if (m.extraG || m.extraQ) return { trib: {}, note: "typed line loads only" };
     return { trib: defaultTrib(model, m), note: "assumed: nothing typed in or found on the drawing" };
   };
 

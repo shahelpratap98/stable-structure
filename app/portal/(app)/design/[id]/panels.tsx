@@ -7,6 +7,7 @@ import { BRACE_SYSTEMS, RATINGS } from "@/lib/design/bracing";
 import { autoTrib, DRAFT_NOTE, loadKind, STATUS_COLOUR, STATUS_LABEL, tribText, type Calcs, type Result, type VirtualLintel } from "@/lib/design/calc";
 import { DEFAULT_SITE, demandFromSite, nearestTown, quakeBasis, TOWNS, WIND_NOTE, windBasis, type SiteData } from "@/lib/design/site";
 import type { Change } from "@/lib/design/diff";
+import { gapsFor, openGaps, type Gap } from "@/lib/design/complete";
 import { defaultRaft, lossOfSupport, type RaftSpec } from "@/lib/design/raft";
 import type { DeckSpec, StairSpec } from "@/lib/design/deck";
 import { DEFAULT_PAPERWORK, drawingsFromText, drawingsToText, MONITORING, type Monitoring, type Paperwork } from "@/lib/design/paperwork";
@@ -986,7 +987,7 @@ export function SummaryStrip({ model, calcs }: { model: DesignModel; calcs: Calc
   for (const r of designed) counts.set(r.sec!.fam, (counts.get(r.sec!.fam) ?? 0) + 1);
   const fails = [...calcs.results.values()].filter((r) => r.status === "fail").length;
   const top = designed.reduce<Result | null>((a, r) => (!a || (r.ratio ?? 0) > (a.ratio ?? 0) ? r : a), null);
-  void model;
+  const open = openGaps(model, gapsFor(model, calcs)).length;
   return (
     <div className="flex flex-wrap gap-1.5">
       {[...counts.entries()].map(([f, n]) => (
@@ -996,12 +997,85 @@ export function SummaryStrip({ model, calcs }: { model: DesignModel; calcs: Calc
         </span>
       ))}
       {top ? <span className="rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px]">Highest {top.mark} {top.ratio!.toFixed(2)}</span> : null}
-      <span className={`rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px] ${fails ? "text-bad" : "text-ok"}`}>{fails ? `${fails} need specific design` : "All checks pass"}</span>
+      <span className={`rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px] ${fails ? "text-bad" : open ? "text-warn" : "text-ok"}`}>
+        {fails ? `${fails} need specific design` : open ? `All members pass · ${open} to finish` : "All checks pass"}
+      </span>
     </div>
   );
 }
 
-export function Overview({ model, calcs, onPick }: { model: DesignModel; calcs: Calcs; onPick: (id: string) => void }) {
+// What the model still lacks (complete.ts): open it, or mark it OK with the engineer's judgement.
+function ToFinish({ model, calcs, locked, onPick, onLevel, onAck }: { model: DesignModel; calcs: Calcs; locked: boolean; onPick: (id: string) => void; onLevel: (id: string) => void; onAck: (key: string, ok: boolean, what: string) => void }) {
+  const [all, setAll] = useState(false);
+  const gaps = gapsFor(model, calcs);
+  const open = openGaps(model, gaps);
+  const acked = gaps.filter((g) => (model.ack ?? []).includes(g.key));
+  if (!gaps.length) return null;
+  const shown = all ? open : open.slice(0, 8);
+  const go = (g: Gap) => (g.id ? onPick(g.id) : g.levelId ? onLevel(g.levelId) : undefined);
+  return (
+    <Section title="To finish" aside={<span className="text-[11px] text-muted">{open.length ? `${open.length} open` : "all done"}</span>}>
+      {open.length ? (
+        <ul className="flex flex-col gap-1 text-sm">
+          {shown.map((g) => (
+            <li key={g.key} className="flex items-start gap-2">
+              <button type="button" className="flex min-w-0 flex-1 items-start gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-2" onClick={() => go(g)}>
+                <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOUR.close }} aria-hidden />
+                <span>{g.what}</span>
+              </button>
+              {!locked ? (
+                <button type="button" className="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-accent-600 hover:bg-surface-2" onClick={() => onAck(g.key, true, g.what)} title="Checked: this is as intended">
+                  Mark OK
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-ok">Nothing missing.</p>
+      )}
+      {open.length > 8 ? (
+        <button type="button" className="mt-1 text-xs font-semibold text-accent-600 hover:underline" onClick={() => setAll((v) => !v)}>
+          {all ? "Show fewer" : `Show all ${open.length}`}
+        </button>
+      ) : null}
+      {acked.length ? (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer text-muted">{acked.length} marked OK</summary>
+          <ul className="mt-1 flex flex-col gap-1">
+            {acked.map((g) => (
+              <li key={g.key} className="flex items-start gap-2">
+                <span className="flex-1 text-muted">{g.what}</span>
+                {!locked ? (
+                  <button type="button" className="shrink-0 font-semibold text-accent-600 hover:underline" onClick={() => onAck(g.key, false, g.what)}>
+                    Undo
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      <p className="mt-2 text-xs text-muted">A design is finished when every floor and roof is framed, each storey is braced both ways, the doors and windows are in, and beams carry real loads, not assumed ones.</p>
+    </Section>
+  );
+}
+
+export function Overview({
+  model,
+  calcs,
+  onPick,
+  locked = false,
+  onLevel = () => {},
+  onAck = () => {},
+}: {
+  model: DesignModel;
+  calcs: Calcs;
+  onPick: (id: string) => void;
+  locked?: boolean;
+  onLevel?: (id: string) => void;
+  onAck?: (key: string, ok: boolean, what: string) => void;
+}) {
   const counts = (Object.keys(MEMBER_INFO) as MemberType[]).map((t) => [t, model.members.filter((m) => m.type === t).length] as const).filter(([, n]) => n);
   const attention = [...calcs.results.values()].filter((r) => r.status === "fail" || r.status === "close").sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0));
   return (
@@ -1032,6 +1106,7 @@ export function Overview({ model, calcs, onPick }: { model: DesignModel; calcs: 
           <p className="text-sm text-muted">Nothing placed yet. Pick a tool on the left and click on the plan.</p>
         )}
       </Section>
+      <ToFinish model={model} calcs={calcs} locked={locked} onPick={onPick} onLevel={onLevel} onAck={onAck} />
       {attention.length ? (
         <Section title="Needs attention">
           <ul className="flex flex-col gap-1 text-sm">
@@ -1055,7 +1130,7 @@ export function Overview({ model, calcs, onPick }: { model: DesignModel; calcs: 
           <li>Add beams, posts and <b>Joist zones</b>; set what each beam carries. Sections are picked SG8 → hySPAN → steel.</li>
           <li>Set the job&apos;s loads on the <b>Loads</b> tab, and bracing demand per level there too.</li>
           <li>Each level holds that storey&apos;s posts and walls and the framing at its top. Ground floor joists and bearers go on <b>Foundation</b>.</li>
-          <li>When everything passes, submit it on the <b>Sign-off</b> tab for a CPEng to check, and download the council report there.</li>
+          <li>Work through <b>To finish</b> on this tab until it&apos;s empty (or each item is marked OK). When everything passes too, submit it on the <b>Sign-off</b> tab for a CPEng to check, and download the council report there.</li>
         </ol>
         <p className="mt-2 text-xs">
           <a href="/portal/design/guide" target="_blank" rel="noreferrer" className="font-semibold text-accent-600 hover:underline">

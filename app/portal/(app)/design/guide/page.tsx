@@ -221,6 +221,7 @@ export default async function DesignGuidePage() {
         <H id="signoff">10. Checking and sign-off</H>
         <Steps>
           <li>
+            The Overview&apos;s <T>To finish</T> list shows what the model still lacks: floors without joists, storeys without a roof or bracing both ways, walls without doors or windows, beams on assumed loads and the site. Click an item to go to it, or mark it OK if it&apos;s as intended (a stair void, say). <T>All checks pass</T> only shows when nothing fails and nothing is open, and the checker can&apos;t sign before then.
             When the design is complete and everything passes, open the <T>Sign-off</T> tab. Pick the designer and a CPEng to check it (not the designer), add a note if it helps,
             and choose <T>Submit for checking</T>.
           </li>
