@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addressFilter, rankAddresses } from "../linz-query";
-import { distanceToLines, nearestTown, normaliseSite, DEFAULT_SITE } from "../site";
+import { distanceToLines, nearestTown, normaliseSite, DEFAULT_SITE, TOWNS } from "../site";
 
 describe("site lookup", () => {
   it("builds a LINZ address filter that can't break out of its strings", () => {
@@ -17,9 +17,24 @@ describe("site lookup", () => {
   });
   it("finds the nearest Z-table town", () => {
     expect(nearestTown(-36.85, 174.76).town).toBe("Auckland"); // Auckland CBD
-    expect(nearestTown(-41.21, 174.9).town).toBe("Wellington"); // Lower Hutt
+    expect(nearestTown(-41.21, 174.9).town).toBe("Hutt Valley–south of Taita Gorge"); // Lower Hutt
+    expect(nearestTown(-37.14, 175.54).town).toBe("Thames"); // was Auckland's Z with 15 towns
+    expect(TOWNS[nearestTown(-37.14, 175.54).town].Z).toBe(0.16);
+    expect(nearestTown(-36.87, 174.8).town).toBe("Auckland"); // 10 Combes Road, Remuera
     expect(nearestTown(-43.6, 172.5).town).toBe("Christchurch");
     expect(nearestTown(-37.7, 176.15).km).toBeLessThan(3); // Tauranga
+  });
+  it("has the whole NZS 1170.5 Table 3.3 list", () => {
+    expect(Object.keys(TOWNS).length).toBe(128);
+    expect(TOWNS["Hanmer Springs"].Z).toBe(0.55);
+    expect(TOWNS["Arthurs Pass"].Z).toBe(0.6);
+    expect(TOWNS.Whangarei.Z).toBe(0.1);
+    for (const t of Object.values(TOWNS)) {
+      expect(t.lat).toBeLessThan(-34);
+      expect(t.lat).toBeGreaterThan(-47.5);
+      expect(t.lon).toBeGreaterThan(166);
+      expect(t.lon).toBeLessThan(179);
+    }
   });
   it("measures the distance to a coastline", () => {
     // a north-south coast 0.01° of longitude east of the point at 37°S: about 889 m

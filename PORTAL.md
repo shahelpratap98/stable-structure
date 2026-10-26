@@ -173,6 +173,14 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   on their own no longer add an assumed metre of floor, and walls and beams
   under flat, mono and low-slope rafters pick up their share of roof from
   the rafters' supports.
+- **Earthquake and wind sources** (`lib/design/site.ts`): the Z table is the
+  whole of NZS 1170.5 Table 3.3 (128 places, as MBIE publishes it) with town
+  coordinates from OpenStreetMap, so "Find site" picks the nearest listed
+  place; design keeps Z at least 0.13. B1/VM1 2nd edition (28 July 2025) still
+  cites AS/NZS 1170.2:2011 with Amendments 1-5. Region A V500/V1000 and the
+  TC2.5 and TC3 terrain/height multipliers match published reproductions of
+  the tables; V100, Region W and TC1, TC2 and TC4 still need confirming in the
+  standard (WIND_NOTE says so on every report).
 - **Site from its address** (`lib/design/linz.ts`, server-only): "Find site"
   on the Loads tab searches LINZ NZ Addresses (layer 123113) through the LDS
   WFS with the `LINZ_KEY` environment variable (Vercel, Preview and

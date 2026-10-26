@@ -2,9 +2,12 @@
 // static method) and wind to AS/NZS 1170.2:2011, the editions B1/VM1 cites,
 // turned into bracing demand per storey (20 BU = 1 kN, NZS 3604 cl 5.1).
 //
-// Earthquake values were checked against the MBIE-sponsored NZS 1170.5 text;
-// the wind multipliers come from secondary sources (see WIND_NOTE) and must be
-// checked against the standard before issue. Every result is preliminary.
+// Earthquake values were checked against the MBIE-sponsored NZS 1170.5 text, and
+// the Z table is the full Table 3.3 list. B1/VM1 2nd edition (28 July 2025) still
+// cites AS/NZS 1170.2:2011 including Amendments 1-5; its one change (2.4.1) is that
+// local wind design information published by a territorial authority governs
+// where more onerous. The wind values here are cross-checked against published
+// sources, not the standard itself (see WIND_NOTE). Every result is preliminary.
 
 import type { DesignModel, Level, Member } from "./model";
 
@@ -51,26 +54,144 @@ export const DEFAULT_SITE: SiteData = {
   expansive: "none",
 };
 
-// NZS 1170.5 Table 3.3 hazard factor Z (as cited by B1/VM1: Christchurch and
-// the Canterbury earthquake region at least 0.30, cl 2.6.2.1). D = distance
-// to a major fault (km) where it matters for the near-fault factor.
-// lat / lon: town centre, for finding the nearest location to a site.
+// NZS 1170.5:2004 (incl. Amendment 1) Table 3.3 hazard factor Z for every listed
+// location, as MBIE publishes it ("Z-values to determine seismic risk",
+// building.govt.nz, under Standards NZ licence LN001239; "Manakau City" and
+// "Ta Awamutu" there corrected to Manukau City and Te Awamutu). Design uses Z of
+// at least 0.13 (quakeBasis) and Christchurch and the Canterbury earthquake
+// region at least 0.30 (B1/VM1). D = distance to a major fault (km) where it
+// matters for the near-fault factor. lat / lon: town centre (OpenStreetMap), for
+// finding the nearest location to a site. Wind region: A7 North Island, A6 South
+// Island, W the Wellington metropolitan area; confirm on BRANZ Maps.
 export const TOWNS: Record<string, { Z: number; D?: number; region: WindRegion; lat: number; lon: number }> = {
-  Whangarei: { Z: 0.13, region: "A7", lat: -35.725, lon: 174.323 },
-  Auckland: { Z: 0.13, region: "A7", lat: -36.848, lon: 174.763 },
-  Hamilton: { Z: 0.16, region: "A7", lat: -37.787, lon: 175.279 },
-  Tauranga: { Z: 0.2, region: "A7", lat: -37.687, lon: 176.165 },
-  Rotorua: { Z: 0.24, region: "A7", lat: -38.137, lon: 176.251 },
-  Napier: { Z: 0.38, region: "A7", lat: -39.493, lon: 176.912 },
-  Hastings: { Z: 0.39, region: "A7", lat: -39.639, lon: 176.84 },
-  "New Plymouth": { Z: 0.18, region: "A7", lat: -39.057, lon: 174.075 },
+  Kaitaia: { Z: 0.1, region: "A7", lat: -35.114, lon: 173.264 },
+  "Paihia/Russell": { Z: 0.1, region: "A7", lat: -35.281, lon: 174.092 },
+  Kaikohe: { Z: 0.1, region: "A7", lat: -35.407, lon: 173.8 },
+  Whangarei: { Z: 0.1, region: "A7", lat: -35.728, lon: 174.319 },
+  Dargaville: { Z: 0.1, region: "A7", lat: -35.941, lon: 173.869 },
+  Warkworth: { Z: 0.13, region: "A7", lat: -36.398, lon: 174.666 },
+  Auckland: { Z: 0.13, region: "A7", lat: -36.852, lon: 174.763 },
+  "Manukau City": { Z: 0.13, region: "A7", lat: -36.993, lon: 174.877 },
+  Waiuku: { Z: 0.13, region: "A7", lat: -37.249, lon: 174.73 },
+  Pukekohe: { Z: 0.13, region: "A7", lat: -37.201, lon: 174.904 },
+  Thames: { Z: 0.16, region: "A7", lat: -37.138, lon: 175.542 },
+  Paeroa: { Z: 0.18, region: "A7", lat: -37.38, lon: 175.67 },
+  Waihi: { Z: 0.18, region: "A7", lat: -37.391, lon: 175.84 },
+  Huntly: { Z: 0.15, region: "A7", lat: -37.558, lon: 175.159 },
+  Ngaruawahia: { Z: 0.15, region: "A7", lat: -37.666, lon: 175.15 },
+  Morrinsville: { Z: 0.18, region: "A7", lat: -37.658, lon: 175.528 },
+  "Te Aroha": { Z: 0.18, region: "A7", lat: -37.543, lon: 175.712 },
+  Tauranga: { Z: 0.2, region: "A7", lat: -37.683, lon: 176.168 },
+  "Mount Maunganui": { Z: 0.2, region: "A7", lat: -37.638, lon: 176.184 },
+  Hamilton: { Z: 0.16, region: "A7", lat: -37.788, lon: 175.282 },
+  Cambridge: { Z: 0.18, region: "A7", lat: -37.892, lon: 175.469 },
+  "Te Awamutu": { Z: 0.17, region: "A7", lat: -38.01, lon: 175.326 },
+  Matamata: { Z: 0.19, region: "A7", lat: -37.81, lon: 175.773 },
+  "Te Puke": { Z: 0.22, region: "A7", lat: -37.785, lon: 176.327 },
+  Putaruru: { Z: 0.21, region: "A7", lat: -38.051, lon: 175.779 },
+  Tokoroa: { Z: 0.21, region: "A7", lat: -38.217, lon: 175.871 },
+  Otorohanga: { Z: 0.17, region: "A7", lat: -38.186, lon: 175.211 },
+  "Te Kuiti": { Z: 0.18, region: "A7", lat: -38.334, lon: 175.166 },
+  Mangakino: { Z: 0.21, region: "A7", lat: -38.371, lon: 175.77 },
+  Rotorua: { Z: 0.24, region: "A7", lat: -38.136, lon: 176.253 },
+  Kawerau: { Z: 0.29, region: "A7", lat: -38.086, lon: 176.703 },
+  Whakatane: { Z: 0.3, region: "A7", lat: -37.952, lon: 176.995 },
+  Opotiki: { Z: 0.3, region: "A7", lat: -38.004, lon: 177.287 },
+  Ruatoria: { Z: 0.33, region: "A7", lat: -37.892, lon: 178.319 },
+  Murupara: { Z: 0.3, region: "A7", lat: -38.456, lon: 176.706 },
+  Taupo: { Z: 0.28, region: "A7", lat: -38.687, lon: 176.069 },
+  Taumarunui: { Z: 0.21, region: "A7", lat: -38.883, lon: 175.262 },
+  Turangi: { Z: 0.27, region: "A7", lat: -38.989, lon: 175.809 },
+  Gisborne: { Z: 0.36, region: "A7", lat: -38.661, lon: 178.021 },
+  Wairoa: { Z: 0.37, region: "A7", lat: -39.039, lon: 177.427 },
+  Waitara: { Z: 0.18, region: "A7", lat: -39.003, lon: 174.236 },
+  "New Plymouth": { Z: 0.18, region: "A7", lat: -39.058, lon: 174.081 },
+  Inglewood: { Z: 0.18, region: "A7", lat: -39.156, lon: 174.208 },
+  Stratford: { Z: 0.18, region: "A7", lat: -39.34, lon: 174.284 },
+  Opunake: { Z: 0.18, region: "A7", lat: -39.455, lon: 173.86 },
+  Hawera: { Z: 0.18, region: "A7", lat: -39.589, lon: 174.284 },
+  Patea: { Z: 0.19, region: "A7", lat: -39.757, lon: 174.475 },
+  Raetihi: { Z: 0.26, region: "A7", lat: -39.427, lon: 175.28 },
+  Ohakune: { Z: 0.27, region: "A7", lat: -39.417, lon: 175.4 },
+  Waiouru: { Z: 0.29, region: "A7", lat: -39.478, lon: 175.669 },
+  Napier: { Z: 0.38, region: "A7", lat: -39.49, lon: 176.918 },
+  Hastings: { Z: 0.39, region: "A7", lat: -39.642, lon: 176.843 },
+  Wanganui: { Z: 0.25, region: "A7", lat: -39.932, lon: 175.052 },
+  Waipawa: { Z: 0.41, region: "A7", lat: -39.942, lon: 176.589 },
+  Waipukurau: { Z: 0.41, region: "A7", lat: -39.996, lon: 176.557 },
+  Taihape: { Z: 0.33, region: "A7", lat: -39.677, lon: 175.798 },
+  Marton: { Z: 0.3, region: "A7", lat: -40.072, lon: 175.379 },
+  Bulls: { Z: 0.31, region: "A7", lat: -40.175, lon: 175.385 },
+  Feilding: { Z: 0.37, region: "A7", lat: -40.226, lon: 175.564 },
   "Palmerston North": { Z: 0.38, D: 8, region: "A7", lat: -40.356, lon: 175.611 },
-  Wellington: { Z: 0.4, D: 2, region: "W", lat: -41.286, lon: 174.776 },
+  Dannevirke: { Z: 0.42, region: "A7", lat: -40.207, lon: 176.098 },
+  Woodville: { Z: 0.41, region: "A7", lat: -40.337, lon: 175.867 },
+  Pahiatua: { Z: 0.42, region: "A7", lat: -40.453, lon: 175.841 },
+  "Foxton/Foxton Beach": { Z: 0.36, region: "A7", lat: -40.473, lon: 175.282 },
+  Levin: { Z: 0.4, region: "A7", lat: -40.622, lon: 175.287 },
+  Otaki: { Z: 0.4, region: "A7", lat: -40.759, lon: 175.147 },
+  Waikanae: { Z: 0.4, region: "A7", lat: -40.876, lon: 175.064 },
+  Paraparaumu: { Z: 0.4, region: "A7", lat: -40.914, lon: 175.006 },
+  Masterton: { Z: 0.42, region: "A7", lat: -40.95, lon: 175.659 },
+  Porirua: { Z: 0.4, region: "W", lat: -41.135, lon: 174.84 },
+  Wellington: { Z: 0.4, D: 2, region: "W", lat: -41.289, lon: 174.777 },
+  "Hutt Valley–south of Taita Gorge": { Z: 0.4, region: "W", lat: -41.213, lon: 174.906 },
+  "Upper Hutt": { Z: 0.42, region: "W", lat: -41.124, lon: 175.07 },
+  "Eastbourne–Point Howard": { Z: 0.4, region: "W", lat: -41.291, lon: 174.898 },
+  Wainuiomata: { Z: 0.4, region: "W", lat: -41.262, lon: 174.948 },
+  Takaka: { Z: 0.23, region: "A6", lat: -40.857, lon: 172.806 },
+  Motueka: { Z: 0.26, region: "A6", lat: -41.112, lon: 173.009 },
   Nelson: { Z: 0.27, region: "A6", lat: -41.271, lon: 173.284 },
-  Christchurch: { Z: 0.3, region: "A6", lat: -43.532, lon: 172.636 },
-  Queenstown: { Z: 0.32, region: "A6", lat: -45.031, lon: 168.663 },
-  Dunedin: { Z: 0.13, region: "A6", lat: -45.879, lon: 170.503 },
-  Invercargill: { Z: 0.17, region: "A6", lat: -46.413, lon: 168.353 },
+  Picton: { Z: 0.3, region: "A6", lat: -41.291, lon: 174.007 },
+  Blenheim: { Z: 0.33, region: "A6", lat: -41.512, lon: 173.955 },
+  "St Arnaud": { Z: 0.36, region: "A6", lat: -41.801, lon: 172.848 },
+  Westport: { Z: 0.3, region: "A6", lat: -41.754, lon: 171.604 },
+  Reefton: { Z: 0.37, region: "A6", lat: -42.116, lon: 171.863 },
+  Murchison: { Z: 0.34, region: "A6", lat: -41.8, lon: 172.329 },
+  "Springs Junction": { Z: 0.45, region: "A6", lat: -42.335, lon: 172.182 },
+  "Hanmer Springs": { Z: 0.55, region: "A6", lat: -42.522, lon: 172.83 },
+  Seddon: { Z: 0.4, region: "A6", lat: -41.671, lon: 174.073 },
+  Ward: { Z: 0.4, region: "A6", lat: -41.826, lon: 174.138 },
+  Cheviot: { Z: 0.4, region: "A6", lat: -42.812, lon: 173.274 },
+  Greymouth: { Z: 0.37, region: "A6", lat: -42.45, lon: 171.208 },
+  Kaikoura: { Z: 0.42, region: "A6", lat: -42.401, lon: 173.681 },
+  Harihari: { Z: 0.46, region: "A6", lat: -43.148, lon: 170.558 },
+  Hokitika: { Z: 0.45, region: "A6", lat: -42.718, lon: 170.965 },
+  "Fox Glacier": { Z: 0.44, region: "A6", lat: -43.464, lon: 170.018 },
+  "Franz Josef": { Z: 0.44, region: "A6", lat: -43.387, lon: 170.182 },
+  Otira: { Z: 0.6, region: "A6", lat: -42.831, lon: 171.561 },
+  "Arthurs Pass": { Z: 0.6, region: "A6", lat: -42.941, lon: 171.563 },
+  Rangiora: { Z: 0.33, region: "A6", lat: -43.303, lon: 172.596 },
+  Darfield: { Z: 0.3, region: "A6", lat: -43.488, lon: 172.109 },
+  Akaroa: { Z: 0.3, region: "A6", lat: -43.804, lon: 172.968 },
+  Christchurch: { Z: 0.3, region: "A6", lat: -43.531, lon: 172.636 },
+  Geraldine: { Z: 0.19, region: "A6", lat: -44.092, lon: 171.243 },
+  Ashburton: { Z: 0.2, region: "A6", lat: -43.902, lon: 171.75 },
+  Fairlie: { Z: 0.24, region: "A6", lat: -44.098, lon: 170.829 },
+  Temuka: { Z: 0.17, region: "A6", lat: -44.244, lon: 171.28 },
+  Timaru: { Z: 0.15, region: "A6", lat: -44.393, lon: 171.251 },
+  "Mt Cook": { Z: 0.38, region: "A6", lat: -43.735, lon: 170.098 },
+  Twizel: { Z: 0.27, region: "A6", lat: -44.257, lon: 170.099 },
+  Waimate: { Z: 0.14, region: "A6", lat: -44.734, lon: 171.042 },
+  Cromwell: { Z: 0.24, region: "A6", lat: -45.037, lon: 169.197 },
+  Wanaka: { Z: 0.3, region: "A6", lat: -44.694, lon: 169.136 },
+  Arrowtown: { Z: 0.3, region: "A6", lat: -44.941, lon: 168.835 },
+  Alexandra: { Z: 0.21, region: "A6", lat: -45.255, lon: 169.392 },
+  Queenstown: { Z: 0.32, region: "A6", lat: -45.032, lon: 168.661 },
+  "Milford Sound": { Z: 0.54, region: "A6", lat: -44.672, lon: 167.925 },
+  Palmerston: { Z: 0.13, region: "A6", lat: -45.484, lon: 170.715 },
+  Oamaru: { Z: 0.13, region: "A6", lat: -45.1, lon: 170.97 },
+  Dunedin: { Z: 0.13, region: "A6", lat: -45.874, lon: 170.504 },
+  Mosgiel: { Z: 0.13, region: "A6", lat: -45.875, lon: 170.347 },
+  Riverton: { Z: 0.2, region: "A6", lat: -46.351, lon: 168.02 },
+  "Te Anau": { Z: 0.36, region: "A6", lat: -45.414, lon: 167.717 },
+  Gore: { Z: 0.18, region: "A6", lat: -46.098, lon: 168.945 },
+  Winton: { Z: 0.2, region: "A6", lat: -46.141, lon: 168.324 },
+  Balclutha: { Z: 0.13, region: "A6", lat: -46.238, lon: 169.74 },
+  Mataura: { Z: 0.17, region: "A6", lat: -46.193, lon: 168.864 },
+  Bluff: { Z: 0.15, region: "A6", lat: -46.599, lon: 168.343 },
+  Invercargill: { Z: 0.17, region: "A6", lat: -46.412, lon: 168.347 },
+  Oban: { Z: 0.14, region: "A6", lat: -46.898, lon: 168.128 },
 };
 
 // Great-circle distance, km.
@@ -138,7 +259,10 @@ export function quakeBasis(site: SiteData, T1 = 0.4): QuakeBasis {
   return { Z, Ch, R, N, Sp, kmu, T1, Cd, minCd };
 }
 
-// AS/NZS 1170.2:2011 regional speeds (m/s) and terrain/height multipliers (secondary sources)
+// AS/NZS 1170.2:2011 Table 3.1 regional speeds V100 / V500 / V1000 (m/s) for IL1-3, and
+// Table 4.1(A) terrain/height multipliers at 3, 5 and 10 m. Region A (A6, A7) V500 and V1000
+// and the TC2.5 and TC3 multipliers match published reproductions of the tables; V100, the
+// Region W speeds and the TC1, TC2 and TC4 multipliers had no public source to check against.
 const VR: Record<WindRegion, Record<1 | 2 | 3, number>> = {
   A6: { 1: 41, 2: 45, 3: 46 },
   A7: { 1: 41, 2: 45, 3: 46 },
@@ -153,7 +277,7 @@ function mzcat(t: Terrain, z: number) {
   return c; // houses: taken as the 10 m value above 10 m
 }
 export const WIND_NOTE =
-  "Wind to AS/NZS 1170.2:2011 (the edition B1/VM1 cites): regional speeds and terrain/height multipliers from secondary sources, Md = 1.0, Cdyn = 1.0, net along-wind shape factor 1.2 (windward 0.7 + leeward 0.5). Check against the standard.";
+  "Wind to AS/NZS 1170.2:2011 with Amendments 1-5, the edition B1/VM1 (2nd edition, 2025) cites; a council's published local wind data governs where more onerous (B1/VM1 2.4.1). Regional speeds and terrain/height multipliers cross-checked against published sources: Region A V500/V1000 and terrain categories 2.5 and 3 confirmed; V100, Region W and terrain categories 1, 2 and 4 to confirm in the standard. Md = 1.0, Cdyn = 1.0, net along-wind shape factor 1.2 (windward 0.7 + leeward 0.5).";
 
 export type WindBasis = { VR: number; Mz: number; Ms: number; Mt: number; Mlee: number; Vdes: number; q: number; zone: string };
 export function windBasis(site: SiteData, height: number): WindBasis {
