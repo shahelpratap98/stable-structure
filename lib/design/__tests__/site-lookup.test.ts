@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addressFilter } from "../linz-query";
+import { addressFilter, rankAddresses } from "../linz-query";
 import { distanceToLines, nearestTown, normaliseSite, DEFAULT_SITE } from "../site";
 
 describe("site lookup", () => {
@@ -10,6 +10,10 @@ describe("site lookup", () => {
     expect(f.match(/'/g)!.length % 2).toBe(0);
     expect(addressFilter("Ōtaki 12")).toContain("Ōtaki");
     expect(addressFilter("a")).toBeNull();
+  });
+  it("puts whole-word matches first", () => {
+    const found = ["10 Seccombes Road, Epsom, Auckland", "110 Newcombes Road, Amberley", "10 Combes Road, Remuera, Auckland", "10/36 Seccombes Road, Epsom, Auckland", "10A Combes Road, Remuera, Auckland"].map((address) => ({ address }));
+    expect(rankAddresses("10 Combes Road", found)[0].address).toBe("10 Combes Road, Remuera, Auckland");
   });
   it("finds the nearest Z-table town", () => {
     expect(nearestTown(-36.85, 174.76).town).toBe("Auckland"); // Auckland CBD

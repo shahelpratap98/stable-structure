@@ -5,7 +5,7 @@ import "server-only";
 // stays on the server (LINZ_KEY); nothing here is sent to the browser except
 // the results. WFS 1.0.0 is used so coordinates are always longitude, latitude.
 
-import { addressFilter } from "./linz-query";
+import { addressFilter, rankAddresses } from "./linz-query";
 import { distanceToLines } from "./site";
 
 const LDS = "https://data.linz.govt.nz/services";
@@ -53,9 +53,9 @@ export async function findAddresses(q: string): Promise<LinzResult<FoundAddress[
   const filter = addressFilter(q);
   if (!filter) return { ok: false, message: "Type more of the address." };
   // WFS 1.0.0 first; LINZ's own examples use 2.0.0, so fall back to it
-  let r = await wfs({ typeName: ADDRESSES, maxFeatures: "8", cql_filter: filter });
+  let r = await wfs({ typeName: ADDRESSES, maxFeatures: "20", cql_filter: filter });
   if (!r.ok) {
-    const r2 = await wfs({ version: "2.0.0", typeNames: ADDRESSES, count: "8", cql_filter: filter });
+    const r2 = await wfs({ version: "2.0.0", typeNames: ADDRESSES, count: "20", cql_filter: filter });
     r = r2.ok ? r2 : { ok: false, message: `${r.message} (2.0.0: ${r2.message})` };
   }
   if (!r.ok) return r;
@@ -68,7 +68,7 @@ export async function findAddresses(q: string): Promise<LinzResult<FoundAddress[
     const town = address && typeof p.town_city === "string" && p.town_city && !address.includes(p.town_city) ? p.town_city : null;
     if (c && address) out.push({ address: town ? `${address}, ${town}` : address, lon: c[0], lat: c[1] });
   }
-  return { ok: true, value: out };
+  return { ok: true, value: rankAddresses(q, out).slice(0, 8) };
 }
 
 // Metres to the nearest mapped coastline (harbours included), or null when none is within about 1 km.
