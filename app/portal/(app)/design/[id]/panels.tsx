@@ -1024,7 +1024,7 @@ function ToFinish({ model, calcs, locked, onPick, onLevel, onAck }: { model: Des
                 <span>{g.what}</span>
               </button>
               {!locked ? (
-                <button type="button" className="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-accent-600 hover:bg-surface-2" onClick={() => onAck(g.key, true, g.what)} title="Checked: this is as intended">
+                <button type="button" className="press shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-accent-600 hover:bg-surface-2" onClick={() => onAck(g.key, true, g.what)} title="Checked: this is as intended">
                   Mark OK
                 </button>
               ) : null}

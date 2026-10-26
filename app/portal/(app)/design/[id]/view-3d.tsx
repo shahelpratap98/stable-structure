@@ -690,36 +690,44 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
 
   const groups = [...new Set(LAYERS.map((l) => l.group))];
   const btn = (on: boolean) =>
-    `rounded-sm border px-2 py-1 font-mono text-[11px] font-medium shadow-sm ${on ? "border-[#2c5e7d] bg-[#2c5e7d] text-white" : "border-[#c9cfca] bg-[#f8f9f6] text-[#1c2326] hover:border-[#4b575c]"}`;
+    `press rounded-sm border px-2 py-1 font-mono text-[11px] font-medium whitespace-nowrap shadow-sm ${on ? "border-[#2c5e7d] bg-[#2c5e7d] text-white" : "border-[#c9cfca] bg-[#f8f9f6] text-[#1c2326] hover:border-[#4b575c]"}`;
+  // one segment of the joined view control
+  const seg = (on: boolean) => `press px-2 py-1 font-mono text-[11px] font-medium whitespace-nowrap ${on ? "bg-[#2c5e7d] text-white" : "bg-[#f8f9f6] text-[#1c2326] hover:bg-[#eceee9]"}`;
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="@container relative h-full w-full overflow-hidden">
       <div ref={host} className="absolute inset-0 overflow-hidden" />
-      <div className="absolute top-2 right-2 left-2 flex flex-wrap items-start gap-1.5">
-        {(
-          [
-            ["iso", "Iso"],
-            ["top", "Plan"],
-            ["south", "South"],
-            ["east", "East"],
-            ["north", "North"],
-            ["west", "West"],
-          ] as const
-        ).map(([k, l]) => (
-          <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)} className={btn(view === k)}>
-            {l}
-          </button>
-        ))}
-        <span className="w-2" />
-        {viewSets(model).sets.map((v) => {
-          const on = !hidden.includes(v.key);
-          return (
-            <button key={v.key} type="button" aria-pressed={on} onClick={() => setHidden((h) => (on ? [...h, v.key] : h.filter((x) => x !== v.key)))} className={btn(on)}>
-              {v.label}
-            </button>
-          );
-        })}
-        <button type="button" onClick={() => setPanel((p) => !p)} aria-expanded={panel} className={`${btn(panel)} ml-auto`}>
+      <div className="absolute top-2 right-2 left-2 flex items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-start gap-1.5">
+          {/* the view: one joined control; north and west only when there's room */}
+          <div role="group" aria-label="View" className="flex divide-x divide-[#c9cfca] overflow-hidden rounded-sm border border-[#c9cfca] shadow-sm">
+            {(
+              [
+                ["iso", "Iso"],
+                ["top", "Plan"],
+                ["south", "South"],
+                ["east", "East"],
+                ["north", "North"],
+                ["west", "West"],
+              ] as const
+            ).map(([k, l]) => (
+              <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)} className={`${seg(view === k)} ${k === "north" || k === "west" ? "@max-xl:hidden" : ""}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <div role="group" aria-label="Show" className="flex flex-wrap gap-1">
+            {viewSets(model).sets.map((v) => {
+              const on = !hidden.includes(v.key);
+              return (
+                <button key={v.key} type="button" aria-pressed={on} onClick={() => setHidden((h) => (on ? [...h, v.key] : h.filter((x) => x !== v.key)))} className={btn(on)}>
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <button type="button" onClick={() => setPanel((p) => !p)} aria-expanded={panel} className={`${btn(panel)} shrink-0`}>
           Layers
         </button>
       </div>
@@ -744,7 +752,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
         </div>
       ) : null}
       {panel ? (
-        <div className="absolute top-12 right-2 max-h-[calc(100%-3.5rem)] w-64 overflow-y-auto rounded-sm border border-[#c9cfca] bg-[#f8f9f6]/95 p-3 text-xs text-[#1c2326] shadow-lg">
+        <div className="pop-in absolute top-10 right-2 max-h-[calc(100%-3rem)] w-64 origin-top-right overflow-y-auto rounded-sm border border-[#c9cfca] bg-[#f8f9f6]/95 p-3 text-xs text-[#1c2326] shadow-lg">
           {groups.map((g) => (
             <div key={g} className="mb-1.5">
               <div className="mt-1 mb-1 font-mono text-[11px] font-semibold tracking-wider text-[#4b575c] uppercase">{g}</div>
@@ -771,7 +779,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
           </label>
         </div>
       ) : null}
-      <p className="pointer-events-none absolute right-2 bottom-2 rounded-sm bg-[#f8f9f6]/90 px-2 py-0.5 font-mono text-[10.5px] text-[#4b575c]">drag orbit · right-drag pan · scroll zoom · click member</p>
+      <p className="pointer-events-none absolute right-2 bottom-2 rounded-sm bg-[#f8f9f6]/90 px-2 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-[#4b575c] @max-2xl:hidden">drag orbit · right-drag pan · scroll zoom · click member</p>
     </div>
   );
 }
