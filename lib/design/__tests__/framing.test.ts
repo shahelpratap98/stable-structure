@@ -117,3 +117,43 @@ describe("supports read off the model, as the 26121 calcs take them", () => {
     expect(n).toBeLessThan(20);
   });
 });
+
+describe("block walls drawn block by block", () => {
+  const wall = (openings: { offset: number; width: number; sill: number }[] = []): Member => ({
+    id: "bw",
+    type: "wall",
+    label: "BW1",
+    levelId: "FF",
+    a: { x: 0, y: 0 },
+    b: { x: 4, y: 0 },
+    material: "timber",
+    section: "190x45",
+    wall: { kind: "block", thickness: 190, loadbearing: true, cladding: "light", studSpacing: 600, openings: openings.map((o, i) => ({ id: `o${i}`, label: `L${i}`, ...o })) },
+  });
+  const parts = (w: Member) => {
+    const m = model([w]);
+    return partsFor(m, runCalcs(m), w);
+  };
+  it("lays 390 x 190 units in running bond, a bond beam on top", () => {
+    const p = parts(wall());
+    const units = p.filter((x) => x.kind === "bar" && x.tone === "blockUnit");
+    const beam = p.filter((x) => x.kind === "bar" && x.tone === "bondBeam");
+    // 3.02 m storey: 15 courses, the top one the bond beam
+    expect(beam).toHaveLength(1);
+    const courses = new Set(units.map((u) => (u.kind === "bar" ? u.z0.toFixed(3) : "")));
+    expect(courses.size).toBe(14);
+    // running bond: alternate courses start half a unit in
+    const starts = (z: string) => units.filter((u) => u.kind === "bar" && u.z0.toFixed(3) === z).map((u) => (u.kind === "bar" ? Math.min(u.a.x, u.b.x) : 0)).sort((a, b) => a - b);
+    const [c0, c1] = [...courses].sort();
+    expect(starts(c0)[1]).toBeCloseTo(0.4, 6);
+    expect(starts(c1)[1]).toBeCloseTo(0.2, 6);
+    // the plain panel sits inside the units (for IFC and when blockwork is off)
+    expect(p.some((x) => x.kind === "bar" && x.layer === "walls" && x.w < 0.19)).toBe(true);
+  });
+  it("leaves the opening clear up to its lintel", () => {
+    const p = parts(wall([{ offset: 1.2, width: 1.0, sill: 0.9 }]));
+    const inOpening = p.filter((x) => x.kind === "bar" && x.tone === "blockUnit" && Math.max(x.a.x, x.b.x) > 1.25 && Math.min(x.a.x, x.b.x) < 2.15 && x.z0 > 3.02 + 0.95 && x.z1 < 3.02 + 2.0);
+    expect(inOpening).toHaveLength(0);
+    expect(p.some((x) => x.kind === "bar" && x.tone === "blockUnit" && x.z1 <= 3.02 + 0.9 && Math.min(x.a.x, x.b.x) >= 1.2 && Math.max(x.a.x, x.b.x) <= 2.2)).toBe(true); // under the sill
+  });
+});

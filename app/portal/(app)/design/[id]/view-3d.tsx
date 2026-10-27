@@ -62,6 +62,7 @@ const LAYERS: { key: Key; label: string; on: boolean; sw: string; group: string 
   { key: "lintels", label: "Lintels", on: true, sw: FRAME.lintel, group: "Structure" },
   { key: "posts", label: "Posts", on: true, sw: FRAME.postSteel, group: "Structure" },
   { key: "framing", label: "Wall framing (studs, plates, nogs)", on: true, sw: FRAME.stud, group: "Structure" },
+  { key: "blockwork", label: "Blockwork (units, bond beams)", on: true, sw: "#a9afb1", group: "Structure" },
   { key: "roof", label: "Rafters & trusses", on: true, sw: FRAME.rafter, group: "Structure" },
   { key: "purlins", label: "Firrings & purlins", on: true, sw: FRAME.purlin, group: "Structure" },
   { key: "flooring", label: "Flooring", on: false, sw: "#cdb58a", group: "Structure" },
@@ -102,6 +103,8 @@ const TONE: Record<Exclude<Tone, "member" | `brace:${string}`>, { c: string; o?:
   wallUpper: { c: "#9fb6c4", o: 0.3 },
   wallInt: { c: "#d8d0bd", o: 0.22 },
   block: { c: "#8f989c", o: 0.55 },
+  blockUnit: { c: "#a9afb1" },
+  bondBeam: { c: "#7f888c" },
   glass: { c: "#8fc3e8", o: 0.25 },
   joist: { c: FRAME.joist },
   joistDbl: { c: FRAME.joistDbl },
@@ -120,7 +123,7 @@ const TONE: Record<Exclude<Tone, "member" | `brace:${string}`>, { c: string; o?:
   rail: { c: "#8a6f4a" },
 };
 const ROOF_LAYERS = new Set<Layer>(["roof", "purlins", "roofing"]);
-const WALL_LAYERS = new Set<Layer>(["walls", "framing", "glass", "bracing", "posts", "lintels", "foundations"]);
+const WALL_LAYERS = new Set<Layer>(["walls", "framing", "blockwork", "glass", "bracing", "posts", "lintels", "foundations"]);
 
 // The model's sets, as the framing models have them: "GF walls", "Mid floor", "FF walls", "Roof", "Retaining walls".
 type ViewSet = { key: string; label: string };
@@ -566,7 +569,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     // merge each member's parts by tone, so a whole joist zone or wall frame is one mesh
     const buckets = new Map<string, { id: string; tone: Tone; layer: Layer; geos: THREE.BufferGeometry[] }>();
     for (const { part, level } of allParts(model, calcs)) {
-      if (!shown(level.id, part.layer) || !layers[part.layer]) continue;
+      if (!shown(level.id, part.layer, typeOf(part.id)) || !layers[part.layer]) continue;
       const g = partGeometry(part);
       if (!g) continue;
       g.translate(0, (lift.get(level.id) ?? 0) + (ROOF_LAYERS.has(part.layer) ? liftRoof : 0), 0);
@@ -787,7 +790,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
 // A still of the whole model for the report, in the framing-model palette
 // (wall framing and sheets left out). Returns a PNG data URL.
 export function snapshot3d(model: DesignModel, calcs: Calcs, width = 1600, height = 1000): string | null {
-  const parts = allParts(model, calcs).filter(({ part }) => !["framing", "flooring", "roofing"].includes(part.layer));
+  const parts = allParts(model, calcs).filter(({ part }) => !["framing", "blockwork", "flooring", "roofing"].includes(part.layer));
   if (!parts.length) return null;
   const canvas = document.createElement("canvas");
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });

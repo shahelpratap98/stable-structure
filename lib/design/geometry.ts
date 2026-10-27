@@ -12,7 +12,7 @@ import { poleLayout } from "./retaining";
 import { defaultRaft } from "./raft";
 import { deckLayout, stairLayout } from "./deck";
 
-export type Layer = "walls" | "framing" | "glass" | "joists" | "flooring" | "roof" | "purlins" | "roofing" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining" | "deck" | "deckboards" | "stairs";
+export type Layer = "walls" | "framing" | "blockwork" | "glass" | "joists" | "flooring" | "roof" | "purlins" | "roofing" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining" | "deck" | "deckboards" | "stairs";
 export type Tone =
   | "member"
   | "framing"
@@ -23,6 +23,8 @@ export type Tone =
   | "wallInt"
   | "studInt"
   | "block"
+  | "blockUnit"
+  | "bondBeam"
   | "glass"
   | "joist"
   | "joistDbl"
@@ -155,7 +157,7 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
       const headTop = (o: (typeof ops)[number]) => (o.head != null && o.head > 0 ? base + o.head + (calcs.results.get(`${m.id}#${o.id}`)?.sec?.d ?? 90) / 1000 : lintelTop);
       const panel = (s0: number, s1: number, z0: number, z1: number) => {
         if (s1 - s0 < 0.001 || z1 - z0 < 0.005) return;
-        out.push({ kind: "bar", id: m.id, layer: "walls", tone, ...sub(m, s0, s1), z0, z1, w: th + (w.kind === "block" ? 0 : 0.016) });
+        out.push({ kind: "bar", id: m.id, layer: "walls", tone, ...sub(m, s0, s1), z0, z1, w: th + (w.kind === "block" ? -0.02 : 0.016) });
       };
       let cur = 0;
       for (const o of ops) {
@@ -168,7 +170,12 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
         cur = o.offset + o.width;
       }
       panel(cur, L, base, top);
-      if (w.kind === "block") return out;
+      if (w.kind === "block") {
+        // block by block, openings left clear from the sill to the top of the lintel
+        const gaps = ops.map((o) => ({ s0: o.offset, s1: o.offset + o.width, z0: base + Math.max(0, o.sill), z1: Math.max(headTop(o), head(o)) }));
+        out.push(...blockUnits(m.id, m, L, th, () => base, top - base, gaps));
+        return out;
+      }
 
       // stud framing: plates, studs at spacing, nogs, trimmers and jack studs
       const sp = w.studSpacing / 1000;
@@ -341,11 +348,15 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
           const p = poleLayout({ ...m, rw: { ...m.rw, kind: "pole" } });
           for (let i = 0; i < p.length - 1; i++) {
             const zb = Math.max(baseAt(p[i].s), baseAt(p[i + 1].s));
-            out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "block", a: { x: p[i].x, y: p[i].y }, b: { x: p[i + 1].x, y: p[i + 1].y }, z0: zb, z1: zb + Math.max(p[i].h, p[i + 1].h), w: 0.19 });
+            const seg = { a: { x: p[i].x, y: p[i].y }, b: { x: p[i + 1].x, y: p[i + 1].y } };
+            const hh = Math.max(p[i].h, p[i + 1].h);
+            out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "block", ...seg, z0: zb, z1: zb + hh, w: 0.17 });
+            out.push(...blockUnits(m.id, seg, memberLength(seg), 0.19, () => zb, hh, []));
           }
           return out;
         }
-        out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "block", a: m.a, b: m.b, z0: base, z1: base + h, w: 0.19 });
+        out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "block", a: m.a, b: m.b, z0: base, z1: base + h, w: 0.17 });
+        out.push(...blockUnits(m.id, m, L, 0.19, () => base, h, []));
         out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "concrete", a: m.a, b: m.b, z0: base - (h > 1.0 ? 0.4 : 0.3), z1: base, w: h > 1.0 ? 1.6 : 0.8, off: h > 1.0 ? 0.6 : 0.2 });
         return out;
       }
@@ -365,6 +376,46 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
         for (let z = 0; z < h - 0.02; z += 0.2) out.push({ kind: "bar", id: m.id, layer: "retaining", tone: "rail", a: { x: a.x, y: a.y }, b: { x: c.x, y: c.y }, z0: zb + z, z1: zb + Math.min(h, z + 0.196), w: t, off });
       }
       return out;
+    }
+  }
+  return out;
+}
+
+// A block wall course by course: 390 x 190 units at 400 x 200 centres in running bond
+// (courses fitted to the height), a grouted bond beam as the top course, and the
+// openings in `gaps` left clear. Along the line from line.a, L long, th thick.
+function blockUnits(id: string, line: { a: Pt; b?: Pt }, L: number, th: number, z0At: (s: number) => number, height: number, gaps: { s0: number; s1: number; z0: number; z1: number }[]): Part[] {
+  const out: Part[] = [];
+  if (L < 0.05 || height < 0.05) return out;
+  const U = 0.4,
+    J = 0.01; // unit length and mortar joint
+  const n = Math.max(1, Math.round(height / 0.2));
+  const c = height / n;
+  // a stretch of course, less any opening it crosses
+  const pieces = (s0: number, s1: number, z0: number, z1: number) => {
+    let segs: [number, number][] = [[s0, s1]];
+    for (const g of gaps) {
+      if (z1 <= g.z0 + 1e-6 || z0 >= g.z1 - 1e-6) continue;
+      segs = segs.flatMap(([a, b]): [number, number][] => (b <= g.s0 || a >= g.s1 ? [[a, b]] : ([[a, Math.min(b, g.s0)], [Math.max(a, g.s1), b]] as [number, number][]).filter(([x, y]) => y - x > 0.02)));
+    }
+    return segs;
+  };
+  let count = 0;
+  for (let k = 0; k < n && count < 6000; k++) {
+    const last = k === n - 1;
+    if (last) {
+      for (const [a, b] of pieces(0, L, z0At(0) + k * c, z0At(0) + (k + 1) * c)) {
+        const z0 = z0At((a + b) / 2) + k * c;
+        out.push({ kind: "bar", id, layer: "blockwork", tone: "bondBeam", ...sub(line, a, b), z0, z1: z0 + c, w: th });
+      }
+      continue;
+    }
+    for (let s = -(k % 2) * (U / 2); s < L - 0.02 && count < 6000; s += U) {
+      const z0 = z0At(Math.max(0, s)) + k * c;
+      for (const [a, b] of pieces(Math.max(0, s), Math.min(L, s + U - J), z0, z0 + c - J)) {
+        out.push({ kind: "bar", id, layer: "blockwork", tone: "blockUnit", ...sub(line, a, b), z0, z1: z0 + c - J, w: th });
+        count++;
+      }
     }
   }
   return out;

@@ -158,6 +158,11 @@ BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
   floor framing over it, the roof, retaining walls) and a Selected card,
   plus a 1 m ground grid (a layer) and an X / Y / Z axes gizmo in the
   bottom-right corner that turns with the camera.
+  Block walls (and block retaining walls) are drawn block by block: 390 x 190
+  units at 400 x 200 in running bond, courses fitted to the height, a bond beam
+  as the top course, openings left clear up to the lintel, on their own
+  "Blockwork" layer; the plain wall panel sits just inside them for the IFC
+  export and for when blockwork is switched off.
   Tags are coloured by kind; failing members' tags turn red only when
   colouring by result. Headers in non-loadbearing walls are not tagged.
 - **Completeness** (`lib/design/complete.ts`): passing members are half of a
