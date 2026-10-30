@@ -657,6 +657,17 @@ export function DesignEditor({
 
   const sortedLevels = [...model.levels].sort((a, b) => a.elevation - b.elevation);
   const below = sortedLevels[sortedLevels.findIndex((l) => l.id === level.id) - 1];
+  // posts on the level above stand on this one's framing: show where, and what they bring down
+  const upper = sortedLevels[sortedLevels.findIndex((l) => l.id === level.id) + 1];
+  const postsAbove = upper
+    ? model.members
+        .filter((m) => m.levelId === upper.id && m.type === "post")
+        .map((m) => {
+          const r = calcs.results.get(m.id);
+          const n = r?.kv.find((k) => k.label.startsWith("N*"));
+          return { id: m.id, label: m.label, at: m.a, load: n && r?.status !== "none" ? `N* ${n.value}` : null, unstable: !!r?.unstable };
+        })
+    : [];
   const scaleOk = !level.plan || !!level.plan.scale;
 
   const saveLabel: Record<SaveState, string> = {
@@ -844,6 +855,7 @@ export function DesignEditor({
                   members={model.members.filter((m) => m.levelId === level.id)}
                   grids={model.grids}
                   ghosts={below ? model.members.filter((m) => m.levelId === below.id) : []}
+                  above={postsAbove}
                   page={page}
                   pageLoading={pageLoading}
                   tool={locked && tool !== "pan" ? "select" : tool}

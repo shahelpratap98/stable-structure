@@ -9,7 +9,7 @@ import { levelAboveOf, type DesignModel, type Level, type Member, type Pt } from
 
 export type Gap = {
   key: string; // stable, for marking it OK
-  kind: "missing" | "assumed" | "unchecked";
+  kind: "unstable" | "missing" | "assumed" | "unchecked";
   what: string;
   levelId?: string;
   id?: string; // the member to open
@@ -161,6 +161,7 @@ export function completeness(model: DesignModel, calcs: Calcs): Gap[] {
     const m = lintel?.member ?? model.members.find((x) => x.id === r.memberId);
     if (!m) continue;
     const trib = r.loads.find((x) => x.label === "Tributary");
+    if (r.unstable) gaps.unshift({ key: `unstable:${r.memberId}`, kind: "unstable", what: `${r.mark} is unstable: ${r.unstable}`, id: r.memberId, levelId: m.levelId });
     if (trib?.note?.startsWith("assumed")) gaps.push({ key: `loads:${r.memberId}`, kind: "assumed", what: `${r.mark}: sized for an assumed metre of ${lintel ? "floor" : "load"}; set what it carries`, id: r.memberId, levelId: m.levelId });
     else if (r.status === "none" && (m.type === "beam" || m.type === "post") && !lintel) gaps.push({ key: `none:${r.memberId}`, kind: "unchecked", what: `${r.mark}: carries nothing, so it isn't checked`, id: r.memberId, levelId: m.levelId });
   }

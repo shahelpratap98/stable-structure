@@ -58,6 +58,7 @@ export type Result = {
   bu?: { W: number; E: number; line: string; dir: "along" | "across" };
   baseMoment?: number; // kN·m at the base of a cantilever post, for its footing
   upliftEnd?: number; // kN hold-down needed at each end (wind uplift on roof framing)
+  unstable?: string; // nothing holds it up: a post with nothing under it, a beam end on nothing
 };
 
 // A lintel made by an opening in a wall. Its id is "<wall id>#<opening id>".
@@ -1255,17 +1256,55 @@ function runCalcsOnce(model: DesignModel): Calcs {
     results.set(s.id, res);
   };
 
-  // Where a beam is held up: its ends (unless marked free) and any post on its
-  // own level standing part-way along it. Undefined for a plain two-end span.
-  const beamSupports = (m: Member): number[] | undefined => {
-    if (!m.b) return undefined;
-    const L = memberLength(m);
-    const inner = [
+  // What a beam end can rest on: a post, loadbearing (or retaining) wall or
+  // another beam under it, or a raft. A roof level's beams sit on the storey below.
+  const segDist = (q: Pt, w: Member) => {
+    if (!w.b) return Infinity;
+    const L2 = (w.b.x - w.a.x) ** 2 + (w.b.y - w.a.y) ** 2 || 1;
+    const t = Math.min(1, Math.max(0, ((q.x - w.a.x) * (w.b.x - w.a.x) + (q.y - w.a.y) * (w.b.y - w.a.y)) / L2));
+    return Math.hypot(q.x - (w.a.x + t * (w.b.x - w.a.x)), q.y - (w.a.y + t * (w.b.y - w.a.y)));
+  };
+  const bearingWalls = model.members.filter((w) => w.b && ((w.type === "wall" && w.wall?.loadbearing !== false) || w.type === "retaining"));
+  const endHeld = (m: Member, e: "a" | "b") => {
+    if (bearings.get(m.id)?.some((b) => b.end === e)) return true;
+    const ml = levelOf(model, m.levelId);
+    const lids = new Set([m.levelId, ...(ml?.kind === "roof" && downFrom(ml)[0] ? [downFrom(ml)[0].id] : [])]);
+    const q = m[e]!;
+    return (
+      posts.some((s) => lids.has(s.levelId) && near(s.a, q, ACROSS)) ||
+      bearingWalls.some((w) => lids.has(w.levelId) && segDist(q, w) <= ACROSS) ||
+      beamLike.some((y) => y.id !== m.id && lids.has(y.levelId) && partway(y, q, ACROSS) !== null) ||
+      [...lids].some((lid) => raftUnder(lid, q))
+    );
+  };
+  // posts on its own level and loadbearing walls across it, m from end a
+  const innerSupports = (m: Member) =>
+    [
       ...posts.filter((s) => s.type === "post" && s.levelId === m.levelId).map((s) => partway(m, s.a)),
       ...(m.type === "beam" ? model.members.filter((w) => w.type === "wall" && w.levelId === m.levelId && w.wall?.loadbearing !== false).map((w) => wallCrossing(m, w)?.t ?? null) : []),
     ].filter((x): x is number => x !== null);
-    const at = [...(m.free === "a" ? [] : [0]), ...inner, ...(m.free === "b" ? [] : [L])].sort((a, b) => a - b);
-    return inner.length || m.free ? at : undefined;
+  // A beam end with nothing under it, on a beam held at two other points,
+  // overhangs: it is designed as the cantilever it is. Held at fewer points it
+  // is unstable (flagged below).
+  const looseEnds = new Map<string, ("a" | "b")[]>();
+  for (const m of beamLike) {
+    if (m.type !== "beam" || !m.b) continue;
+    const loose = (["a", "b"] as const).filter((e) => m.free !== e && !endHeld(m, e));
+    if (loose.length) looseEnds.set(m.id, loose);
+  }
+  const heldAt = (m: Member) => (m.free ? 1 : 2) - (looseEnds.get(m.id)?.length ?? 0) + innerSupports(m).length;
+  const isFree = (m: Member, e: "a" | "b") => m.free === e || (heldAt(m) >= 2 && !!looseEnds.get(m.id)?.includes(e));
+
+  // Where a beam is held up: its ends (unless free) and any post or wall on its
+  // own level part-way along it. Undefined for a plain two-end span.
+  const beamSupports = (m: Member): number[] | undefined => {
+    if (!m.b) return undefined;
+    const L = memberLength(m);
+    const inner = innerSupports(m);
+    const fa = isFree(m, "a"),
+      fb = isFree(m, "b");
+    const at = [...(fa ? [] : [0]), ...inner, ...(fb ? [] : [L])].sort((a, b) => a - b);
+    return inner.length || fa || fb ? at : undefined;
   };
 
   // typed-in loads win; otherwise read them off the drawing; otherwise 1 m of floor or roof
@@ -1373,7 +1412,8 @@ function runCalcsOnce(model: DesignModel): Calcs {
         fallbackMaxD: m.type === "beam" && loadKind(model, level) === "floor" ? p.beamMaxD : 0,
         flush: m.type === "beam" && loadKind(model, level) === "floor",
         points,
-        supports: beamSupports(m),
+        // held at one point it is a mechanism: size it as a plain span, it is flagged unstable below
+        supports: ((s) => (s && s.length < 2 ? undefined : s))(beamSupports(m)),
         restraint: m.restraint,
         segment: m.segment,
         uplift: upliftKPa,
@@ -1781,6 +1821,40 @@ function runCalcsOnce(model: DesignModel): Calcs {
       notes: [],
     });
   }
+  // ---------------------------------------------------------------- stability
+  // Each member is designed as if it were held up, so check that something is
+  // there: under every post a post, pile, footing, beam, loadbearing wall, raft
+  // or slab; under every beam end a post, wall or beam (a cantilever needs two
+  // supports besides its free end).
+  const flag = (id: string, why: string) => {
+    const r = results.get(id);
+    if (!r) return;
+    r.unstable = why;
+    r.notes = [`Unstable: ${why}.`, ...r.notes];
+  };
+  for (const q of posts) {
+    if (q.type !== "post" || seats.has(q.id)) continue;
+    const ql = levelOf(model, q.levelId);
+    if (!ql || ql.floor === "slab" || raftUnder(ql.id, q.a)) continue;
+    const below = downFrom(ql)[0];
+    if (below && bearingWalls.some((w) => w.levelId === below.id && segDist(q.a, w) <= ACROSS)) continue;
+    flag(q.id, below ? `nothing under it on the ${below.name} (add a post, pile, footing or beam below)` : "it stands on a timber floor with nothing under it (add a pile or footing)");
+  }
+  const endName = (e: "a" | "b") => (e === "a" ? "end 1" : "end 2");
+  for (const m of beamLike) {
+    const loose = looseEnds.get(m.id);
+    if (m.type !== "beam" || !m.b) continue;
+    const held = heldAt(m);
+    if (held < 2)
+      flag(
+        m.id,
+        loose?.length
+          ? `nothing under ${loose.map(endName).join(" or ")}, so it is held at ${held === 1 ? "only one point" : "no point"} (add a post, wall or beam there)`
+          : "a cantilever held at only one point (it needs a back span over a second support)",
+      );
+    else if (loose?.length) results.get(m.id)?.notes.unshift(`Nothing under ${loose.map(endName).join(" or ")}: it overhangs its supports there and is designed as a cantilever.`);
+  }
+
   // ---------------------------------------------------------------- connection schedule
   const connections: Connection[] = [];
   const post = (lid: string, q: Pt) => posts.find((x) => x.type === "post" && x.levelId === lid && near(x.a, q));
@@ -1788,8 +1862,8 @@ function runCalcsOnce(model: DesignModel): Calcs {
     const r = results.get(m.id);
     if (!r?.sec || !m.b) continue;
     const sups = r.supportLoads ?? [
-      ...(m.free === "a" ? [] : [{ at: 0, loads: r.ends?.a ?? ZERO }]),
-      ...(m.free === "b" ? [] : [{ at: memberLength(m), loads: r.ends?.b ?? ZERO }]),
+      ...(isFree(m, "a") ? [] : [{ at: 0, loads: r.ends?.a ?? ZERO }]),
+      ...(isFree(m, "b") ? [] : [{ at: memberLength(m), loads: r.ends?.b ?? ZERO }]),
     ];
     const steel = findSteel(r.sec.name);
     for (const sp of sups) {

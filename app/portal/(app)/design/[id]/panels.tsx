@@ -898,6 +898,11 @@ export function OpeningPanel({
 export function CalcSheet({ result }: { result: Result }) {
   return (
     <Section title="Design" aside={<span className="chip bg-warn-bg text-warn">Preliminary</span>}>
+      {result.unstable ? (
+        <p className="mb-2 rounded border border-bad bg-bad-bg px-3 py-2 text-sm font-semibold text-bad" role="alert">
+          Unstable: {result.unstable}. The sizes below assume it is held up.
+        </p>
+      ) : null}
       {result.sec ? (
         <div className="flex flex-col gap-0.5 border border-line bg-surface-2 px-3 py-2.5">
           <FamilyTag fam={result.sec.fam} />
@@ -967,9 +972,9 @@ export function CalcSheet({ result }: { result: Result }) {
           </dl>
         </>
       ) : null}
-      {result.notes.length ? (
+      {result.notes.length > (result.unstable ? 1 : 0) ? (
         <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-muted">
-          {result.notes.map((n) => (
+          {result.notes.slice(result.unstable ? 1 : 0).map((n) => (
             <li key={n}>{n}</li>
           ))}
         </ul>
@@ -1077,7 +1082,9 @@ export function Overview({
   onAck?: (key: string, ok: boolean, what: string) => void;
 }) {
   const counts = (Object.keys(MEMBER_INFO) as MemberType[]).map((t) => [t, model.members.filter((m) => m.type === t).length] as const).filter(([, n]) => n);
-  const attention = [...calcs.results.values()].filter((r) => r.status === "fail" || r.status === "close").sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0));
+  const attention = [...calcs.results.values()]
+    .filter((r) => r.unstable || r.status === "fail" || r.status === "close")
+    .sort((a, b) => Number(!!b.unstable) - Number(!!a.unstable) || (b.ratio ?? 0) - (a.ratio ?? 0));
   return (
     <div>
       <Section title="This structure">
@@ -1113,9 +1120,9 @@ export function Overview({
             {attention.map((r) => (
               <li key={r.memberId}>
                 <button type="button" className="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-2" onClick={() => onPick(r.memberId)}>
-                  <StatusDot status={r.status} />
+                  <StatusDot status={r.unstable ? "fail" : r.status} />
                   <span className="font-semibold">{r.mark}</span>
-                  <span className="truncate text-muted">{r.summary}</span>
+                  <span className={`truncate ${r.unstable ? "text-bad" : "text-muted"}`}>{r.unstable ? `Unstable: ${r.unstable}` : r.summary}</span>
                 </button>
               </li>
             ))}

@@ -38,6 +38,7 @@ type Props = {
   members: Member[]; // this level
   grids?: { x: { n: string; at: number }[]; y: { n: string; at: number }[] }; // set-out grid, m
   ghosts: Member[]; // level below, drawn faintly for alignment
+  above?: { id: string; label: string; at: Pt; load: string | null; unstable: boolean }[]; // posts on the level above, landing on this one
   page: RenderedPage | null;
   pageLoading: boolean;
   tool: Tool;
@@ -182,12 +183,13 @@ export function PlanView(props: Props) {
   }, [members, frame, drag]);
 
   const ghostShapes = useMemo(() => ghosts.map((m) => ({ m, a: toPdf(frame, m.a), b: m.b ? toPdf(frame, m.b) : undefined })), [ghosts, frame]);
+  const aboveShapes = useMemo(() => (props.above ?? []).map((q) => ({ ...q, m: { id: q.id }, a: toPdf(frame, q.at), b: undefined })), [props.above, frame]);
 
   const snap = (p: Pt, from: Pt | null, skipId?: string): Pt => {
     const tol = 10 / view.zoom;
     let best: Pt | null = null;
     let bestD = tol;
-    for (const s of [...shapes, ...ghostShapes]) {
+    for (const s of [...shapes, ...ghostShapes, ...aboveShapes]) {
       if (s.m.id === skipId) continue;
       for (const q of s.b ? [s.a, s.b] : [s.a]) {
         const d = Math.hypot(q.x - p.x, q.y - p.y);
@@ -487,6 +489,21 @@ export function PlanView(props: Props) {
               ),
             )}
           </g>
+
+          {/* posts on the level above: where their load comes down onto this level */}
+          {aboveShapes.map((q) => {
+            const c = q.unstable ? "#b42318" : "#1179a9";
+            const r = px(7);
+            return (
+              <g key={`above-${q.id}`} pointerEvents="none">
+                <rect x={q.a.x - r} y={q.a.y - r} width={2 * r} height={2 * r} fill="white" fillOpacity={0.7} stroke={c} strokeWidth={2} strokeDasharray={q.unstable ? "3 2" : undefined} vectorEffect="non-scaling-stroke" />
+                <path d={`M ${q.a.x - r * 0.55} ${q.a.y - r * 0.3} L ${q.a.x} ${q.a.y + r * 0.45} L ${q.a.x + r * 0.55} ${q.a.y - r * 0.3}`} fill="none" stroke={c} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                <text x={q.a.x + r + px(3)} y={q.a.y + px(4)} fontSize={px(10)} fontWeight={700} fill={c} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                  {`${q.label} above${q.load ? ` · ${q.load}` : ""}${q.unstable ? " · needs support" : ""}`}
+                </text>
+              </g>
+            );
+          })}
 
           {/* set-out grid lines */}
           {props.grids && (props.grids.x.length || props.grids.y.length) && shapes.length
