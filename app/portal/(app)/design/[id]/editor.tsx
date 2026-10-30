@@ -9,6 +9,7 @@ import { cloudsOn, diffModels } from "@/lib/design/diff";
 import { defaultRaft } from "@/lib/design/raft";
 import { defaultDeck, defaultStair } from "@/lib/design/deck";
 import { joinWallRuns } from "@/lib/design/walls";
+import { matchPlanPages } from "@/lib/design/plan-pages";
 import { exportIfc } from "@/lib/design/ifc";
 import { FAMILY_COLOUR, FAMILY_LABEL } from "@/lib/design/materials";
 import {
@@ -32,7 +33,7 @@ import {
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
 import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, ChangesPanel, GridPanel, Overview, PaperworkPanel, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
-import { countPages, findLines, labelLines, loadPdf, pageWords, renderPage, type FoundLine, type RenderedPage } from "./pdf";
+import { countPages, findLines, labelLines, loadPdf, pageTexts, pageWords, renderPage, type FoundLine, type RenderedPage } from "./pdf";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
 import { SignoffPanel, type Signoff } from "./signoff";
@@ -517,10 +518,25 @@ export function DesignEditor({
       if (error) throw new Error(error.message);
       const res = await registerPlan(job.id, path, file.name, pages);
       if (!res.ok) throw new Error(res.message);
-      void loadPdf(res.plan.id, data); // already in memory, no need to download it again
+      const doc = loadPdf(res.plan.id, data); // already in memory, no need to download it again
       setPlans((p) => [...p, res.plan]);
-      if (!level.plan) updateLevel(level.id, { plan: { planId: res.plan.id, page: 1, scale: null, origin: { x: 0, y: 0 } } }, `${level.name} plan set`);
       setTab("levels");
+      // Put each empty level on the sheet whose title names it.
+      const open = modelRef.current.levels.filter((l) => !l.plan);
+      const texts = open.length ? await doc.then(pageTexts).catch(() => []) : [];
+      const picks = matchPlanPages(open, texts);
+      if (!picks.size && !level.plan) {
+        picks.set(level.id, 1);
+        setNotice("Couldn't tell which page shows which level. Pick each level's page under Plan in the Levels tab.");
+      }
+      if (picks.size) {
+        const m = modelRef.current;
+        const set = m.levels.filter((l) => picks.has(l.id));
+        commit(
+          { ...m, levels: m.levels.map((l) => (picks.has(l.id) ? { ...l, plan: { planId: res.plan.id, page: picks.get(l.id)!, scale: null, origin: { x: 0, y: 0 } } } : l)) },
+          `Plan pages set: ${set.map((l) => `${l.name} p${picks.get(l.id)}`).join(", ")}`,
+        );
+      }
     } catch (e) {
       setNotice(`Upload failed: ${e instanceof Error ? e.message : "unknown error"}`);
     } finally {

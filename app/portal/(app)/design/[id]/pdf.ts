@@ -147,6 +147,16 @@ export async function pageWords(doc: PDFDocumentProxy, pageNo: number) {
   return out;
 }
 
+// All the text on each page, for telling which sheet is which.
+export async function pageTexts(doc: PDFDocumentProxy) {
+  const out: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const tc = await (await doc.getPage(i)).getTextContent();
+    out.push(tc.items.map((it) => ("str" in it ? it.str : "")).join(" "));
+  }
+  return out;
+}
+
 // marks next to lines: the nearest word that looks like a member mark
 export function labelLines(lines: FoundLine[], words: { text: string; x: number; y: number }[]) {
   const mark = /^(RB|B|L|LF|J|R)\d+(\.\d+)?[A-Z]?$/i;
