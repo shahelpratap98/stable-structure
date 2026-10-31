@@ -145,6 +145,22 @@ export function DesignEditor({
   const calcs = useMemo(() => runCalcs(model), [model]);
   const results = calcs.results;
 
+  // a short pop-up when an edit leaves a member with no load path
+  const [toast, setToast] = useState<{ text: string; id: string } | null>(null);
+  const wasUnstable = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const now = [...results.values()].filter((r) => r.unstable);
+    const seen = wasUnstable.current;
+    wasUnstable.current = new Set(now.map((r) => r.memberId));
+    const fresh = seen ? now.filter((r) => !seen.has(r.memberId)) : [];
+    if (fresh.length) setToast({ text: fresh.length === 1 ? `${fresh[0].mark} is unstable: ${fresh[0].unstable}` : `Now unstable: ${fresh.map((r) => r.mark).join(", ")}`, id: fresh[0].memberId });
+  }, [results]);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   // an earlier revision to compare against: its changes are boxed on the plan and clouded in the report
   const [base, setBase] = useState<{ revision: number; model: DesignModel; calcs: Calcs } | null>(null);
   const changes = useMemo(() => (base ? diffModels(base.model, base.calcs, model, calcs) : []), [base, model, calcs]);
@@ -668,6 +684,11 @@ export function DesignEditor({
           return { id: m.id, label: m.label, at: m.a, load: n && r?.status !== "none" ? `N* ${n.value}` : null, unstable: !!r?.unstable };
         })
     : [];
+  const linesAbove = upper
+    ? model.members
+        .filter((m) => m.levelId === upper.id && m.b && (m.type === "bracing" || (m.type === "wall" && m.wall?.loadbearing !== false)))
+        .map((m) => ({ id: m.id, label: m.type === "bracing" ? m.label : null, a: m.a, b: m.b! }))
+    : [];
   const scaleOk = !level.plan || !!level.plan.scale;
 
   const saveLabel: Record<SaveState, string> = {
@@ -752,6 +773,11 @@ export function DesignEditor({
         </div>
       </header>
 
+      {toast ? (
+        <button type="button" onClick={() => pick(toast.id, true)} role="alert" className="fixed bottom-6 left-1/2 z-50 max-w-xl -translate-x-1/2 rounded-lg border border-bad bg-bad-bg px-4 py-2 text-left text-sm font-semibold text-bad shadow-lg">
+          {toast.text}
+        </button>
+      ) : null}
       {notice ? (
         <p className="flex items-center justify-between gap-3 bg-bad-bg px-4 py-1.5 text-sm font-semibold text-bad" role="alert">
           {notice}
@@ -856,6 +882,7 @@ export function DesignEditor({
                   grids={model.grids}
                   ghosts={below ? model.members.filter((m) => m.levelId === below.id) : []}
                   above={postsAbove}
+                  aboveLines={linesAbove}
                   page={page}
                   pageLoading={pageLoading}
                   tool={locked && tool !== "pan" ? "select" : tool}
@@ -978,6 +1005,7 @@ export function DesignEditor({
                   onDelete={() => removeMember(selected.id)}
                   results={results}
                   onPick={(id) => pick(id, true)}
+                  gaps={openGaps(model, gapsFor(model, calcs)).filter((g) => g.id === selected.id)}
                 />
               ) : (
                 <Overview

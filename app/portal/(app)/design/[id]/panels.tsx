@@ -247,6 +247,7 @@ export function MemberPanel({
   onDelete,
   results,
   onPick,
+  gaps = [],
 }: {
   model: DesignModel;
   member: Member;
@@ -257,6 +258,7 @@ export function MemberPanel({
   onDelete: () => void;
   results?: Map<string, Result>; // for a wall: its openings' lintels
   onPick?: (id: string) => void;
+  gaps?: Gap[]; // what is still open on this member
 }) {
   const m = member;
   const beamLike = BEAM_LIKE.includes(m.type);
@@ -436,6 +438,30 @@ export function MemberPanel({
       {m.type === "raft" ? <RaftEditor m={m} site={model.site} locked={locked} set={set} /> : null}
       {m.type === "deck" && m.deck ? <DeckEditor m={m} locked={locked} set={set} sectionField={sectionField} /> : null}
       {m.type === "stair" && m.stair ? <StairEditor m={m} locked={locked} set={set} /> : null}
+      {result?.misaligned ? (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded border border-warn bg-warn-bg px-3 py-2 text-sm font-semibold text-warn" role="alert">
+          <span>
+            {result.misaligned.mm} mm off {result.misaligned.mark}: check it lands on it.
+          </span>
+          {!locked ? (
+            <button type="button" className="btn btn-quiet shrink-0 px-2 py-1 text-xs" onClick={() => set(result.misaligned!.end === "b" ? { b: result.misaligned!.to } : { a: result.misaligned!.to }, `moved onto ${result.misaligned!.mark}`)}>
+              Move onto {result.misaligned.mark}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {gaps.some((g) => g.kind !== "unstable" && g.kind !== "misaligned") ? (
+        <ul className="mb-3 flex flex-col gap-1 text-sm">
+          {gaps
+            .filter((g) => g.kind !== "unstable" && g.kind !== "misaligned")
+            .map((g) => (
+              <li key={g.key} className="flex items-start gap-2">
+                <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOUR.close }} aria-hidden />
+                <span>{g.detail ?? g.what}</span>
+              </li>
+            ))}
+        </ul>
+      ) : null}
       {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} results={results} onPick={onPick} /> : null}
       {m.type === "bracing" ? (
         <Section title="Bracing element">
@@ -991,6 +1017,7 @@ export function SummaryStrip({ model, calcs }: { model: DesignModel; calcs: Calc
   const counts = new Map<string, number>();
   for (const r of designed) counts.set(r.sec!.fam, (counts.get(r.sec!.fam) ?? 0) + 1);
   const fails = [...calcs.results.values()].filter((r) => r.status === "fail").length;
+  const unstable = [...calcs.results.values()].filter((r) => r.unstable).length;
   const top = designed.reduce<Result | null>((a, r) => (!a || (r.ratio ?? 0) > (a.ratio ?? 0) ? r : a), null);
   const open = openGaps(model, gapsFor(model, calcs)).length;
   return (
@@ -1002,8 +1029,8 @@ export function SummaryStrip({ model, calcs }: { model: DesignModel; calcs: Calc
         </span>
       ))}
       {top ? <span className="rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px]">Highest {top.mark} {top.ratio!.toFixed(2)}</span> : null}
-      <span className={`rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px] ${fails ? "text-bad" : open ? "text-warn" : "text-ok"}`}>
-        {fails ? `${fails} need specific design` : open ? `All members pass · ${open} to finish` : "All checks pass"}
+      <span className={`rounded-full border border-line bg-surface px-2 py-0.5 font-mono text-[11px] ${unstable || fails ? "text-bad" : open ? "text-warn" : "text-ok"}`}>
+        {unstable ? `${unstable} unstable: no load path` : fails ? `${fails} need specific design` : open ? `All members pass · ${open} to finish` : "All checks pass"}
       </span>
     </div>
   );
@@ -1016,32 +1043,44 @@ function ToFinish({ model, calcs, locked, onPick, onLevel, onAck }: { model: Des
   const open = openGaps(model, gaps);
   const acked = gaps.filter((g) => (model.ack ?? []).includes(g.key));
   if (!gaps.length) return null;
-  const shown = all ? open : open.slice(0, 8);
+  // one entry per element, the unstable ones first; what belongs to no one element after
+  const byMember = new Map<string, Gap[]>();
+  for (const g of open) if (g.id && g.mark) byMember.set(g.id, [...(byMember.get(g.id) ?? []), g]);
+  const members = [...byMember.values()].sort((a, b) => Number(b.some((g) => g.kind === "unstable")) - Number(a.some((g) => g.kind === "unstable")));
+  const general = open.filter((g) => !g.id || !g.mark);
+  const groups = [...members, ...general.map((g) => [g])];
+  const shown = all ? groups : groups.slice(0, 8);
   const go = (g: Gap) => (g.id ? onPick(g.id) : g.levelId ? onLevel(g.levelId) : undefined);
+  const dot = (bad: boolean) => <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: bad ? STATUS_COLOUR.fail : STATUS_COLOUR.close }} aria-hidden />;
   return (
     <Section title="To finish" aside={<span className="text-[11px] text-muted">{open.length ? `${open.length} open` : "all done"}</span>}>
       {open.length ? (
         <ul className="flex flex-col gap-1 text-sm">
-          {shown.map((g) => (
-            <li key={g.key} className="flex items-start gap-2">
-              <button type="button" className="flex min-w-0 flex-1 items-start gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-2" onClick={() => go(g)}>
-                <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOUR.close }} aria-hidden />
-                <span>{g.what}</span>
-              </button>
-              {!locked ? (
-                <button type="button" className="press shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-accent-600 hover:bg-surface-2" onClick={() => onAck(g.key, true, g.what)} title="Checked: this is as intended">
-                  Mark OK
-                </button>
-              ) : null}
+          {shown.map((list) => (
+            <li key={list[0].key}>
+              {list[0].id && list[0].mark ? <span className="px-1 font-semibold">{list[0].mark}</span> : null}
+              {list.map((g) => (
+                <div key={g.key} className="flex items-start gap-2">
+                  <button type="button" className="flex min-w-0 flex-1 items-start gap-2 rounded px-1 py-0.5 text-left hover:bg-surface-2" onClick={() => go(g)}>
+                    {dot(g.kind === "unstable")}
+                    <span className={g.kind === "unstable" ? "text-bad" : undefined}>{g.detail ?? g.what}</span>
+                  </button>
+                  {!locked ? (
+                    <button type="button" className="press shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold text-accent-600 hover:bg-surface-2" onClick={() => onAck(g.key, true, g.what)} title="Checked: this is as intended">
+                      Mark OK
+                    </button>
+                  ) : null}
+                </div>
+              ))}
             </li>
           ))}
         </ul>
       ) : (
         <p className="text-sm text-ok">Nothing missing.</p>
       )}
-      {open.length > 8 ? (
+      {groups.length > 8 ? (
         <button type="button" className="mt-1 text-xs font-semibold text-accent-600 hover:underline" onClick={() => setAll((v) => !v)}>
-          {all ? "Show fewer" : `Show all ${open.length}`}
+          {all ? "Show fewer" : `Show all ${groups.length}`}
         </button>
       ) : null}
       {acked.length ? (

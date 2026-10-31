@@ -557,6 +557,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       if (tone.startsWith("brace:")) return { c: RATINGS[tone.slice(6) as BraceSystem]?.colour ?? "#65a30d", o: 0.72 };
       if (tone !== "member") return TONE[tone as keyof typeof TONE];
       const r = calcs.results.get(id);
+      if (r?.unstable) return { c: STATUS_COLOUR.fail };
       if (colourBy === "result") return { c: STATUS_COLOUR[r?.status ?? "none"] };
       if (colourBy === "material") {
         if (r?.status === "fail") return { c: "#b8342a" };
@@ -613,8 +614,8 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       const mark = r?.mark ?? model.members.find((m) => m.id === id)?.label;
       if (!p || !mark) continue;
       const roofTag = t === "joistzone" && !!model.members.find((m) => m.id === id)?.zone?.roof;
-      const bg = colourBy === "result" && r?.status === "fail" ? "rgba(178,58,42,.95)" : TAG_BG[cat];
-      const tex = tagTexture(mark, bg);
+      const bg = r?.unstable || (colourBy === "result" && r?.status === "fail") ? "rgba(178,58,42,.95)" : TAG_BG[cat];
+      const tex = tagTexture(r?.unstable ? `! ${mark}` : mark, bg);
       const sp = sprite(tex, cat === "id_wall" ? 0.3 : 0.34, tex.userData.ratio as number, p.x, p.y, p.z + (lift.get(lvlId ?? "") ?? 0) + (roofTag ? liftRoof : 0));
       sp.userData.id = id;
       sp.userData.mark = mark;

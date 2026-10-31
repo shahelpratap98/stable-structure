@@ -9,8 +9,10 @@ import { levelAboveOf, type DesignModel, type Level, type Member, type Pt } from
 
 export type Gap = {
   key: string; // stable, for marking it OK
-  kind: "unstable" | "missing" | "assumed" | "unchecked";
+  kind: "unstable" | "misaligned" | "missing" | "assumed" | "unchecked";
   what: string;
+  mark?: string; // the member's mark, when it belongs to one
+  detail?: string; // what, without the mark: for lists grouped by member
   levelId?: string;
   id?: string; // the member to open
 };
@@ -110,6 +112,19 @@ function coverageGaps(model: DesignModel, area: Pt[], covers: Member[], label: (
     });
 }
 
+// Two bracing lines running together: within 20° and a metre, and overlapping along their length.
+function inLine(m: Member, u: Member) {
+  const L = Math.hypot(m.b!.x - m.a.x, m.b!.y - m.a.y) || 1,
+    Lu = Math.hypot(u.b!.x - u.a.x, u.b!.y - u.a.y) || 1;
+  const ux = (m.b!.x - m.a.x) / L,
+    uy = (m.b!.y - m.a.y) / L;
+  if (Math.abs(ux * (u.b!.x - u.a.x) + uy * (u.b!.y - u.a.y)) / Lu < Math.cos((20 * Math.PI) / 180)) return false;
+  const off = Math.abs(-uy * (u.a.x - m.a.x) + ux * (u.a.y - m.a.y));
+  const s0 = ux * (u.a.x - m.a.x) + uy * (u.a.y - m.a.y),
+    s1 = ux * (u.b!.x - m.a.x) + uy * (u.b!.y - m.a.y);
+  return off <= 1 && Math.max(s0, s1) > 0 && Math.min(s0, s1) < L;
+}
+
 export function completeness(model: DesignModel, calcs: Calcs): Gap[] {
   const gaps: Gap[] = [];
   if (!model.members.length) return gaps;
@@ -153,6 +168,21 @@ export function completeness(model: DesignModel, calcs: Calcs): Gap[] {
       gaps.push({ key: `openings:${l.id}`, kind: "missing", what: `No doors or windows in the ${levelName(l)} outside walls (Opening tool, N)`, levelId: l.id });
   }
 
+  // bracing above has to get its shear down: a line with nothing in line under it transfers through the floor
+  for (let i = 1; i < all.length; i++) {
+    const below = all[i - 1];
+    if (below.kind === "foundation") continue;
+    const under = model.members.filter((m) => m.levelId === below.id && m.type === "bracing" && m.b);
+    const lone = model.members.filter((m) => m.levelId === all[i].id && m.type === "bracing" && m.b && !under.some((u) => inLine(m, u)));
+    if (lone.length)
+      gaps.push({
+        key: `transfer:${all[i].id}:${lone.length}`,
+        kind: "assumed",
+        what: `${lone.length} bracing ${lone.length === 1 ? "element" : "elements"} on the ${levelName(all[i])} ${lone.length === 1 ? "has" : "have"} no bracing in line below (${lone.slice(0, 6).map((m) => m.label).join(", ")}${lone.length > 6 ? " …" : ""}): check the ${levelName(below)} can take that shear`,
+        levelId: below.id,
+      });
+  }
+
   // beams and lintels sized on assumed loads, and members carrying nothing
   const lintelIn = new Map(calcs.lintels.map((v) => [v.id, v]));
   for (const r of calcs.results.values()) {
@@ -161,9 +191,17 @@ export function completeness(model: DesignModel, calcs: Calcs): Gap[] {
     const m = lintel?.member ?? model.members.find((x) => x.id === r.memberId);
     if (!m) continue;
     const trib = r.loads.find((x) => x.label === "Tributary");
-    if (r.unstable) gaps.unshift({ key: `unstable:${r.memberId}`, kind: "unstable", what: `${r.mark} is unstable: ${r.unstable}`, id: r.memberId, levelId: m.levelId });
-    if (trib?.note?.startsWith("assumed")) gaps.push({ key: `loads:${r.memberId}`, kind: "assumed", what: `${r.mark}: sized for an assumed metre of ${lintel ? "floor" : "load"}; set what it carries`, id: r.memberId, levelId: m.levelId });
-    else if (r.status === "none" && (m.type === "beam" || m.type === "post") && !lintel) gaps.push({ key: `none:${r.memberId}`, kind: "unchecked", what: `${r.mark}: carries nothing, so it isn't checked`, id: r.memberId, levelId: m.levelId });
+    const ofMember = { mark: r.mark, id: r.memberId, levelId: m.levelId };
+    if (r.unstable) gaps.unshift({ key: `unstable:${r.memberId}`, kind: "unstable", what: `${r.mark} is unstable: ${r.unstable}`, detail: `Unstable: ${r.unstable}`, ...ofMember });
+    if (r.misaligned) {
+      const off = `${r.misaligned.mm} mm off ${r.misaligned.mark}: check it lands on it`;
+      gaps.push({ key: `offset:${r.memberId}:${r.misaligned.mark}`, kind: "misaligned", what: `${r.mark} is ${off}`, detail: `It is ${off}`, ...ofMember });
+    }
+    if (trib?.note?.startsWith("assumed")) {
+      const detail = `Sized for an assumed metre of ${lintel ? "floor" : "load"}; set what it carries`;
+      gaps.push({ key: `loads:${r.memberId}`, kind: "assumed", what: `${r.mark}: ${detail[0].toLowerCase()}${detail.slice(1)}`, detail, ...ofMember });
+    } else if (r.status === "none" && (m.type === "beam" || m.type === "post") && !lintel)
+      gaps.push({ key: `none:${r.memberId}`, kind: "unchecked", what: `${r.mark}: carries nothing, so it isn't checked`, detail: "Carries nothing, so it isn't checked", ...ofMember });
   }
   return gaps;
 }

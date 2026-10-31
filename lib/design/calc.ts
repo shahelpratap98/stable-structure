@@ -59,6 +59,7 @@ export type Result = {
   baseMoment?: number; // kN·m at the base of a cantilever post, for its footing
   upliftEnd?: number; // kN hold-down needed at each end (wind uplift on roof framing)
   unstable?: string; // nothing holds it up: a post with nothing under it, a beam end on nothing
+  misaligned?: { mm: number; mark: string; to: Pt; end?: "a" | "b" }; // off what carries it: mm off, by whose mark, and where it should be
 };
 
 // A lintel made by an opening in a wall. Its id is "<wall id>#<opening id>".
@@ -848,6 +849,7 @@ function designPost(loads: Loads, h: number, p: DesignParams, fixed: PostCand | 
 
 // ---------------------------------------------------------------- orchestration
 
+const BEARS = 0.05; // m, off the line of what carries it: within this is true bearing, past it a warning
 const near = (p: Pt, q: Pt, tol = 0.15) => Math.hypot(p.x - q.x, p.y - q.y) <= tol;
 const BEAM_LIKE = new Set(["beam", "lintel", "joist", "rafter"]);
 const SUPPORT = new Set(["post", "pile", "footing"]);
@@ -1256,8 +1258,9 @@ function runCalcsOnce(model: DesignModel): Calcs {
     results.set(s.id, res);
   };
 
-  // What a beam end can rest on: a post, loadbearing (or retaining) wall or
-  // another beam under it, or a raft. A roof level's beams sit on the storey below.
+  // What a beam end rests on: the posts or beams under it (ids), or something
+  // solid, a loadbearing (or retaining) wall or a raft. A roof level's beams sit
+  // on the storey below.
   const segDist = (q: Pt, w: Member) => {
     if (!w.b) return Infinity;
     const L2 = (w.b.x - w.a.x) ** 2 + (w.b.y - w.a.y) ** 2 || 1;
@@ -1265,18 +1268,27 @@ function runCalcsOnce(model: DesignModel): Calcs {
     return Math.hypot(q.x - (w.a.x + t * (w.b.x - w.a.x)), q.y - (w.a.y + t * (w.b.y - w.a.y)));
   };
   const bearingWalls = model.members.filter((w) => w.b && ((w.type === "wall" && w.wall?.loadbearing !== false) || w.type === "retaining"));
-  const endHeld = (m: Member, e: "a" | "b") => {
-    if (bearings.get(m.id)?.some((b) => b.end === e)) return true;
+  const endHolders = (m: Member, e: "a" | "b") => {
     const ml = levelOf(model, m.levelId);
     const lids = new Set([m.levelId, ...(ml?.kind === "roof" && downFrom(ml)[0] ? [downFrom(ml)[0].id] : [])]);
     const q = m[e]!;
-    return (
-      posts.some((s) => lids.has(s.levelId) && near(s.a, q, ACROSS)) ||
-      bearingWalls.some((w) => lids.has(w.levelId) && segDist(q, w) <= ACROSS) ||
-      beamLike.some((y) => y.id !== m.id && lids.has(y.levelId) && partway(y, q, ACROSS) !== null) ||
-      [...lids].some((lid) => raftUnder(lid, q))
-    );
+    return {
+      ids: [
+        ...(bearings.get(m.id) ?? []).filter((b) => b.end === e).map((b) => b.carrier),
+        ...posts.filter((s) => lids.has(s.levelId) && near(s.a, q)).map((s) => s.id), // the distance designSupport takes a reaction over
+        ...beamLike.filter((y) => y.id !== m.id && lids.has(y.levelId) && partway(y, q, ACROSS) !== null).map((y) => y.id),
+      ],
+      solid: bearingWalls.some((w) => lids.has(w.levelId) && segDist(q, w) <= ACROSS) || [...lids].some((lid) => raftUnder(lid, q) !== undefined),
+    };
   };
+  const endHeld = (m: Member, e: "a" | "b") => {
+    const h = endHolders(m, e);
+    return h.solid || h.ids.length > 0;
+  };
+  const innerHolders = (m: Member) => [
+    ...posts.filter((s) => s.type === "post" && s.levelId === m.levelId && partway(m, s.a) !== null).map((s) => ({ ids: [s.id], solid: false })),
+    ...(m.type === "beam" ? model.members.filter((w) => w.type === "wall" && w.levelId === m.levelId && w.wall?.loadbearing !== false && wallCrossing(m, w)).map(() => ({ ids: [] as string[], solid: true })) : []),
+  ];
   // posts on its own level and loadbearing walls across it, m from end a
   const innerSupports = (m: Member) =>
     [
@@ -1853,6 +1865,49 @@ function runCalcsOnce(model: DesignModel): Calcs {
           : "a cantilever held at only one point (it needs a back span over a second support)",
       );
     else if (loose?.length) results.get(m.id)?.notes.unshift(`Nothing under ${loose.map(endName).join(" or ")}: it overhangs its supports there and is designed as a cantilever.`);
+  }
+  // The load path has to reach the ground: a post on an unstable member is
+  // unstable, and so is a beam left with fewer than two sound supports.
+  const unstable = (id: string) => !!results.get(id)?.unstable;
+  const named = (ids: string[]) => {
+    const list = [...new Set(ids)].map((id) => `${posts.some((s) => s.id === id) ? "post" : "beam"} ${results.get(id)?.mark ?? id}`);
+    return `${list.join(" and ")} ${list.length > 1 ? "have" : "has"} no load path to the ground`;
+  };
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const q of posts) {
+      const seat = seats.get(q.id);
+      if (q.type !== "post" || unstable(q.id) || !seat || !unstable(seat.id)) continue;
+      flag(q.id, `it stands on ${results.get(seat.id)?.mark}, which is unstable`);
+      changed = true;
+    }
+    for (const m of beamLike) {
+      if (m.type !== "beam" || !m.b || unstable(m.id)) continue;
+      const at = [...(["a", "b"] as const).filter((e) => m.free !== e && endHeld(m, e)).map((e) => endHolders(m, e)), ...innerHolders(m)];
+      if (at.filter((h) => h.solid || h.ids.some((id) => !unstable(id))).length >= 2) continue;
+      flag(m.id, named(at.flatMap((h) => (h.solid ? [] : h.ids.filter(unstable)))));
+      changed = true;
+    }
+  }
+  // A member near what carries it is taken to bear on it, so a slip of the mouse
+  // can hide a missing connection. Past BEARS, say so.
+  const offBy = (r: Result | undefined, from: Pt, to: Pt, mark: string, end?: "a" | "b") => {
+    const d = Math.hypot(from.x - to.x, from.y - to.y);
+    if (r && d > BEARS && (!r.misaligned || d * 1000 > r.misaligned.mm)) r.misaligned = { mm: Math.round(d * 1000), mark, to, end };
+  };
+  for (const q of posts) {
+    const seat = seats.get(q.id);
+    if (q.type !== "post" || !seat) continue;
+    const under = seat.kind === "support" ? posts.find((x) => x.id === seat.id)?.a : byId.get(seat.id) && along(byId.get(seat.id)!, seat.at);
+    if (under) offBy(results.get(q.id), q.a, under, results.get(seat.id)?.mark ?? "the member below");
+  }
+  for (const m of beamLike) {
+    if (m.type !== "beam" || !m.b) continue;
+    for (const e of ["a", "b"] as const) {
+      if (m.free === e) continue;
+      const s = posts.find((x) => x.levelId === m.levelId && near(x.a, m[e]!));
+      if (s) offBy(results.get(m.id), m[e]!, s.a, results.get(s.id)?.mark ?? "the post", e);
+    }
   }
 
   // ---------------------------------------------------------------- connection schedule

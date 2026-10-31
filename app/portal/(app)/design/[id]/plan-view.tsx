@@ -39,6 +39,7 @@ type Props = {
   grids?: { x: { n: string; at: number }[]; y: { n: string; at: number }[] }; // set-out grid, m
   ghosts: Member[]; // level below, drawn faintly for alignment
   above?: { id: string; label: string; at: Pt; load: string | null; unstable: boolean }[]; // posts on the level above, landing on this one
+  aboveLines?: { id: string; label: string | null; a: Pt; b: Pt }[]; // loadbearing walls and bracing on the level above
   page: RenderedPage | null;
   pageLoading: boolean;
   tool: Tool;
@@ -184,12 +185,13 @@ export function PlanView(props: Props) {
 
   const ghostShapes = useMemo(() => ghosts.map((m) => ({ m, a: toPdf(frame, m.a), b: m.b ? toPdf(frame, m.b) : undefined })), [ghosts, frame]);
   const aboveShapes = useMemo(() => (props.above ?? []).map((q) => ({ ...q, m: { id: q.id }, a: toPdf(frame, q.at), b: undefined })), [props.above, frame]);
+  const aboveLineShapes = useMemo(() => (props.aboveLines ?? []).map((q) => ({ ...q, m: { id: q.id }, a: toPdf(frame, q.a), b: toPdf(frame, q.b) })), [props.aboveLines, frame]);
 
   const snap = (p: Pt, from: Pt | null, skipId?: string): Pt => {
     const tol = 10 / view.zoom;
     let best: Pt | null = null;
     let bestD = tol;
-    for (const s of [...shapes, ...ghostShapes, ...aboveShapes]) {
+    for (const s of [...shapes, ...ghostShapes, ...aboveShapes, ...aboveLineShapes]) {
       if (s.m.id === skipId) continue;
       for (const q of s.b ? [s.a, s.b] : [s.a]) {
         const d = Math.hypot(q.x - p.x, q.y - p.y);
@@ -419,6 +421,7 @@ export function PlanView(props: Props) {
     });
   const colourOf = (m: Pick<Member, "id" | "type" | "brace">) => {
     const r = results.get(m.id);
+    if (r?.unstable) return STATUS_COLOUR.fail;
     if (colourBy === "result") return STATUS_COLOUR[r?.status ?? "none"];
     if (colourBy === "material") {
       if (r?.status === "fail") return "#b8342a";
@@ -490,6 +493,20 @@ export function PlanView(props: Props) {
             )}
           </g>
 
+          {/* loadbearing walls and bracing on the level above */}
+          <g pointerEvents="none" opacity={0.55}>
+            {aboveLineShapes.map((q) => (
+              <g key={`above-${q.id}`}>
+                <line x1={q.a.x} y1={q.a.y} x2={q.b.x} y2={q.b.y} stroke="#1179a9" strokeWidth={2} strokeDasharray="2 5" vectorEffect="non-scaling-stroke" />
+                {q.label ? (
+                  <text x={(q.a.x + q.b.x) / 2} y={(q.a.y + q.b.y) / 2 - px(4)} textAnchor="middle" fontSize={px(9)} fontWeight={600} fill="#1179a9" stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                    {q.label} above
+                  </text>
+                ) : null}
+              </g>
+            ))}
+          </g>
+
           {/* posts on the level above: where their load comes down onto this level */}
           {aboveShapes.map((q) => {
             const c = q.unstable ? "#b42318" : "#1179a9";
@@ -500,6 +517,22 @@ export function PlanView(props: Props) {
                 <path d={`M ${q.a.x - r * 0.55} ${q.a.y - r * 0.3} L ${q.a.x} ${q.a.y + r * 0.45} L ${q.a.x + r * 0.55} ${q.a.y - r * 0.3}`} fill="none" stroke={c} strokeWidth={2} vectorEffect="non-scaling-stroke" />
                 <text x={q.a.x + r + px(3)} y={q.a.y + px(4)} fontSize={px(10)} fontWeight={700} fill={c} stroke="white" strokeWidth={px(3)} paintOrder="stroke" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
                   {`${q.label} above${q.load ? ` · ${q.load}` : ""}${q.unstable ? " · needs support" : ""}`}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* unstable or misaligned members */}
+          {shapes.map(({ m, a, b }) => {
+            const r = results.get(m.id);
+            if (!r?.unstable && !r?.misaligned) return null;
+            const x = b ? (a.x + b.x) / 2 : a.x,
+              y = (b ? (a.y + b.y) / 2 : a.y) - px(14);
+            return (
+              <g key={`warn-${m.id}`} pointerEvents="none">
+                <circle cx={x} cy={y} r={px(8)} fill={r.unstable ? STATUS_COLOUR.fail : STATUS_COLOUR.close} stroke="white" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                <text x={x} y={y + px(4)} textAnchor="middle" fontSize={px(12)} fontWeight={700} fill="white" style={{ fontFamily: "Inter, system-ui, sans-serif" }}>
+                  !
                 </text>
               </g>
             );

@@ -59,6 +59,28 @@ describe("stability", () => {
     expect(unstable(model([...top, post("G1", "GF", 0, 0), wall("W1", "GF", 4)])).size).toBe(0);
   });
 
+  it("follows the load path: a beam on posts with nothing below is unstable", () => {
+    const top = [beam("B12", "FF", 0, 4), post("P1", "FF", 0, 0), post("P2", "FF", 4, 0)];
+    const u = unstable(model(top));
+    expect(u.get("B12")).toMatch(/post P1 and post P2 have no load path/);
+    expect(unstable(model([...top, post("G1", "GF", 0, 0)])).get("B12")).toMatch(/^post P2 has no load path/);
+  });
+
+  it("passes it down: a post on a beam that is itself unsupported", () => {
+    const u = unstable(model([beam("B1", "GF", 0, 4), post("P9", "GF", 0, 0), post("P1", "FF", 2, 0)]));
+    expect(u.get("B1")).toMatch(/end 2/);
+    expect(u.get("P1")).toMatch(/stands on B1, which is unstable/);
+  });
+
+  it("warns when a post is off the beam it stands on, and says where it belongs", () => {
+    const parts = [beam("B1", "GF", 0, 4), post("G1", "GF", 0, 0), post("G2", "GF", 4, 0)];
+    const off = runCalcs(model([...parts, post("P1", "FF", 2, 0.18)])).results.get("P1")!;
+    expect(off.misaligned).toMatchObject({ mm: 180, mark: "B1", to: { x: 2, y: 0 } });
+    expect(off.unstable).toBeUndefined();
+    expect(runCalcs(model([...parts, post("P1", "FF", 2, 0.03)])).results.get("P1")!.misaligned).toBeUndefined();
+    expect(runCalcs(model([...parts, post("P1", "FF", 2, 0.4)])).results.get("P1")!.unstable).toBeDefined();
+  });
+
   it("lists unstable members first in To finish", () => {
     const m = model([beam("B1", "GF", 0, 4), post("P1", "GF", 0, 0)]);
     const g = completeness(m, runCalcs(m));
