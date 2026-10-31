@@ -318,6 +318,35 @@ export function MemberPanel({
 
   return (
     <div>
+      {result?.unstable ? (
+        <p className="m-3 rounded border border-bad bg-bad-bg px-3 py-2 text-sm font-semibold text-bad" role="alert">
+          Unstable: {result.unstable}. The sizes below assume it is held up.
+        </p>
+      ) : null}
+      {result?.misaligned ? (
+        <div className="m-3 flex items-center justify-between gap-2 rounded border border-warn bg-warn-bg px-3 py-2 text-sm font-semibold text-warn" role="alert">
+          <span>
+            {result.misaligned.mm} mm off {result.misaligned.mark}: check it lands on it.
+          </span>
+          {!locked ? (
+            <button type="button" className="btn btn-quiet shrink-0 px-2 py-1 text-xs" onClick={() => set(result.misaligned!.end === "b" ? { b: result.misaligned!.to } : { a: result.misaligned!.to }, `moved onto ${result.misaligned!.mark}`)}>
+              Move onto {result.misaligned.mark}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {gaps.some((g) => g.kind !== "unstable" && g.kind !== "misaligned") ? (
+        <ul className="m-3 flex flex-col gap-1 text-sm">
+          {gaps
+            .filter((g) => g.kind !== "unstable" && g.kind !== "misaligned")
+            .map((g) => (
+              <li key={g.key} className="flex items-start gap-2">
+                <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOUR.close }} aria-hidden />
+                <span>{g.detail ?? g.what}</span>
+              </li>
+            ))}
+        </ul>
+      ) : null}
       <Section
         title={MEMBER_INFO[m.type].label}
         aside={
@@ -369,9 +398,9 @@ export function MemberPanel({
             <NumberField label="Restraints at" unit="m" value={m.segment} min={0.3} placeholder="supports only" onCommit={(v) => set({ segment: v }, `restraint spacing ${v ?? "supports"}`)} />
           ) : null}
           {m.type === "joist" || m.type === "rafter" ? <NumberField label="Spacing" unit="mm" value={m.spacing} min={100} onCommit={(v) => set({ spacing: v }, `spacing ${v ?? "default"}`)} /> : null}
-          {m.type === "post" ? <NumberField label="Height" unit="m" value={m.height} min={0.1} placeholder="storey height" onCommit={(v) => set({ height: v }, "height")} /> : null}
+          {m.type === "post" ? <NumberField label="Height" unit="mm" value={m.height === undefined ? undefined : Math.round(m.height * 1000)} min={100} placeholder="storey height" onCommit={(v) => set({ height: v === undefined ? undefined : v / 1000 }, "height")} /> : null}
           {m.type === "post" ? <NumberField label="Lateral at top (ULS)" unit="kN" value={m.lateral} min={0} placeholder="none" onCommit={(v) => set({ lateral: v || undefined }, v ? `cantilever post, ${v} kN at the top` : "no lateral load")} /> : null}
-          {!MEMBER_INFO[m.type].area ? <NumberField label="Height offset" unit="m" value={m.dz} placeholder="on the level" onCommit={(v) => set({ dz: v || undefined }, `height offset ${v ?? 0} m`)} /> : null}
+          {!MEMBER_INFO[m.type].area ? <NumberField label="Raise / lower" unit="mm" value={m.dz === undefined ? undefined : Math.round(m.dz * 1000)} placeholder="on the level" onCommit={(v) => set({ dz: (v ?? 0) / 1000 || undefined }, `raised or lowered ${v ?? 0} mm`)} /> : null}
           {m.type === "footing" || m.type === "pile" ? sectionField : null}
         </fieldset>
         <datalist id="design-sections">
@@ -438,30 +467,6 @@ export function MemberPanel({
       {m.type === "raft" ? <RaftEditor m={m} site={model.site} locked={locked} set={set} /> : null}
       {m.type === "deck" && m.deck ? <DeckEditor m={m} locked={locked} set={set} sectionField={sectionField} /> : null}
       {m.type === "stair" && m.stair ? <StairEditor m={m} locked={locked} set={set} /> : null}
-      {result?.misaligned ? (
-        <div className="mb-3 flex items-center justify-between gap-2 rounded border border-warn bg-warn-bg px-3 py-2 text-sm font-semibold text-warn" role="alert">
-          <span>
-            {result.misaligned.mm} mm off {result.misaligned.mark}: check it lands on it.
-          </span>
-          {!locked ? (
-            <button type="button" className="btn btn-quiet shrink-0 px-2 py-1 text-xs" onClick={() => set(result.misaligned!.end === "b" ? { b: result.misaligned!.to } : { a: result.misaligned!.to }, `moved onto ${result.misaligned!.mark}`)}>
-              Move onto {result.misaligned.mark}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      {gaps.some((g) => g.kind !== "unstable" && g.kind !== "misaligned") ? (
-        <ul className="mb-3 flex flex-col gap-1 text-sm">
-          {gaps
-            .filter((g) => g.kind !== "unstable" && g.kind !== "misaligned")
-            .map((g) => (
-              <li key={g.key} className="flex items-start gap-2">
-                <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOUR.close }} aria-hidden />
-                <span>{g.detail ?? g.what}</span>
-              </li>
-            ))}
-        </ul>
-      ) : null}
       {m.type === "wall" && m.wall ? <WallEditor m={m} locked={locked} set={set} results={results} onPick={onPick} /> : null}
       {m.type === "bracing" ? (
         <Section title="Bracing element">
@@ -924,11 +929,6 @@ export function OpeningPanel({
 export function CalcSheet({ result }: { result: Result }) {
   return (
     <Section title="Design" aside={<span className="chip bg-warn-bg text-warn">Preliminary</span>}>
-      {result.unstable ? (
-        <p className="mb-2 rounded border border-bad bg-bad-bg px-3 py-2 text-sm font-semibold text-bad" role="alert">
-          Unstable: {result.unstable}. The sizes below assume it is held up.
-        </p>
-      ) : null}
       {result.sec ? (
         <div className="flex flex-col gap-0.5 border border-line bg-surface-2 px-3 py-2.5">
           <FamilyTag fam={result.sec.fam} />
@@ -998,9 +998,9 @@ export function CalcSheet({ result }: { result: Result }) {
           </dl>
         </>
       ) : null}
-      {result.notes.length > (result.unstable ? 1 : 0) ? (
+      {result.notes.length ? (
         <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-muted">
-          {result.notes.slice(result.unstable ? 1 : 0).map((n) => (
+          {result.notes.map((n) => (
             <li key={n}>{n}</li>
           ))}
         </ul>
@@ -1608,7 +1608,7 @@ export function BulkPanel({
       ) : null}
       <Section title="Height">
         <fieldset disabled={locked}>
-          <NumberField label="Height offset for all" unit="m" value={undefined} placeholder="on the level" onCommit={(v) => onPatch(() => ({ dz: v || undefined }), `height offset ${v ?? 0} m on ${ms.length} members`)} />
+          <NumberField label="Raise / lower all" unit="mm" value={undefined} placeholder="on the level" onCommit={(v) => onPatch(() => ({ dz: (v ?? 0) / 1000 || undefined }), `raised or lowered ${v ?? 0} mm on ${ms.length} members`)} />
         </fieldset>
       </Section>
       <Section title="Remove">

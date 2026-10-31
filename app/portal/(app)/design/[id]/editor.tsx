@@ -925,7 +925,7 @@ export function DesignEditor({
           ) : null}
           {mode === "3d" || mode === "split" ? (
             <div className={`relative min-h-0 min-w-0 flex-1 ${mode === "split" ? "border-t border-line lg:border-t-0 lg:border-l" : ""}`}>
-              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} onSelect={(id) => pick(id, true)} />
+              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} onSelect={(id) => pick(id, true)} locked={locked} onEdit={updateMember} />
               {colourBy === "material" ? (
                 <div className="absolute bottom-2 left-2 grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-surface/90 px-2.5 py-1.5 text-xs shadow">
                   {(Object.keys(FAMILY_COLOUR) as (keyof typeof FAMILY_COLOUR)[]).map((f) => (

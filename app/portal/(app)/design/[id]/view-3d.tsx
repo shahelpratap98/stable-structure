@@ -13,9 +13,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RATINGS } from "@/lib/design/bracing";
 import { loadKind, STATUS_COLOUR, type Calcs } from "@/lib/design/calc";
+import { editable, handlesFor, lengthTo, lift, moveBy, raiseBase, raiseTop, snapPoints, stretch, zRange, type Handle } from "@/lib/design/edit3d";
 import { allParts, tagPoint, type Layer, type Part, type Tone } from "@/lib/design/geometry";
 import { FAMILY_COLOUR } from "@/lib/design/materials";
-import { type BraceSystem, type DesignModel, type MemberType } from "@/lib/design/model";
+import { memberLength, type BraceSystem, type DesignModel, type Member, type MemberType, type Pt } from "@/lib/design/model";
 
 export type ColourBy = "type" | "result" | "material";
 
@@ -31,7 +32,44 @@ type Props = {
   colourBy: ColourBy;
   upToLevel?: string | "all";
   onSelect: (id: string | null) => void;
+  locked?: boolean;
+  onEdit?: (id: string, patch: Partial<Member>, summary: string) => void;
 };
+
+// One number on the selected member, in millimetres: Enter or leaving the box applies it.
+function MmField({ label, value, onCommit }: { label: string; value: number; onCommit: (mm: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    const n = Number(draft);
+    if (draft !== null && draft.trim() !== "" && Number.isFinite(n) && n !== value) onCommit(n);
+    setDraft(null);
+  };
+  return (
+    <label className="flex items-center justify-between gap-2 text-xs">
+      <span className="text-[#4b575c]">{label}</span>
+      <input
+        className="w-20 rounded-sm border border-[#c9cfca] bg-white px-1.5 py-0.5 text-right tabular-nums"
+        inputMode="numeric"
+        value={draft ?? String(value)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          e.stopPropagation(); // Delete and the tool keys belong to this box while it has the cursor
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+      />
+    </label>
+  );
+}
+
+// The nearest point on a line to the mouse ray: t along the line, or null when they run together.
+function alongLine(ray: THREE.Ray, p: THREE.Vector3, d: THREE.Vector3) {
+  const w = p.clone().sub(ray.origin);
+  const b = d.dot(ray.direction);
+  const den = 1 - b * b;
+  if (Math.abs(den) < 1e-4) return null;
+  return (b * ray.direction.dot(w) - d.dot(w)) / den;
+}
 
 type TagCat = "id_beam" | "id_lintel" | "id_post" | "id_wall" | "id_rw";
 type Key = Layer | "grid" | "ground" | TagCat;
@@ -159,6 +197,7 @@ type Stage = {
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
   root: THREE.Group;
+  handles: THREE.Group; // drag handles on the selected member
   framed: boolean;
 };
 
@@ -415,7 +454,7 @@ function gridObjects(model: DesignModel): THREE.Object3D[] {
   return out;
 }
 
-export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect }: Props) {
+export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect, locked = false, onEdit }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
   const select = useRef(onSelect);
@@ -426,9 +465,12 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const [hidden, setHidden] = useState<string[]>([]); // sets switched off (storey walls, floor framing, roof, retaining)
   const [view, setViewName] = useState<"iso" | "top" | "north" | "south" | "east" | "west" | null>("iso"); // null once orbited
   const [built, setBuilt] = useState(0); // bumps after each rebuild, so the selection is reapplied
+  const [dragText, setDragText] = useState<{ text: string; x: number; y: number } | null>(null);
+  const live = useRef({ model, onEdit });
   useEffect(() => {
     select.current = onSelect;
-  }, [onSelect]);
+    live.current = { model, onEdit };
+  }, [onSelect, model, onEdit]);
 
   // Renderer, camera, lights and controls: once.
   useEffect(() => {
@@ -452,13 +494,17 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     controls.addEventListener("start", () => setViewName(null)); // orbiting leaves the named view
     const root = new THREE.Group();
     scene.add(root);
-    stage.current = { renderer, scene, camera, controls, root, framed: false };
+    const handles = new THREE.Group();
+    scene.add(handles);
+    stage.current = { renderer, scene, camera, controls, root, handles, framed: false };
 
     const gizmo = axesGizmo();
     const dir = new THREE.Vector3();
     let frame = 0;
     const loop = () => {
       controls.update();
+      // handles keep their size on screen, however far out the model is
+      for (const o of handles.children) o.scale.setScalar(camera.position.distanceTo(o.position) * 0.08);
       renderer.render(scene, camera);
       // the axes gizmo, bottom right above the hint, looking the same way as the camera
       const size = 96,
@@ -492,11 +538,85 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     // Click (not drag) picks a member or its tag; a see-through panel gives way to framing just behind it.
     const ray = new THREE.Raycaster();
     let down: { x: number; y: number } | null = null;
-    const onDown = (e: PointerEvent) => (down = { x: e.clientX, y: e.clientY });
-    const onUp = (e: PointerEvent) => {
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+    const aim = (e: PointerEvent) => {
       const r = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+    };
+    // Dragging a handle: the member follows on release, so the calcs run once.
+    let drag: { h: Handle; mesh: THREE.Object3D; m: Member; height: number; snaps: Pt[]; from: THREE.Vector3; apply?: { patch: Partial<Member>; what: string } } | null = null;
+    const handleUnder = () => ray.intersectObjects(handles.children, true).find((x) => x.object.userData.handle)?.object;
+    const up = new THREE.Vector3(0, 1, 0);
+    const sign = (v: number) => (v > 0 ? "+" : "");
+    const onDrag = (e: PointerEvent) => {
+      if (!drag) return;
+      aim(e);
+      const { h, m, mesh, height, snaps, from } = drag;
+      const r = renderer.domElement.getBoundingClientRect();
+      const show = (text: string, patch: Partial<Member> | null, what: string, at: THREE.Vector3) => {
+        if (!patch) return;
+        mesh.position.copy(at);
+        drag!.apply = { patch, what };
+        setDragText({ text, x: e.clientX - r.left, y: e.clientY - r.top });
+      };
+      const onPlane = () => ray.ray.intersectPlane(new THREE.Plane(up, -from.y), new THREE.Vector3());
+      if (h.kind === "end") {
+        const fixed = h.end === "a" ? m.b! : m.a;
+        const dir = new THREE.Vector3(h.at.x - fixed.x, 0, h.at.y - fixed.y).normalize();
+        const t = alongLine(ray.ray, from, dir);
+        const free = e.shiftKey ? onPlane() : null;
+        if (t === null && !free) return;
+        const to = free ?? from.clone().addScaledVector(dir, t!);
+        const patch = stretch(m, h.end, { x: to.x, y: to.z }, snaps, e.shiftKey);
+        const p = patch?.[h.end];
+        if (patch && p) show(`${Math.round(Math.hypot(p.x - fixed.x, p.y - fixed.y) * 1000)} mm`, patch, "stretched in 3D", new THREE.Vector3(p.x, from.y, p.y));
+      } else if (h.kind === "move") {
+        const to = onPlane();
+        if (!to) return;
+        const patch = moveBy(m, to.x - from.x, to.z - from.z, snaps);
+        const q = patch.a!;
+        show(`${Math.round(Math.hypot(q.x - m.a.x, q.y - m.a.y) * 1000)} mm`, patch, "moved in 3D", new THREE.Vector3(q.x + from.x - m.a.x, from.y, q.y + from.z - m.a.y));
+      } else {
+        const t = alongLine(ray.ray, from, up);
+        if (t === null) return;
+        const by = Math.round(t * 200) / 200; // 5 mm steps
+        const at = from.clone().addScaledVector(up, by);
+        if (h.kind === "lift") show(`${sign(by)}${Math.round(by * 1000)} mm`, lift(m, by), "raised or lowered in 3D", at);
+        else if (h.kind === "top") show(`${Math.round((height + by) * 1000)} mm`, raiseTop(m, height, by), "height set in 3D", at);
+        else show(`${Math.round((height - by) * 1000)} mm`, raiseBase(m, height, by), "base moved in 3D", at);
+      }
+    };
+    const endDrag = () => {
+      window.removeEventListener("pointermove", onDrag);
+      window.removeEventListener("pointerup", endDrag);
+      const d = drag;
+      drag = null;
+      controls.enabled = true;
+      setDragText(null);
+      if (d?.apply) live.current.onEdit?.(d.m.id, d.apply.patch, `${d.m.label}: ${d.apply.what}`);
+    };
+    const onDown = (e: PointerEvent) => {
+      down = { x: e.clientX, y: e.clientY };
+      aim(e);
+      const mesh = handleUnder();
+      if (!mesh) return;
+      const { model } = live.current;
+      const { h, id, height } = mesh.userData as { h: Handle; id: string; height: number };
+      const m = model.members.find((x) => x.id === id);
+      if (!m) return;
+      controls.enabled = false; // this listener runs first, so the drag doesn't also orbit
+      down = null;
+      drag = { h, mesh, m, height, snaps: snapPoints(model, m), from: mesh.position.clone() };
+      window.addEventListener("pointermove", onDrag);
+      window.addEventListener("pointerup", endDrag);
+    };
+    const onHover = (e: PointerEvent) => {
+      if (drag || !handles.children.length) return;
+      aim(e);
+      renderer.domElement.style.cursor = handleUnder() ? "grab" : "";
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+      aim(e);
       const visible = (o: THREE.Object3D | null): boolean => !o || (o.visible && visible(o.parent));
       const hits = ray.intersectObjects(root.children, true).filter((h) => visible(h.object) && h.object.userData.id);
       let h = hits.find((x) => x.object instanceof THREE.Sprite) ?? hits[0];
@@ -506,14 +626,18 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       }
       select.current((h?.object.userData.id as string | undefined) ?? null);
     };
-    renderer.domElement.addEventListener("pointerdown", onDown);
+    renderer.domElement.addEventListener("pointerdown", onDown, { capture: true });
     renderer.domElement.addEventListener("pointerup", onUp);
+    renderer.domElement.addEventListener("pointermove", onHover);
 
     return () => {
       cancelAnimationFrame(frame);
       ro.disconnect();
-      renderer.domElement.removeEventListener("pointerdown", onDown);
+      renderer.domElement.removeEventListener("pointerdown", onDown, { capture: true });
       renderer.domElement.removeEventListener("pointerup", onUp);
+      renderer.domElement.removeEventListener("pointermove", onHover);
+      window.removeEventListener("pointermove", onDrag);
+      window.removeEventListener("pointerup", endDrag);
       controls.dispose();
       root.traverse((o) => {
         if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments || o instanceof THREE.Line) {
@@ -664,6 +788,37 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     }
   }, [selectedId, built]);
 
+  // Drag handles on the selected member. Not with the storeys pulled apart: the
+  // handles would sit away from what they move.
+  const selected = selectedId ? model.members.find((m) => m.id === selectedId) : undefined;
+  const canEdit = !locked && !!onEdit && editable(selected);
+  useEffect(() => {
+    const s = stage.current;
+    if (!s) return;
+    const clear = () => {
+      s.handles.children.forEach((o) => o.traverse((c) => c instanceof THREE.Mesh && (c.geometry.dispose(), (c.material as THREE.Material).dispose())));
+      s.handles.clear();
+    };
+    clear();
+    if (!canEdit || !selected || explode > 0 || liftRoof > 0) return clear;
+    const parts = allParts(model, calcs)
+      .filter((x) => x.part.id === selected.id)
+      .map((x) => x.part);
+    const range = zRange(parts);
+    const height = range ? range.z1 - range.z0 : 0;
+    const mat = (c: string) => new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true });
+    const COLOUR = { end: "#ff7a1a", move: "#2c5e7d", lift: "#16803c", top: "#16803c", base: "#16803c" };
+    for (const h of handlesFor(selected, parts)) {
+      const g = h.kind === "lift" ? new THREE.ConeGeometry(0.09, 0.26, 16) : h.kind === "move" ? new THREE.BoxGeometry(0.22, 0.05, 0.22) : new THREE.SphereGeometry(0.1, 16, 12);
+      const mesh = new THREE.Mesh(g, mat(COLOUR[h.kind]));
+      mesh.position.set(h.at.x, h.at.z, h.at.y);
+      mesh.renderOrder = 10;
+      mesh.userData = { handle: true, h, id: selected.id, height };
+      s.handles.add(mesh);
+    }
+    return clear;
+  }, [model, calcs, selected, canEdit, explode, liftRoof, built]);
+
   const setView = (v: "iso" | "top" | "north" | "south" | "east" | "west") => {
     const s = stage.current;
     if (!s) return;
@@ -753,6 +908,28 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
                 </div>
               ))}
           </dl>
+          {canEdit && selected ? (
+            <div className="mt-2 flex flex-col gap-1 border-t border-[#c9cfca] pt-2">
+              {selected.type !== "wall" ? <MmField key={`${selected.id}:dz:${selected.dz ?? 0}`} label="Raise / lower (mm)" value={Math.round((selected.dz ?? 0) * 1000)} onCommit={(v) => onEdit!(selected.id, { dz: v / 1000 || undefined }, `${selected.label}: raised or lowered to ${v} mm`)} /> : null}
+              {selected.b ? (
+                <MmField
+                  key={`${selected.id}:len:${memberLength(selected)}`}
+                  label="Length (mm)"
+                  value={Math.round(memberLength(selected) * 1000)}
+                  onCommit={(v) => {
+                    const patch = lengthTo(selected, v / 1000);
+                    if (patch) onEdit!(selected.id, patch, `${selected.label}: length ${v} mm`);
+                  }}
+                />
+              ) : null}
+              {selected.type === "post" ? <MmField key={`${selected.id}:h:${selected.height ?? 0}`} label="Height (mm)" value={Math.round((selected.height ?? parseFloat(calcs.results.get(selected.id)?.kv.find((k) => k.label === "Height")?.value ?? "0")) * 1000)} onCommit={(v) => onEdit!(selected.id, { height: v / 1000 }, `${selected.label}: height ${v} mm`)} /> : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {dragText ? (
+        <div className="pointer-events-none absolute rounded-sm bg-[#1c2326] px-1.5 py-0.5 font-mono text-[11px] text-white" style={{ left: dragText.x + 14, top: dragText.y + 14 }}>
+          {dragText.text}
         </div>
       ) : null}
       {panel ? (
@@ -783,7 +960,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
           </label>
         </div>
       ) : null}
-      <p className="pointer-events-none absolute right-2 bottom-2 rounded-sm bg-[#f8f9f6]/90 px-2 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-[#4b575c] @max-2xl:hidden">drag orbit · right-drag pan · scroll zoom · click member</p>
+      <p className="pointer-events-none absolute right-2 bottom-2 rounded-sm bg-[#f8f9f6]/90 px-2 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-[#4b575c] @max-2xl:hidden">drag orbit · right-drag pan · scroll zoom · click member, then drag its handles (Shift: free end)</p>
     </div>
   );
 }
