@@ -248,10 +248,13 @@ export const DEFAULT_PARAMS: DesignParams = {
   k1Roof: 0.97,
 };
 
+const STOREY = 2.7; // m, floor to floor when a job is first set up: 2.4 stud and 0.3 floor
+export const floorName = (i: number) => `${["Ground", "First", "Second", "Third"][i] ?? `Level ${i}`} floor`;
+
 export const newId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-export function emptyModel(): DesignModel {
+export function emptyModel(storeys = 1): DesignModel {
   const level = (name: string, kind: Level["kind"], elevation: number, height: number, floor: Level["floor"]): Level => ({
     id: newId(),
     name,
@@ -261,9 +264,11 @@ export function emptyModel(): DesignModel {
     floor,
     plan: null,
   });
+  const floors = Array.from({ length: Math.min(4, Math.max(1, storeys)) }, (_, i) => level(floorName(i), "floor", +(i * STOREY).toFixed(3), 2.4, i ? "timber" : "slab"));
+  const top = floors[floors.length - 1];
   return {
     version: 2,
-    levels: [level("Foundation", "foundation", -0.3, 0.3, "slab"), level("Ground floor", "floor", 0, 2.4, "slab"), level("Roof", "roof", 2.4, 1.2, "timber")],
+    levels: [level("Foundation", "foundation", -0.3, 0.3, "slab"), ...floors, level("Roof", "roof", top.elevation + top.height, 1.2, "timber")],
     members: [],
     params: { ...DEFAULT_PARAMS },
     bracing: {},

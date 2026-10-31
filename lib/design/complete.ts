@@ -130,6 +130,10 @@ export function completeness(model: DesignModel, calcs: Calcs): Gap[] {
   if (!model.members.length) return gaps;
   const all = storeys(model);
   const levelName = (l: Level) => l.name;
+  for (const r of model.levels.filter((l) => l.kind === "roof")) {
+    const over = all.find((l) => l.elevation > r.elevation + 1e-6);
+    if (over) gaps.push({ key: `levels:${r.id}`, kind: "missing", what: `The ${r.name} level (${r.elevation} m) is below the ${over.name} (${over.elevation} m): correct the heights on the Levels tab`, levelId: r.id });
+  }
 
   if (!model.site) gaps.push({ key: "site", kind: "missing", what: "No site data: wind and earthquake demand and footing bearing use defaults (Loads tab, Find site)" });
 

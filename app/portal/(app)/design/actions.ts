@@ -25,7 +25,7 @@ export async function createDesignJob(_prev: ActionState, fd: FormData): Promise
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("design_jobs")
-    .insert({ title, job_no: jobNo, address, project_id: projectId || null, model: emptyModel() })
+    .insert({ title, job_no: jobNo, address, project_id: projectId || null, model: emptyModel(Number(text(fd, "storeys")) || 1) })
     .select("id")
     .single();
   if (error) return { ok: false, message: error.message };

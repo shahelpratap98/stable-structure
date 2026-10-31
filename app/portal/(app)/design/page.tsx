@@ -121,6 +121,14 @@ export default async function DesignPage() {
             <input name="address" maxLength={300} placeholder="14 Kauri Rise, Flat Bush, Auckland" className="field" />
           </label>
           <label className="flex flex-col gap-1.5">
+            <span className="field-label">Storeys</span>
+            <select name="storeys" className="field" defaultValue="1">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1.5">
             <span className="field-label">Linked project (optional)</span>
             <select name="project_id" className="field" defaultValue="">
               <option value="">None</option>

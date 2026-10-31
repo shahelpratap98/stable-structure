@@ -40,6 +40,7 @@ type Props = {
   ghosts: Member[]; // level below, drawn faintly for alignment
   above?: { id: string; label: string; at: Pt; load: string | null; unstable: boolean }[]; // posts on the level above, landing on this one
   aboveLines?: { id: string; label: string | null; a: Pt; b: Pt }[]; // loadbearing walls and bracing on the level above
+  under?: { href: string; width: number; height: number; scale: number; origin: Pt } | null; // the level below's sheet, shown faintly to line up the Origin
   page: RenderedPage | null;
   pageLoading: boolean;
   tool: Tool;
@@ -464,6 +465,17 @@ export function PlanView(props: Props) {
       >
         <div ref={canvasHost} className="absolute inset-0" />
         <svg className="absolute inset-0 overflow-visible" width={frame.w} height={frame.h} viewBox={`0 0 ${frame.w} ${frame.h}`}>
+          {props.under && frame.scale ? (
+            <image
+              href={props.under.href}
+              opacity={0.35}
+              pointerEvents="none"
+              x={frame.origin.x - (props.under.origin.x * props.under.scale) / frame.scale}
+              y={frame.origin.y - (props.under.origin.y * props.under.scale) / frame.scale}
+              width={(props.under.width * props.under.scale) / frame.scale}
+              height={(props.under.height * props.under.scale) / frame.scale}
+            />
+          ) : null}
           {grid ? (
             <g stroke="#e3e8ef" strokeWidth={1} vectorEffect="non-scaling-stroke">
               {Array.from({ length: 31 }, (_, i) => (
@@ -934,7 +946,7 @@ export function PlanView(props: Props) {
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white">{start ? "Click the other end of the dimension" : "Click one end of a dimension you know"}</p>
       ) : null}
       {tool === "origin" ? (
-        <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white">Click the same corner on every level (for example the outside corner of the house)</p>
+        <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white">Click the same corner on every level (for example the outside corner of the house). The level below shows faintly: they should line up</p>
       ) : null}
       {tool === "opening" && !needsScale ? (
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-xs text-white">

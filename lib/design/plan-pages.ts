@@ -1,5 +1,6 @@
 // Which page of the architect's set shows which level, read from the sheet titles
-// ("GROUND FLOOR PLAN", "FOUNDATION PLAN", "ROOF FRAMING PLAN").
+// ("GROUND FLOOR PLAN", "FOUNDATION PLAN", "ROOF FRAMING PLAN"), and what else the
+// sheet says about itself.
 import type { Level } from "./model";
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -16,9 +17,26 @@ function titles(l: Level, onlyFloor: boolean): string[] {
 function score(text: string, words: string[]) {
   for (let i = 0; i < words.length; i++) {
     const w = esc(words[i]).replace(/ floor$/, "");
-    if (new RegExp(`\\b${w}( floor)?( framing)? (plan|layout)\\b`).test(text)) return 10 - i;
+    const hit = new RegExp(`\\b${w}( floor)?( framing)?( dimension)? (plan|layout)\\b`).exec(text);
+    // the dimension plan is the one to scale and trace from, ahead of the plain plan
+    if (hit) return 10 - i + (hit[3] ? 0.5 : 0);
   }
   return 0;
+}
+
+// The sheet's scale as printed on it: 50 for "Scale: 1:50".
+export function sheetScale(text: string) {
+  const n = /scale\s*[:=]?\s*1\s*:\s*(\d{1,4})\b/i.exec(text);
+  return n ? Number(n[1]) : null;
+}
+
+// The drawing's title. Title blocks run into phone numbers and addresses, so
+// keep the capitalised words after the last number, and prefer drawing words.
+export function sheetTitle(text: string) {
+  const found = text.match(/[A-Z0-9][A-Z0-9 &/-]*\b(PLAN|ELEVATIONS?|SECTIONS?|DETAILS?|NOTES|LAYOUT|BRACING)\b/g) ?? [];
+  const titles = found.map((t) => t.split(/\s+/).reduce<string[]>((kept, w) => (/\d/.test(w) ? [] : [...kept, w]), []).slice(-6).join(" ")).filter((t) => t.length > 4);
+  const drawing = /PROPOSED|EXISTING|FLOOR|ROOF|FOUNDATION|FRAMING|ELEVATION|SECTION|SITE/;
+  return titles.sort((a, b) => Number(drawing.test(b)) - Number(drawing.test(a)) || b.length - a.length)[0] ?? null;
 }
 
 // Level id → page number (1-based) for the levels a page clearly belongs to.

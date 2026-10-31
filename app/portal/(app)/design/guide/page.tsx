@@ -93,13 +93,16 @@ export default async function DesignGuidePage() {
         <H id="plans">2. Plans, scale and levels</H>
         <Steps>
           <li>
-            Open the <T>Levels</T> tab and upload the architect&apos;s PDF (up to 50 MB). Pick the page that shows each level&apos;s plan.
+            Open the <T>Levels</T> tab and upload the architect&apos;s PDF (up to 50 MB). The app reads the sheet titles and puts each level on its page; check them in each
+            level&apos;s <T>Plan</T> list. Choose the number of storeys when you create the job, and <T>+ Level</T> adds a storey under the roof.
           </li>
           <li>
-            Choose the <T>Scale</T> tool (S), click both ends of a dimension you know, and type its real length in millimetres. A long dimension gives the best accuracy.
+            Each level shows its steps. The scale printed on the sheet is filled in under <T>Sheet scale</T> for you to check and <T>Set</T>, or use <T>Set scale</T> (S): click both
+            ends of a dimension you know and type its real length in millimetres. A long dimension gives the best accuracy.
           </li>
           <li>
-            Choose <T>Origin</T> (O) and click the same corner of the building on every level, so the levels stack correctly in 3D.
+            Choose <T>Set origin</T> (O) and click the same corner of the building on every level, so the levels stack correctly in 3D. The level below shows faintly while you do
+            this: the two sheets should line up.
           </li>
           <li>Check each level&apos;s elevation, stud height and whether its walls stand on a slab or a timber floor (that changes the bracing ratings).</li>
         </Steps>
@@ -186,6 +189,24 @@ export default async function DesignGuidePage() {
         </p>
         <p className="mt-2">
           The <T>Overview</T> lists anything that needs attention; the <T>Schedule</T> tab lists every member. A member with no check (a wall or footing without a calc) is grey.
+        </p>
+        <p className="mt-2">
+          The app follows the load path down to the ground. A post with nothing under it, a beam held at fewer than two points, and anything standing on them is marked{" "}
+          <T>unstable</T>: red with a warning on the plan and in 3D, whatever it is coloured by, and first in <T>To finish</T>, which lists its items per element. A member more than
+          50 mm off what carries it gets a warning and a <T>Move onto</T> button. Past 300 mm it no longer counts as supported.
+        </p>
+        <p className="mt-2">
+          Each plan shows the level above: its posts with the load they bring down, red until something holds them up, plus its loadbearing walls and bracing. New members snap to
+          them, so a beam can be drawn straight under a post.
+        </p>
+      </Card>
+
+      <Card>
+        <H id="edit3d">Editing in 3D</H>
+        <p className="mt-2">
+          Select a member in 3D. Drag the orange ends to stretch it along its line (hold Shift to move an end anywhere), the blue square to slide it, and the green arrow to raise or
+          lower it. A post has a handle at its top and base for its height. Ends snap onto other members. You can also type <T>Raise / lower</T>, <T>Length</T> and <T>Height</T> in
+          millimetres on the card. The plans and calcs follow, and Undo works.
         </p>
       </Card>
 

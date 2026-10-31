@@ -1268,8 +1268,8 @@ export function SchedulePanel({ model, calcs, selectedId, onPick }: { model: Des
 // Most framing plans are drawn to a stated scale: 1:100 on A3 and so on. One
 // PDF point is 1/72 inch, so 1:N is N × 0.3528 mm of real length per point.
 const MM_PER_PT = 25.4 / 72;
-function SheetScale({ scale, locked, onApply }: { scale: number | null; locked: boolean; onApply: (ratio: number) => void }) {
-  const [v, setV] = useState(scale ? String(Math.round(scale / (MM_PER_PT / 1000))) : "");
+function SheetScale({ scale, printed, locked, onApply }: { scale: number | null; printed?: number | null; locked: boolean; onApply: (ratio: number) => void }) {
+  const [v, setV] = useState(scale ? String(Math.round(scale / (MM_PER_PT / 1000))) : printed ? String(printed) : "");
   const n = Number(v);
   return (
     <form
@@ -1289,7 +1289,7 @@ function SheetScale({ scale, locked, onApply }: { scale: number | null; locked: 
       <button type="submit" className="btn btn-quiet px-2.5 py-1 text-xs" disabled={locked || !(n >= 1 && n <= 5000)}>
         Set
       </button>
-      <span className="pb-1.5 text-xs text-muted">as printed on the plan, for sheets at their true size</span>
+      <span className="pb-1.5 text-xs text-muted">{printed && !scale ? "read from the sheet: check it, then Set" : "as printed on the plan, for sheets at their true size"}</span>
     </form>
   );
 }
@@ -1306,6 +1306,8 @@ export function LevelsPanel({
   onDeleteLevel,
   onUpload,
   onSheetScale,
+  sheets = {},
+  onStep = () => {},
 }: {
   onSheetScale: (levelId: string, ratio: number) => void;
   model: DesignModel;
@@ -1318,6 +1320,8 @@ export function LevelsPanel({
   onAddLevel: () => void;
   onDeleteLevel: (id: string) => void;
   onUpload: (file: File) => void;
+  sheets?: Record<string, { title: string | null; scale: number | null }[]>;
+  onStep?: (levelId: string, tool: "scale" | "origin") => void;
 }) {
   const levels = [...model.levels].sort((a, b) => b.elevation - a.elevation);
   return (
@@ -1409,14 +1413,25 @@ export function LevelsPanel({
                       {plans.flatMap((p) =>
                         Array.from({ length: p.pageCount }, (_, i) => (
                           <option key={`${p.id}|${i + 1}`} value={`${p.id}|${i + 1}`}>
-                            {p.fileName} · page {i + 1}
+                            Page {i + 1} · {sheets[p.id]?.[i]?.title ?? p.fileName}
                           </option>
                         )),
                       )}
                     </select>
                   </label>
                 </fieldset>
-                {plan && l.plan ? <SheetScale key={`${l.id}:${l.plan.scale ?? 0}`} scale={l.plan.scale} locked={locked} onApply={(n) => onSheetScale(l.id, n)} /> : null}
+                {plan && l.plan ? <SheetScale key={`${l.id}:${l.plan.scale ?? 0}:${l.plan.page}:${sheets[l.plan.planId]?.[l.plan.page - 1]?.scale ?? 0}`} scale={l.plan.scale} printed={sheets[l.plan.planId]?.[l.plan.page - 1]?.scale} locked={locked} onApply={(n) => onSheetScale(l.id, n)} /> : null}
+                {plan && l.plan ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="text-ok">Page ✓</span>
+                    <button type="button" className="btn btn-quiet px-2 py-1 text-xs" disabled={locked} onClick={() => onStep(l.id, "scale")}>
+                      {l.plan.scale ? "Scale ✓" : "Set scale"}
+                    </button>
+                    <button type="button" className="btn btn-quiet px-2 py-1 text-xs" disabled={locked} onClick={() => onStep(l.id, "origin")} title="Click the same building corner on every level, so the floors line up in 3D">
+                      {l.plan.origin.x || l.plan.origin.y ? "Origin ✓" : "Set origin"}
+                    </button>
+                  </div>
+                ) : null}
                 <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted">
                   <span>
                     {count} {count === 1 ? "member" : "members"}

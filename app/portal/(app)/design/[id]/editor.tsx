@@ -9,10 +9,10 @@ import { cloudsOn, diffModels } from "@/lib/design/diff";
 import { defaultRaft } from "@/lib/design/raft";
 import { defaultDeck, defaultStair } from "@/lib/design/deck";
 import { joinWallRuns } from "@/lib/design/walls";
-import { matchPlanPages } from "@/lib/design/plan-pages";
+import { matchPlanPages, sheetScale, sheetTitle } from "@/lib/design/plan-pages";
 import { exportIfc } from "@/lib/design/ifc";
 import { FAMILY_COLOUR, FAMILY_LABEL } from "@/lib/design/materials";
-import {
+import { floorName,
   defaultRoof,
   DEFAULT_SECTION,
   defaultWall,
@@ -135,7 +135,7 @@ export function DesignEditor({
   const [tab, setTab] = useState<Tab>("member");
   const [panelOpen, setPanelOpen] = useState(false); // side panel drawer on narrow screens
   const [mode, setMode] = useState<ViewMode>("split");
-  const [colourBy, setColourBy] = useState<ColourBy>("type");
+  const [colourPick, setColourBy] = useState<ColourBy | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const [scalePick, setScalePick] = useState<{ p1: Pt; p2: Pt } | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -144,6 +144,8 @@ export function DesignEditor({
 
   const calcs = useMemo(() => runCalcs(model), [model]);
   const results = calcs.results;
+  // Result once there is anything to show, until the engineer picks a view
+  const colourBy: ColourBy = colourPick ?? ([...results.values()].some((r) => r.ratio !== null) ? "result" : "type");
 
   // a short pop-up when an edit leaves a member with no load path
   const [toast, setToast] = useState<{ text: string; id: string } | null>(null);
@@ -332,9 +334,13 @@ export function DesignEditor({
 
   const addLevel = () => {
     const m = modelRef.current;
-    const top = [...m.levels].sort((a, b) => b.elevation - a.elevation)[0];
-    const lvl: Level = { id: newId(), name: "New level", kind: "floor", floor: "timber", elevation: top ? +(top.elevation + top.height).toFixed(3) : 0, height: 2.4, plan: null };
-    commit({ ...m, levels: [...m.levels, lvl] }, "Added a level");
+    // a new storey goes on top of the floors, under the roof, and lifts the roof with it
+    const floors = m.levels.filter((l) => l.kind === "floor").sort((a, b) => b.elevation - a.elevation);
+    const top = floors[0] ?? [...m.levels].sort((a, b) => b.elevation - a.elevation)[0];
+    const elevation = top ? +(top.elevation + top.height + (top.kind === "floor" ? 0.3 : 0)).toFixed(3) : 0;
+    const lvl: Level = { id: newId(), name: floorName(floors.length), kind: "floor", floor: "timber", elevation, height: 2.4, plan: null };
+    const placed = { ...lvl, plan: autoPlan(lvl) };
+    commit({ ...m, levels: [...m.levels.map((l) => (l.kind === "roof" && l.elevation < elevation + 2.4 ? { ...l, elevation: +(elevation + 2.4).toFixed(3) } : l)), placed] }, `Added the ${lvl.name}`);
     setActiveLevelId(lvl.id);
   };
 
@@ -422,6 +428,42 @@ export function DesignEditor({
   };
 
   // ------------------------------------------------------------ plans
+
+  // What each sheet says about itself: its title and printed scale. Read once per
+  // plan; the text is kept for matching levels added later.
+  const [sheets, setSheets] = useState<Record<string, { title: string | null; scale: number | null }[]>>({});
+  const planTexts = useRef(new Map<string, string[]>());
+  useEffect(() => {
+    let live = true;
+    for (const p of plans) {
+      if (planTexts.current.has(p.id)) continue;
+      planTexts.current.set(p.id, []);
+      loadPdf(p.id, p.url)
+        .then(pageTexts)
+        .then((texts) => {
+          planTexts.current.set(p.id, texts);
+          if (live) setSheets((s) => ({ ...s, [p.id]: texts.map((t) => ({ title: sheetTitle(t), scale: sheetScale(t) })) }));
+        })
+        .catch(() => planTexts.current.delete(p.id));
+    }
+    return () => {
+      live = false;
+    };
+  }, [plans]);
+  const plansRef = useRef(plans);
+  useEffect(() => {
+    plansRef.current = plans;
+  }, [plans]);
+
+  // The sheet whose title names this level, skipping pages other levels are on.
+  const autoPlan = (l: Level) => {
+    for (const p of plansRef.current) {
+      const used = new Set(modelRef.current.levels.filter((x) => x.plan?.planId === p.id).map((x) => x.plan!.page));
+      const page = matchPlanPages([l], (planTexts.current.get(p.id) ?? []).map((t, i) => (used.has(i + 1) ? "" : t))).get(l.id);
+      if (page) return { planId: p.id, page, scale: null, origin: { x: 0, y: 0 } };
+    }
+    return null;
+  };
 
   const [rendered, setRendered] = useState<{ key: string; page: RenderedPage } | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
@@ -535,11 +577,14 @@ export function DesignEditor({
       const res = await registerPlan(job.id, path, file.name, pages);
       if (!res.ok) throw new Error(res.message);
       const doc = loadPdf(res.plan.id, data); // already in memory, no need to download it again
+      planTexts.current.set(res.plan.id, []); // read below, once the upload has its text
       setPlans((p) => [...p, res.plan]);
       setTab("levels");
       // Put each empty level on the sheet whose title names it.
       const open = modelRef.current.levels.filter((l) => !l.plan);
-      const texts = open.length ? await doc.then(pageTexts).catch(() => []) : [];
+      const texts = await doc.then(pageTexts).catch(() => [] as string[]);
+      planTexts.current.set(res.plan.id, texts);
+      setSheets((s) => ({ ...s, [res.plan.id]: texts.map((t) => ({ title: sheetTitle(t), scale: sheetScale(t) })) }));
       const picks = matchPlanPages(open, texts);
       if (!picks.size && !level.plan) {
         picks.set(level.id, 1);
@@ -689,6 +734,29 @@ export function DesignEditor({
         .filter((m) => m.levelId === upper.id && m.b && (m.type === "bracing" || (m.type === "wall" && m.wall?.loadbearing !== false)))
         .map((m) => ({ id: m.id, label: m.type === "bracing" ? m.label : null, a: m.a, b: m.b! }))
     : [];
+  // While setting the Origin, the level below's sheet shows faintly, lined up on
+  // its own origin, so the two can be checked against each other.
+  const [under, setUnder] = useState<{ href: string; width: number; height: number; scale: number; origin: Pt } | null>(null);
+  const underKey = tool === "origin" && below?.plan?.scale ? `${below.plan.planId}:${below.plan.page}` : "";
+  useEffect(() => {
+    const p = below?.plan;
+    const file = p && plans.find((x) => x.id === p.planId);
+    if (!underKey || !p?.scale || !file) return;
+    let live = true;
+    const key = `${p.planId}:${p.page}`;
+    const got = pageCache.current.get(key);
+    (got ? Promise.resolve(got) : loadPdf(file.id, file.url).then((doc) => renderPage(doc, p.page)))
+      .then((r) => {
+        pageCache.current.set(key, r);
+        if (live) setUnder({ href: r.canvas.toDataURL("image/png"), width: r.width, height: r.height, scale: p.scale!, origin: p.origin });
+      })
+      .catch(() => live && setUnder(null));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [underKey]);
+
   const scaleOk = !level.plan || !!level.plan.scale;
 
   const saveLabel: Record<SaveState, string> = {
@@ -883,6 +951,7 @@ export function DesignEditor({
                   ghosts={below ? model.members.filter((m) => m.levelId === below.id) : []}
                   above={postsAbove}
                   aboveLines={linesAbove}
+                  under={underKey ? under : null}
                   page={page}
                   pageLoading={pageLoading}
                   tool={locked && tool !== "pan" ? "select" : tool}
@@ -1075,8 +1144,17 @@ export function DesignEditor({
                 locked={locked}
                 uploading={uploading}
                 onActivate={setActiveLevelId}
-                onUpdateLevel={updateLevel}
+                onUpdateLevel={(id, patch, summary) => {
+                  const l = modelRef.current.levels.find((x) => x.id === id);
+                  const renamed = patch.name && l && !l.plan ? autoPlan({ ...l, ...patch }) : null; // named after a sheet: put it on that sheet
+                  updateLevel(id, renamed ? { ...patch, plan: renamed } : patch, summary);
+                }}
                 onAddLevel={addLevel}
+                sheets={sheets}
+                onStep={(id, t) => {
+                  setActiveLevelId(id);
+                  setTool(t);
+                }}
                 onDeleteLevel={deleteLevel}
                 onUpload={upload}
                 onSheetScale={(id, ratio) => {
