@@ -364,6 +364,9 @@ export function framingTop(model: Pick<DesignModel, "levels">, level: Level) {
 export const isPt = (p: unknown): p is Pt =>
   !!p && typeof p === "object" && Number.isFinite((p as Pt).x) && Number.isFinite((p as Pt).y);
 
+// A lintel sits in the wall, under its top plates, not up in the floor framing.
+export const lintelTop = (level: Level) => level.elevation + level.height - 0.09;
+
 export const memberLength = (m: { a: Pt; b?: Pt }) => (m.b ? Math.hypot(m.b.x - m.a.x, m.b.y - m.a.y) : 0);
 
 // Every mark in use: members plus wall-opening lintels.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runCalcs } from "../calc";
 import { completeness } from "../complete";
+import { allParts } from "../geometry";
 import { defaultWall, emptyModel, type DesignModel, type Member } from "../model";
 
 // Two storeys: ground floor on a slab, first floor on timber.
@@ -79,6 +80,16 @@ describe("stability", () => {
     expect(off.unstable).toBeUndefined();
     expect(runCalcs(model([...parts, post("P1", "FF", 2, 0.03)])).results.get("P1")!.misaligned).toBeUndefined();
     expect(runCalcs(model([...parts, post("P1", "FF", 2, 0.4)])).results.get("P1")!.unstable).toBeDefined();
+  });
+
+  it("stops a post on the lintel below it, and the lintel takes the point load", () => {
+    const m = model([beam("L1", "GF", 0, 3, { type: "lintel" }), post("G1", "GF", 0, 0), post("G2", "GF", 3, 0), post("P1", "FF", 1.5, 0), beam("B1", "FF", -1, 4, { a: { x: 1.5, y: -2 }, b: { x: 1.5, y: 2 } } as Partial<Member>), wall("W1", "FF", 1.5)]);
+    const c = runCalcs(m);
+    expect(c.results.get("L1")!.carried?.[0]).toMatchObject({ at: 1.5, from: "P1 above" });
+    const col = allParts(m, c).find((x) => x.part.id === "P1")!.part as { z0: number; z1: number };
+    const gf = m.levels[0];
+    expect(col.z0).toBeCloseTo(gf.elevation + gf.height - 0.09);
+    expect(col.z1).toBeGreaterThan(m.levels[1].elevation);
   });
 
   it("lists unstable members first in To finish", () => {
