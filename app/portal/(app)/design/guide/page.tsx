@@ -97,12 +97,13 @@ export default async function DesignGuidePage() {
             level&apos;s <T>Plan</T> list. Choose the number of storeys when you create the job, and <T>+ Level</T> adds a storey under the roof.
           </li>
           <li>
-            Each level shows its steps. The scale printed on the sheet is filled in under <T>Sheet scale</T> for you to check and <T>Set</T>, or use <T>Set scale</T> (S): click both
-            ends of a dimension you know and type its real length in millimetres. A long dimension gives the best accuracy.
+            The upload also reads the house off the sheets (see <T>The 3D house</T> below), and that sets each level&apos;s scale and origin. Check them: the scale comes from the dimensions
+            on the sheet, so it is right whatever the title block says. If it couldn&apos;t tell, use <T>Sheet scale</T>, or <T>Set scale</T> (S): click both ends of a dimension you know
+            and type its real length in millimetres. A long dimension gives the best accuracy.
           </li>
           <li>
-            Choose <T>Set origin</T> (O) and click the same corner of the building on every level, so the levels stack correctly in 3D. The level below shows faintly while you do
-            this: the two sheets should line up.
+            <T>Set origin</T> (O) moves a level: click the same corner of the building on every level. The level below shows faintly while you do this, and the two sheets should line
+            up. An origin you set is kept, and <T>Read the sheets again</T> tells you if it looks off.
           </li>
           <li>Check each level&apos;s elevation, stud height and whether its walls stand on a slab or a timber floor (that changes the bracing ratings).</li>
         </Steps>
@@ -198,6 +199,21 @@ export default async function DesignGuidePage() {
         <p className="mt-2">
           Each plan shows the level above: its posts with the load they bring down, red until something holds them up, plus its loadbearing walls and bracing. New members snap to
           them, so a beam can be drawn straight under a post.
+        </p>
+      </Card>
+
+      <Card>
+        <H id="house3d">The 3D house</H>
+        <p className="mt-2">
+          The house is read off the architect&apos;s sheets when you upload them: walls, doors and windows, the upper floors and the roof, including a lower roof over anything that sticks
+          out past the floor above. It shows plain and see-through in 3D, to design over. It is only a picture: it doesn&apos;t go into the calcs or any export, and a structural wall drawn
+          on the same line replaces it.
+        </p>
+        <p className="mt-2">
+          The <T>3D house</T> part of the <T>Levels</T> tab says what was read from each sheet, and has <T>Read the sheets again</T> for when you change a page. It works from the filled or
+          hatched walls on a floor plan, so check it against the sheet. On the plan, dark green walls are outside, light green are inside and amber were worked out from lines; blue dashes
+          are windows and purple are doors. To correct it, use the <T>House wall</T> tool (U): click a wall to remove it, or click two points to add one. A scanned sheet has nothing to
+          read, so trace its walls this way. The roof pitch isn&apos;t usually on the plans, so type it in. Members you draw snap to the house walls and the sides of their openings.
         </p>
       </Card>
 

@@ -12,7 +12,7 @@ import { poleLayout } from "./retaining";
 import { defaultRaft } from "./raft";
 import { deckLayout, stairLayout } from "./deck";
 
-export type Layer = "walls" | "framing" | "blockwork" | "glass" | "joists" | "flooring" | "roof" | "purlins" | "roofing" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining" | "deck" | "deckboards" | "stairs";
+export type Layer = "walls" | "framing" | "blockwork" | "glass" | "joists" | "flooring" | "roof" | "purlins" | "roofing" | "beams" | "lintels" | "posts" | "foundations" | "bracing" | "retaining" | "deck" | "deckboards" | "stairs" | "base" | "baseRoof";
 export type Tone =
   | "member"
   | "framing"
@@ -41,6 +41,10 @@ export type Tone =
   | "concrete"
   | "pole"
   | "rail"
+  | "baseExt"
+  | "baseInt"
+  | "baseFloor"
+  | "baseRoof"
   | `brace:${string}`;
 
 export type P3 = { x: number; y: number; z: number };
@@ -53,6 +57,8 @@ export type Part =
   | { kind: "col"; id: string; layer: Layer; tone: Tone; x: number; y: number; z0: number; z1: number; w: number; d: number; round?: boolean }
   // a tapered strip (roof firrings): flat underside at z0, top rising from z0 + h0 at a to z0 + h1 at b
   | { kind: "wedge"; id: string; layer: Layer; tone: Tone; a: Pt; b: Pt; z0: number; h0: number; h1: number; w: number };
+// Triangles, as x y z runs: the base house's roof and floors. Only the 3D view takes these, so the house can't reach an export.
+export type MeshPart = { kind: "mesh"; id: string; layer: Layer; tone: Tone; pos: number[] };
 
 export function levelAbove(model: DesignModel, level: Level) {
   return [...model.levels].filter((l) => l.elevation > level.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation)[0];

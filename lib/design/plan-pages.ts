@@ -30,6 +30,11 @@ export function sheetScale(text: string) {
   return n ? Number(n[1]) : null;
 }
 
+// Every scale printed on a sheet. A sheet can carry more than one: the drawing's and the title block's.
+export function sheetScales(text: string) {
+  return [...new Set([...text.matchAll(/\b1\s*:\s*(\d{1,4})\b/g)].map((m) => Number(m[1])).filter((n) => n >= 10))];
+}
+
 // The drawing's title. Title blocks run into phone numbers and addresses, so
 // keep the capitalised words after the last number, and prefer drawing words.
 export function sheetTitle(text: string) {

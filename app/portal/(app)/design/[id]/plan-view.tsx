@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { RATINGS } from "@/lib/design/bracing";
+import type { BaseWall } from "@/lib/design/base-read";
 import { STATUS_COLOUR, type Calcs } from "@/lib/design/calc";
 import { FAMILY_COLOUR } from "@/lib/design/materials";
 import { MEMBER_INFO, memberLength, type Level, type Member, type MemberType, type Pt } from "@/lib/design/model";
 import type { RenderedPage } from "./pdf";
 import type { ColourBy } from "./view-3d";
 
-export type Tool = "select" | "pan" | "scale" | "origin" | "opening" | MemberType;
+export type Tool = "select" | "pan" | "scale" | "origin" | "opening" | "housewall" | MemberType;
 
 // Where a level's plan sits in the shared metre frame. Levels without a plan
 // get a 30 x 20 m sheet with a 1 m grid so work can start before plans arrive.
@@ -41,6 +42,10 @@ type Props = {
   above?: { id: string; label: string; at: Pt; load: string | null; unstable: boolean }[]; // posts on the level above, landing on this one
   aboveLines?: { id: string; label: string | null; a: Pt; b: Pt }[]; // loadbearing walls and bracing on the level above
   under?: { href: string; width: number; height: number; scale: number; origin: Pt } | null; // the level below's sheet, shown faintly to line up the Origin
+  house?: BaseWall[]; // walls read off this sheet (PDF points), for the 3D house
+  showHouse?: boolean;
+  onHouseAdd?: (a: Pt, b: Pt) => void; // PDF points
+  onHouseRemove?: (id: string) => void;
   page: RenderedPage | null;
   pageLoading: boolean;
   tool: Tool;
@@ -188,11 +193,22 @@ export function PlanView(props: Props) {
   const aboveShapes = useMemo(() => (props.above ?? []).map((q) => ({ ...q, m: { id: q.id }, a: toPdf(frame, q.at), b: undefined })), [props.above, frame]);
   const aboveLineShapes = useMemo(() => (props.aboveLines ?? []).map((q) => ({ ...q, m: { id: q.id }, a: toPdf(frame, q.a), b: toPdf(frame, q.b) })), [props.aboveLines, frame]);
 
+  // members snap to the walls read off the sheet, and to the sides of their openings
+  const houseShapes = useMemo(
+    () =>
+      (props.showHouse ? (props.house ?? []) : []).flatMap((w) => {
+        const L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y) || 1;
+        const on = (s: number): Pt => ({ x: w.a.x + ((w.b.x - w.a.x) * s) / L, y: w.a.y + ((w.b.y - w.a.y) * s) / L });
+        return [{ m: { id: w.id }, a: w.a, b: w.b as Pt | undefined }, ...w.openings.flatMap((o) => [o.s0, o.s1].map((s) => ({ m: { id: w.id }, a: on(s), b: undefined })))];
+      }),
+    [props.house, props.showHouse],
+  );
+
   const snap = (p: Pt, from: Pt | null, skipId?: string): Pt => {
     const tol = 10 / view.zoom;
     let best: Pt | null = null;
     let bestD = tol;
-    for (const s of [...shapes, ...ghostShapes, ...aboveShapes, ...aboveLineShapes]) {
+    for (const s of [...shapes, ...ghostShapes, ...aboveShapes, ...aboveLineShapes, ...houseShapes]) {
       if (s.m.id === skipId) continue;
       for (const q of s.b ? [s.a, s.b] : [s.a]) {
         const d = Math.hypot(q.x - p.x, q.y - p.y);
@@ -266,7 +282,7 @@ export function PlanView(props: Props) {
     return null;
   };
 
-  const memberTool = tool !== "select" && tool !== "pan" && tool !== "scale" && tool !== "origin" && tool !== "opening";
+  const memberTool = tool !== "select" && tool !== "pan" && tool !== "scale" && tool !== "origin" && tool !== "opening" && tool !== "housewall";
   const lineTool = memberTool && MEMBER_INFO[tool as MemberType].line;
   const pointTool = memberTool && !MEMBER_INFO[tool as MemberType].line;
   const areaTool = memberTool && !!MEMBER_INFO[tool as MemberType].area;
@@ -289,6 +305,17 @@ export function PlanView(props: Props) {
       if (!start) setStart(p);
       else {
         props.onScale(start, p);
+        setStart(null);
+      }
+      return;
+    }
+    if (tool === "housewall") {
+      const hit = !start && (props.house ?? []).find((w) => distToSegment(raw, w.a, w.b) <= Math.max(w.t / 2, HIT_PX / view.zoom));
+      if (hit) return props.onHouseRemove?.(hit.id);
+      const p = snap(raw, start);
+      if (!start) setStart(p);
+      else {
+        props.onHouseAdd?.(start, p);
         setStart(null);
       }
       return;
@@ -504,6 +531,31 @@ export function PlanView(props: Props) {
               ),
             )}
           </g>
+
+          {/* the walls read off this sheet: dark green is outside, light is inside, amber worked out from lines */}
+          {props.showHouse || tool === "housewall" ? (
+            <g pointerEvents="none" opacity={tool === "housewall" ? 0.8 : 0.4}>
+              {(props.house ?? []).map((w) => {
+                const L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y) || 1;
+                const P = (s: number): Pt => ({ x: w.a.x + ((w.b.x - w.a.x) * s) / L, y: w.a.y + ((w.b.y - w.a.y) * s) / L });
+                const stroke = w.inferred ? "#d97706" : w.ext ? "#0f766e" : "#2dd4bf";
+                const stops = [...w.openings].sort((p, q) => p.s0 - q.s0);
+                const solid = [...stops, { s0: L, s1: L }].map((o, i) => [stops[i - 1]?.s1 ?? 0, o.s0]);
+                return (
+                  <g key={w.id}>
+                    {solid.map(([s0, s1], i) => {
+                      const [p, q] = [P(s0), P(s1)];
+                      return <line key={i} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={stroke} strokeWidth={w.t} />;
+                    })}
+                    {stops.map((o, i) => {
+                      const [p, q] = [P(o.s0), P(o.s1)];
+                      return <line key={`o${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={o.kind === "window" ? "#0ea5e9" : "#a855f7"} strokeWidth={2} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />;
+                    })}
+                  </g>
+                );
+              })}
+            </g>
+          ) : null}
 
           {/* loadbearing walls and bracing on the level above */}
           <g pointerEvents="none" opacity={0.55}>
@@ -947,6 +999,9 @@ export function PlanView(props: Props) {
       ) : null}
       {tool === "origin" ? (
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink px-3 py-1 text-xs font-semibold text-white">Click the same corner on every level (for example the outside corner of the house). The level below shows faintly: they should line up</p>
+      ) : null}
+      {tool === "housewall" ? (
+        <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-xs text-white">{start ? "Click the other end of the wall" : "Click a house wall to remove it, or click two points to add one"}</p>
       ) : null}
       {tool === "opening" && !needsScale ? (
         <p className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-ink/85 px-3 py-1 text-xs text-white">

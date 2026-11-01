@@ -33,7 +33,8 @@ import { floorName,
 import { createClient } from "@/lib/supabase/browser";
 import { loadRevision, registerPlan, saveDesign } from "../actions";
 import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, ChangesPanel, GridPanel, Overview, PaperworkPanel, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
-import { countPages, findLines, labelLines, loadPdf, pageTexts, pageWords, renderPage, type FoundLine, type RenderedPage } from "./pdf";
+import { countPages, findLines, labelLines, loadPdf, pageTexts, pageWords, renderPage, sheetData, type FoundLine, type RenderedPage } from "./pdf";
+import { readHouse, type BaseWall, type SheetData } from "@/lib/design/base-house";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
 import { SignoffPanel, type Signoff } from "./signoff";
@@ -465,6 +466,60 @@ export function DesignEditor({
     return null;
   };
 
+  // Read the house off every level's sheet: scales and origins that aren't set yet
+  // come with it, and members stay on their spot of the drawing as levels move.
+  const [house, setHouse] = useState<{ busy: boolean; notes: string[]; onPlan: boolean }>({ busy: false, notes: [], onPlan: true });
+  const buildHouse = async (auto = false) => {
+    const placed = modelRef.current.levels.filter((l) => l.plan);
+    if (!placed.length) {
+      if (!auto) setNotice("Upload the architect's PDF and give each level its sheet first.");
+      return;
+    }
+    setHouse((h) => ({ ...h, busy: true }));
+    try {
+      const sheets = new Map<string, SheetData>();
+      for (const l of placed) {
+        const file = plansRef.current.find((p) => p.id === l.plan!.planId);
+        if (file) sheets.set(l.id, await sheetData(await loadPdf(file.id, file.url), l.plan!.page));
+      }
+      const m = modelRef.current;
+      const read = readHouse(m, sheets);
+      const moves = new Map(
+        m.levels.flatMap((l) => {
+          const to = read.plans.get(l.id);
+          if (!l.plan || !to) return [];
+          const before = { scale: l.plan.scale ?? GRID_FRAME.scale, origin: l.plan.origin };
+          return [[l.id, (p: Pt) => toWorld(to, toPdf(before, p))] as const];
+        }),
+      );
+      commit(
+        {
+          ...m,
+          base: read.base,
+          levels: m.levels.map((l) => (l.plan && read.plans.has(l.id) ? { ...l, plan: { ...l.plan, ...read.plans.get(l.id)! } } : l)),
+          members: m.members.map((x) => {
+            const move = moves.get(x.levelId);
+            return move ? { ...x, a: move(x.a), ...(x.b ? { b: move(x.b) } : {}) } : x;
+          }),
+        },
+        `3D house read from the plans: ${read.walls} walls`,
+      );
+      setHouse((h) => ({ ...h, notes: read.notes }));
+      if (!read.walls) setNotice("No walls found on these sheets. See the 3D house section on the Levels tab.");
+    } catch (e) {
+      setNotice(`Couldn't read the sheets: ${e instanceof Error ? e.message : "unknown error"}`);
+    } finally {
+      setHouse((h) => ({ ...h, busy: false }));
+    }
+  };
+
+  const editHouse = (levelId: string, change: (walls: BaseWall[]) => BaseWall[], summary: string) => {
+    const m = modelRef.current;
+    const base = m.base ?? { sheets: {}, pitch: 20 };
+    const sheet = base.sheets[levelId] ?? { walls: [] };
+    commit({ ...m, base: { ...base, sheets: { ...base.sheets, [levelId]: { ...sheet, walls: change(sheet.walls) } } } }, summary);
+  };
+
   const [rendered, setRendered] = useState<{ key: string; page: RenderedPage } | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
   const pageCache = useRef(new Map<string, RenderedPage>());
@@ -597,6 +652,7 @@ export function DesignEditor({
           { ...m, levels: m.levels.map((l) => (picks.has(l.id) ? { ...l, plan: { planId: res.plan.id, page: picks.get(l.id)!, scale: null, origin: { x: 0, y: 0 } } } : l)) },
           `Plan pages set: ${set.map((l) => `${l.name} p${picks.get(l.id)}`).join(", ")}`,
         );
+        await buildHouse(true);
       }
     } catch (e) {
       setNotice(`Upload failed: ${e instanceof Error ? e.message : "unknown error"}`);
@@ -667,6 +723,7 @@ export function DesignEditor({
       else if (k === "s") setTool("scale");
       else if (k === "o") setTool("origin");
       else if (k === "n") setTool("opening");
+      else if (k === "u") setTool("housewall");
       else {
         const type = MEMBER_TYPES.find((ty) => MEMBER_INFO[ty].key === k);
         if (type) setTool(type);
@@ -869,6 +926,7 @@ export function DesignEditor({
           <p className="mt-2 px-2.5 text-[11px] font-bold tracking-wide text-muted uppercase">Plan</p>
           {toolButton("scale", "Scale", "S")}
           {toolButton("origin", "Origin", "O")}
+          {toolButton("housewall", "House wall", "U", "#0f766e")}
           <div className="mt-auto px-2.5 pt-3 text-[11px] leading-relaxed text-muted tabular-nums">
             {cursor ? `x ${cursor.x.toFixed(3)} m · y ${cursor.y.toFixed(3)} m` : " "}
             <br />
@@ -912,6 +970,7 @@ export function DesignEditor({
                     </option>
                   ))}
                   <option value="opening">Opening</option>
+                  <option value="housewall">House wall</option>
                   <option value="scale">Scale</option>
                   <option value="origin">Origin</option>
                 </select>
@@ -962,6 +1021,14 @@ export function DesignEditor({
                   onSelect={(id) => pick(id)}
                   multi={multi}
                   suggest={foundHere}
+                  house={model.base?.sheets[level.id]?.walls}
+                  showHouse={house.onPlan}
+                  onHouseAdd={(a, b) => {
+                    const t = 0.09 / (level.plan?.scale ?? GRID_FRAME.scale);
+                    const id = `h${newId()}`;
+                    editHouse(level.id, (walls) => [...walls, { id, a, b, t, ext: true, openings: [] }], "House wall added");
+                  }}
+                  onHouseRemove={(id) => editHouse(level.id, (walls) => walls.filter((w) => w.id !== id), "House wall removed")}
                   clouds={cloudsOn(changes, level.id).map((c) => c.at)}
                   onToggle={(id) => {
                     const base = multi.length ? multi : selectedId && !selectedId.includes("#") ? [selectedId] : [];
@@ -1151,6 +1218,18 @@ export function DesignEditor({
                 }}
                 onAddLevel={addLevel}
                 sheets={sheets}
+                house={house}
+                onBuildHouse={() => void buildHouse()}
+                onHouseOnPlan={(onPlan) => setHouse((h) => ({ ...h, onPlan }))}
+                onPitch={(pitch) => {
+                  const m = modelRef.current;
+                  if (m.base) commit({ ...m, base: { ...m.base, pitch } }, `House roof pitch ${pitch}°`);
+                }}
+                onClearHouse={() => {
+                  const m = modelRef.current;
+                  commit({ ...m, base: undefined }, "3D house removed");
+                  setHouse((h) => ({ ...h, notes: [] }));
+                }}
                 onStep={(id, t) => {
                   setActiveLevelId(id);
                   setTool(t);

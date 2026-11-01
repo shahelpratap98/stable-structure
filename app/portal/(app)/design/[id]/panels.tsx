@@ -1308,6 +1308,11 @@ export function LevelsPanel({
   onSheetScale,
   sheets = {},
   onStep = () => {},
+  house = { busy: false, notes: [], onPlan: true },
+  onBuildHouse = () => {},
+  onHouseOnPlan = () => {},
+  onPitch = () => {},
+  onClearHouse = () => {},
 }: {
   onSheetScale: (levelId: string, ratio: number) => void;
   model: DesignModel;
@@ -1322,8 +1327,14 @@ export function LevelsPanel({
   onUpload: (file: File) => void;
   sheets?: Record<string, { title: string | null; scale: number | null }[]>;
   onStep?: (levelId: string, tool: "scale" | "origin") => void;
+  house?: { busy: boolean; notes: string[]; onPlan: boolean };
+  onBuildHouse?: () => void;
+  onHouseOnPlan?: (on: boolean) => void;
+  onPitch?: (deg: number) => void;
+  onClearHouse?: () => void;
 }) {
   const levels = [...model.levels].sort((a, b) => b.elevation - a.elevation);
+  const built = !!model.base && Object.values(model.base.sheets).some((s) => s.walls.length);
   return (
     <div>
       <Section title="Plans">
@@ -1355,6 +1366,39 @@ export function LevelsPanel({
             }}
           />
         </label>
+        <div className="mt-3 border-t border-line pt-3">
+          <p className="text-xs font-bold tracking-wide text-muted uppercase">3D house</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">Reads the walls, openings and roof off each level&apos;s sheet, with any scale and origin not set yet, for the 3D view. It doesn&apos;t go into the calcs.</p>
+          <button type="button" className="btn btn-quiet mt-2 w-full justify-center text-sm" disabled={locked || house.busy || !plans.length} onClick={onBuildHouse}>
+            {house.busy ? "Reading the sheets…" : model.base ? "Read the sheets again" : "Build the 3D house"}
+          </button>
+          {house.notes.length ? (
+            <ul className="mt-2 flex flex-col gap-1 text-xs leading-relaxed text-ink">
+              {house.notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : null}
+          {model.base ? (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+              <label className="flex items-center gap-1.5">
+                Roof pitch
+                <input key={model.base.pitch} type="number" min={1} max={60} step={0.5} className="field w-16 py-1 text-xs tabular-nums" defaultValue={model.base.pitch} disabled={locked} onBlur={(e) => { const v = Number(e.target.value); if (v >= 1 && v <= 60 && v !== model.base?.pitch) onPitch(v); }} />
+                °
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input type="checkbox" checked={house.onPlan} onChange={(e) => onHouseOnPlan(e.target.checked)} />
+                Show on the plan
+              </label>
+              {built ? <span className="text-muted">Wrong wall? Use the House wall tool.</span> : <span className="text-muted">Nothing read. Trace the walls with the House wall tool.</span>}
+              {!locked ? (
+                <button type="button" className="font-semibold text-bad hover:underline" onClick={onClearHouse}>
+                  Remove
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </Section>
 
       <Section

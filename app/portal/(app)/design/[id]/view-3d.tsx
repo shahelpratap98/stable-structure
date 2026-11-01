@@ -7,14 +7,15 @@
 // bubbles, a layer panel grouped by structure, walls and IDs, a toggle per
 // level and a "lift roof" slider.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RATINGS } from "@/lib/design/bracing";
 import { loadKind, STATUS_COLOUR, type Calcs } from "@/lib/design/calc";
 import { editable, handlesFor, lengthTo, lift, moveBy, raiseBase, raiseTop, snapPoints, stretch, zRange, type Handle } from "@/lib/design/edit3d";
-import { allParts, tagPoint, type Layer, type Part, type Tone } from "@/lib/design/geometry";
+import { allParts, tagPoint, type Layer, type MeshPart, type Part, type Tone } from "@/lib/design/geometry";
+import { houseParts } from "@/lib/design/base-house";
 import { FAMILY_COLOUR } from "@/lib/design/materials";
 import { memberLength, type BraceSystem, type DesignModel, type Member, type MemberType, type Pt } from "@/lib/design/model";
 
@@ -95,6 +96,8 @@ const FRAME = {
 };
 
 const LAYERS: { key: Key; label: string; on: boolean; sw: string; group: string }[] = [
+  { key: "base", label: "House walls", on: true, sw: "#c9c2b2", group: "House from the plans" },
+  { key: "baseRoof", label: "House roof", on: true, sw: "#7a8088", group: "House from the plans" },
   { key: "joists", label: "Floor joists", on: true, sw: FRAME.joist, group: "Structure" },
   { key: "beams", label: "Beams", on: true, sw: FRAME.steelFloor, group: "Structure" },
   { key: "lintels", label: "Lintels", on: true, sw: FRAME.lintel, group: "Structure" },
@@ -159,9 +162,15 @@ const TONE: Record<Exclude<Tone, "member" | `brace:${string}`>, { c: string; o?:
   concrete: { c: FRAME.concrete, o: 0.6 },
   pole: { c: "#5e4b33" },
   rail: { c: "#8a6f4a" },
+  baseExt: { c: "#cfc8b8", o: 0.42 },
+  baseInt: { c: "#dcd6c8", o: 0.28 },
+  baseFloor: { c: "#d8d3c6", o: 0.22 },
+  baseRoof: { c: "#6d747c", o: 0.5 },
 };
-const ROOF_LAYERS = new Set<Layer>(["roof", "purlins", "roofing"]);
-const WALL_LAYERS = new Set<Layer>(["walls", "framing", "blockwork", "glass", "bracing", "posts", "lintels", "foundations"]);
+const ROOF_LAYERS = new Set<Layer>(["roof", "purlins", "roofing", "baseRoof"]);
+const WALL_LAYERS = new Set<Layer>(["walls", "framing", "blockwork", "glass", "bracing", "posts", "lintels", "foundations", "base"]);
+const HOUSE_LAYERS = new Set<Layer>(["base", "baseRoof"]);
+const ISO = [0.85, 0.7, 0.84]; // the camera's offset, in lengths of the model's diagonal: a compact house needs the room
 
 // The model's sets, as the framing models have them: "GF walls", "Mid floor", "FF walls", "Roof", "Retaining walls".
 type ViewSet = { key: string; label: string };
@@ -202,7 +211,7 @@ type Stage = {
 };
 
 // Plan x -> X, plan y -> Z, height -> Y (three.js is y-up).
-function partGeometry(p: Part): THREE.BufferGeometry | null {
+function partGeometry(p: Part | MeshPart): THREE.BufferGeometry | null {
   if (p.kind === "beam3") {
     const dx = p.b.x - p.a.x,
       dy = p.b.y - p.a.y,
@@ -231,6 +240,15 @@ function partGeometry(p: Part): THREE.BufferGeometry | null {
     g.computeVertexNormals();
     g.rotateY(-Math.atan2(dy, dx));
     g.translate((p.a.x + p.b.x) / 2, p.z0, (p.a.y + p.b.y) / 2);
+    return g;
+  }
+  if (p.kind === "mesh") {
+    if (p.pos.length < 9) return null;
+    const pos = new Float32Array(p.pos.length);
+    for (let i = 0; i < p.pos.length; i += 3) pos.set([p.pos[i], p.pos[i + 2], p.pos[i + 1]], i);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.computeVertexNormals();
     return g;
   }
   if (p.kind === "poly") {
@@ -459,6 +477,8 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const stage = useRef<Stage | null>(null);
   const select = useRef(onSelect);
   const [layers, setLayers] = useState<Record<Key, boolean>>(() => Object.fromEntries(LAYERS.map((l) => [l.key, l.on])) as Record<Key, boolean>);
+  const house = useMemo(() => houseParts(model), [model]);
+  const framedHouse = useRef(model.base);
   const [explode, setExplode] = useState(0);
   const [liftRoof, setLiftRoof] = useState(0);
   const [panel, setPanel] = useState(false);
@@ -693,7 +713,11 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
 
     // merge each member's parts by tone, so a whole joist zone or wall frame is one mesh
     const buckets = new Map<string, { id: string; tone: Tone; layer: Layer; geos: THREE.BufferGeometry[] }>();
-    for (const { part, level } of allParts(model, calcs)) {
+    if (framedHouse.current !== model.base) {
+      framedHouse.current = model.base;
+      s.framed = false; // the house may be far bigger than what was framed before it
+    }
+    for (const { part, level } of [...allParts(model, calcs), ...house]) {
       if (!shown(level.id, part.layer, typeOf(part.id)) || !layers[part.layer]) continue;
       const g = partGeometry(part);
       if (!g) continue;
@@ -713,9 +737,10 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       const mesh = new THREE.Mesh(geo, frameMaterial(c, o));
       mesh.userData.id = b.id;
       mesh.userData.base = c;
-      mesh.userData.selectable = b.layer !== "walls" && b.layer !== "glass";
+      mesh.userData.selectable = b.layer !== "walls" && b.layer !== "glass" && !HOUSE_LAYERS.has(b.layer);
       mesh.userData.see = o !== undefined && o < 0.8 && !b.tone.startsWith("brace:");
-      if ((o === undefined || b.tone.startsWith("brace:")) && b.layer !== "roofing") mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), edgeMat));
+      if (b.layer === "baseRoof") mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 10), new THREE.LineBasicMaterial({ color: 0x2f3439, transparent: true, opacity: 0.6 }))); // the ridges and hips are what read as a roof
+      else if ((o === undefined || b.tone.startsWith("brace:") || HOUSE_LAYERS.has(b.layer)) && b.layer !== "roofing") mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), edgeMat));
       if (o !== undefined) mesh.renderOrder = 2;
       // the camera frames the building; site retaining walls can run well past it
       mesh.userData.frame = b.layer !== "glass" && b.layer !== "retaining";
@@ -758,11 +783,11 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       const centre = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3()).length();
       s.controls.target.copy(centre);
-      s.camera.position.set(centre.x - size * 0.62, centre.y + size * 0.51, centre.z + size * 0.61);
+      s.camera.position.set(centre.x - size * ISO[0], centre.y + size * ISO[1], centre.z + size * ISO[2]);
       s.framed = true;
     }
     setBuilt((n) => n + 1);
-  }, [model, calcs, colourBy, upToLevel, layers, explode, liftRoof, hidden]);
+  }, [model, house, calcs, colourBy, upToLevel, layers, explode, liftRoof, hidden]);
 
   // Selection only recolours: the selected member's framing and tag turn orange.
   useEffect(() => {
@@ -835,7 +860,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     const c = box.getCenter(new THREE.Vector3());
     const r = Math.max(6, box.getSize(new THREE.Vector3()).length());
     const pos: Record<typeof v, [number, number, number]> = {
-      iso: [c.x - r * 0.62, c.y + r * 0.51, c.z + r * 0.61],
+      iso: [c.x - r * ISO[0], c.y + r * ISO[1], c.z + r * ISO[2]],
       top: [c.x, c.y + r * 1.6, c.z + 0.01],
       north: [c.x, c.y + r * 0.15, c.z - r * 1.4],
       south: [c.x, c.y + r * 0.15, c.z + r * 1.4],

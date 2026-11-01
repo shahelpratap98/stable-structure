@@ -2,6 +2,8 @@
 
 // pdf.js, loaded on demand: the design editor is the only page that needs it.
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { readPaths } from "@/lib/design/base-read";
+import type { SheetData } from "@/lib/design/base-house";
 
 let lib: Promise<typeof import("pdfjs-dist")> | null = null;
 
@@ -145,6 +147,23 @@ export async function pageWords(doc: PDFDocumentProxy, pageNo: number) {
     out.push({ text: it.str.trim(), x, y });
   }
   return out;
+}
+
+// A sheet's vector drawing and its words, for reading the house off it.
+export async function sheetData(doc: PDFDocumentProxy, pageNo: number): Promise<SheetData> {
+  const m = await pdfjs();
+  const page = await doc.getPage(Math.min(Math.max(1, pageNo), doc.numPages));
+  const vp = page.getViewport({ scale: 1 });
+  const paths = readPaths(await page.getOperatorList(), m.OPS as unknown as Record<string, number>, vp.transform);
+  const tc = await page.getTextContent();
+  const words = tc.items.flatMap((it) => {
+    if (!("str" in it) || !it.str.trim()) return [];
+    const [a, b, , , tx, ty] = it.transform as number[];
+    const k = Math.hypot(a, b) || 1; // text can run up the page, as vertical dimensions do
+    const [x, y] = vp.convertToViewportPoint(tx + (a / k) * ((it.width ?? 0) / 2), ty + (b / k) * ((it.width ?? 0) / 2));
+    return [{ text: it.str.trim(), x, y }];
+  });
+  return { paths, words, text: tc.items.map((it) => ("str" in it ? it.str : "")).join(" ") };
 }
 
 // All the text on each page, for telling which sheet is which.

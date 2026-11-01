@@ -15,6 +15,7 @@ import { normaliseSite, type SiteData } from "./site";
 import { normalisePaperwork, type Paperwork } from "./paperwork";
 import { defaultRaft, type RaftSpec } from "./raft";
 import { defaultDeck, defaultStair, type DeckSpec, type StairSpec } from "./deck";
+import type { BaseHouse, BaseWall } from "./base-read";
 export type Pt = { x: number; y: number };
 
 export type MemberType =
@@ -180,6 +181,7 @@ export type DesignModel = {
   paperwork?: Paperwork; // PS1 and design features report details
   grids?: { x: GridLine[]; y: GridLine[] }; // set-out grid: x lines (constant x) and y lines (constant y)
   ack?: string[]; // completeness gaps the engineer has marked OK (a stair void, say): keys from complete.ts
+  base?: BaseHouse; // the house read off the architect's sheets, for the 3D view; never reaches the calcs
 };
 
 export type GridLine = { n: string; at: number }; // label and plan coordinate, m
@@ -346,7 +348,20 @@ export function normaliseModel(raw: unknown): DesignModel {
           }
         : undefined,
     ack: Array.isArray(m.ack) ? [...new Set(m.ack.filter((k): k is string => typeof k === "string" && k.length <= 120))].slice(0, 300) : undefined,
+    base: normaliseBase(m.base, ids),
   };
+}
+
+function normaliseBase(raw: unknown, ids: Set<string>): BaseHouse | undefined {
+  const b = raw as Partial<BaseHouse> | null | undefined;
+  if (!b || typeof b !== "object" || !b.sheets || typeof b.sheets !== "object") return undefined;
+  const sheets: BaseHouse["sheets"] = {};
+  for (const [id, s] of Object.entries(b.sheets)) {
+    if (!ids.has(id) || !s || !Array.isArray(s.walls)) continue;
+    const walls = s.walls.filter((w: BaseWall) => w && isPt(w.a) && isPt(w.b) && Number.isFinite(w.t)).map((w: BaseWall) => ({ ...w, openings: Array.isArray(w.openings) ? w.openings : [] }));
+    sheets[id] = { walls, ...(Array.isArray(s.eaves) && s.eaves.every(isPt) ? { eaves: s.eaves, hip: !!s.hip } : {}) };
+  }
+  return { sheets, pitch: Number.isFinite(b.pitch) ? (b.pitch as number) : 20 };
 }
 
 export const defaultWall = (): WallSpec => ({ kind: "ext", thickness: 90, loadbearing: true, cladding: "light", studSpacing: 600, openings: [] });
