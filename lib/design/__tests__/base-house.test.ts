@@ -57,6 +57,15 @@ describe("reading walls", () => {
     expect(readWalls([...box(), ...swatches], M).walls).toHaveLength(4);
   });
 
+  it("tells a stud wall with cladding hatched beside it from blockwork", () => {
+    const hatch = (y: number) => Array.from({ length: 260 }, (_, i) => line(P(i * 0.04, y + 0.13), P(i * 0.04 + 0.13, y), "aaae1e"));
+    const stud = readWalls([...box(), ...hatch(-0.17)], M).walls;
+    const block = readWalls([band(0, -0.1, 10, 0.1), ...box().slice(1)], M).walls;
+    expect(longest(stud).t * M).toBeGreaterThan(0.15); // the band is wide
+    expect(stud.find((w) => Math.abs(w.a.y - w.b.y) < 1 && w.a.y < 5)?.core).toBeLessThan(0.15); // the wall isn't
+    expect(block.find((w) => Math.abs(w.a.y - w.b.y) < 1 && w.a.y < 5)?.core).toBeGreaterThanOrEqual(0.15);
+  });
+
   it("marks inside walls", () => {
     const { walls } = readWalls([...box(), down(5, 0, 8)], M);
     expect(walls.filter((w) => !w.ext)).toHaveLength(1);
@@ -273,6 +282,11 @@ describe("the first structure", () => {
     const { members } = draftStructure(m);
     expect(members.filter((x) => x.type === "joistzone" && !x.zone?.roof)).toHaveLength(2);
     expect(members.some((x) => x.type === "beam")).toBe(true);
+  });
+
+  it("only makes block walls of what's drawn as block", () => {
+    const { members } = draft();
+    expect(members.filter((x) => x.wall?.kind === "block")).toEqual([]);
   });
 
   it("doesn't add it twice", () => {

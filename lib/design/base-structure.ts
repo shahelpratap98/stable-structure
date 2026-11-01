@@ -11,7 +11,7 @@ import { defaultRoof, defaultWall, defaultZone, newId, nextMark, type DesignMode
 export const DRAFTED = "Drafted from the plans";
 
 const CELL = 0.1; // m
-const BLOCK = 0.17; // m, a band this thick is blockwork
+const BLOCK = 0.15; // m, this much wall that isn't a stud wall with cladding beside it is blockwork
 const SILL = 0.9; // m
 const BARRIER = 1.5; // m, a shorter wall doesn't divide a room for joists
 const ON_WALL = 0.3; // m, an edge this close to a wall bears on it
@@ -155,7 +155,7 @@ export function draftStructure(model: DesignModel): { members: Member[]; notes: 
         const o = lineOf(m.a, m.b);
         return !!o && !!line && o.h === line.h && Math.abs(o.c - line.c) <= 0.2 && Math.min(o.s1, line.s1) - Math.max(o.s0, line.s0) >= 0.8 * (line.s1 - line.s0);
       });
-      const block = t >= BLOCK;
+      const block = !w.inferred && (w.core ? w.core >= BLOCK : t >= BLOCK);
       const openings: Opening[] = taken
         ? []
         : [...w.openings].sort((p, q) => p.s0 - q.s0).map((o) => {

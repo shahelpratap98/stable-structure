@@ -12,7 +12,8 @@ export type SheetPath = { fill: string | null; stroke: string | null; width: num
 export type SheetWord = { text: string; x: number; y: number };
 
 export type BaseOpening = { s0: number; s1: number; kind: "window" | "door" }; // PDF points along the wall from a
-export type BaseWall = { id: string; a: Pt; b: Pt; t: number; ext: boolean; openings: BaseOpening[]; inferred?: boolean }; // PDF points; inferred: drawn without a band, so check it
+// PDF points. inferred: drawn without a band, so check it. core: m of solid fill across the wall, 0 if it's only hatched
+export type BaseWall = { id: string; a: Pt; b: Pt; t: number; ext: boolean; openings: BaseOpening[]; inferred?: boolean; core?: number };
 export type WallRead = { walls: BaseWall[]; bands: number }; // bands: m of filled or hatched wall found
 export type BaseSheet = { walls: BaseWall[]; eaves?: Pt[]; hip?: boolean }; // PDF points on the level's own sheet, so it moves with the sheet's scale and origin
 export type BaseHouse = { sheets: Record<string, BaseSheet>; pitch: number }; // sheets by level id; pitch in degrees
@@ -602,7 +603,38 @@ export function readWalls(paths: SheetPath[], m: number): WallRead {
     }
   }
   const main = building(found);
-  return { walls: assemble(paths, main, m), bands: bandLength(main) };
+  const walls = assemble(paths, main, m);
+  // How much of each wall's width is solid fill: cladding hatch beside a stud wall widens the band, not the wall.
+  const solid = use.filter((e) => e.polys.length);
+  const f = box(solid, 0);
+  if (f) {
+    const g = paint(solid, m, 0, cell, f);
+    const hit = (x: number, y: number) => {
+      const i = Math.floor((x - g.x0) / cell),
+        j = Math.floor((y - g.y0) / cell);
+      return i >= 0 && j >= 0 && i < g.W && j < g.H && !!g.on[j * g.W + i];
+    };
+    for (const w of walls) {
+      const L = len(w.a, w.b),
+        t = w.t * m;
+      const ux = (w.b.x - w.a.x) / L,
+        uy = (w.b.y - w.a.y) / L;
+      const widths: number[] = [];
+      for (let k = 1; k < 20; k++) {
+        const s = (L * k) / 20;
+        if (w.openings.some((o) => s >= o.s0 && s <= o.s1)) continue;
+        let on = 0;
+        const n = Math.ceil((t + 0.1) / (cell / 2));
+        for (let q = 0; q <= n; q++) {
+          const d = -(t + 0.1) / 2 + (q / n) * (t + 0.1);
+          if (hit((w.a.x + ux * s) * m - uy * d, (w.a.y + uy * s) * m + ux * d)) on++;
+        }
+        widths.push((on / n) * (t + 0.1));
+      }
+      w.core = [...widths].sort((p, q) => p - q)[widths.length >> 1] ?? 0;
+    }
+  }
+  return { walls, bands: bandLength(main) };
 }
 
 // ---------------------------------------------------------------- scale
