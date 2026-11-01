@@ -123,13 +123,13 @@ type Field = { W: number; H: number; x0: number; y0: number };
 
 const frameOf = (l: Level) => (p: Pt): Pt => ({ x: (p.x - l.plan!.origin.x) * l.plan!.scale!, y: (p.y - l.plan!.origin.y) * l.plan!.scale! });
 
-function worldWalls(l: Level, sheet: BaseSheet) {
+export function worldWalls(l: Level, sheet: BaseSheet) {
   const f = frameOf(l);
   return sheet.walls.map((w) => ({ w, a: f(w.a), b: f(w.b), t: w.t * l.plan!.scale! }));
 }
 
 // everything inside the outer walls, walls included
-function footprint(segs: { a: Pt; b: Pt; t: number }[]) {
+export function footprint(segs: { a: Pt; b: Pt; t: number }[]) {
   if (!segs.length) return null;
   const tries = [0, 0.3, 0.6];
   for (const grow of tries) {

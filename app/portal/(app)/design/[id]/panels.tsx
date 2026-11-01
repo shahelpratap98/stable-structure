@@ -1310,6 +1310,7 @@ export function LevelsPanel({
   onStep = () => {},
   house = { busy: false, notes: [], onPlan: true },
   onBuildHouse = () => {},
+  onAddStructure = () => {},
   onHouseOnPlan = () => {},
   onPitch = () => {},
   onClearHouse = () => {},
@@ -1329,6 +1330,7 @@ export function LevelsPanel({
   onStep?: (levelId: string, tool: "scale" | "origin") => void;
   house?: { busy: boolean; notes: string[]; onPlan: boolean };
   onBuildHouse?: () => void;
+  onAddStructure?: () => void;
   onHouseOnPlan?: (on: boolean) => void;
   onPitch?: (deg: number) => void;
   onClearHouse?: () => void;
@@ -1372,6 +1374,11 @@ export function LevelsPanel({
           <button type="button" className="btn btn-quiet mt-2 w-full justify-center text-sm" disabled={locked || house.busy || !plans.length} onClick={onBuildHouse}>
             {house.busy ? "Reading the sheets…" : model.base ? "Read the sheets again" : "Build the 3D house"}
           </button>
+          {built ? (
+            <button type="button" className="btn btn-primary mt-2 w-full justify-center text-sm" disabled={locked} onClick={onAddStructure} title="Adds walls, lintels, joists, roof framing, beams and posts for you to edit. The calcs size them.">
+              Add structural elements
+            </button>
+          ) : null}
           {house.notes.length ? (
             <ul className="mt-2 flex flex-col gap-1 text-xs leading-relaxed text-ink">
               {house.notes.map((n) => (

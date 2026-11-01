@@ -215,6 +215,12 @@ export default async function DesignGuidePage() {
           are windows and purple are doors. To correct it, use the <T>House wall</T> tool (U): click a wall to remove it, or click two points to add one. A scanned sheet has nothing to
           read, so trace its walls this way. The roof pitch isn&apos;t usually on the plans, so type it in. Members you draw snap to the house walls and the sides of their openings.
         </p>
+        <p className="mt-2">
+          <T>Add structural elements</T> turns the house into a first structure for the calcs to size: walls with their openings and lintels, trusses over the top storey and rafters on
+          any lower roof, joists room by room spanning the short way, and a beam or post wherever a load has nothing under it. Inside walls that joists land on become loadbearing. It is
+          a draft, worked out from the walls alone, so check every assumption, above all what&apos;s loadbearing and where the beams go. One Undo takes it all back. It doesn&apos;t add
+          foundations or bracing, and it can&apos;t see wet areas or stair voids, so mark those on the joist zones.
+        </p>
       </Card>
 
       <Card>

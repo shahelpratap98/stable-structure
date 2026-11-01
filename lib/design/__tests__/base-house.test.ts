@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { houseParts, readHouse, type SheetData } from "../base-house";
 import { alignWalls, isHipped, readEaves, readPaths, readWalls, roofPitch, scaleFromDimensions, type BaseWall, type SheetPath, type SheetWord } from "../base-read";
+import { draftStructure } from "../base-structure";
 import { runCalcs } from "../calc";
 import { emptyModel, normaliseModel, type DesignModel, type Pt } from "../model";
 
@@ -233,6 +234,54 @@ describe("the house", () => {
     const back = normaliseModel(JSON.parse(JSON.stringify(m)));
     expect(back.base?.sheets).toEqual(m.base?.sheets);
     expect(normaliseModel({ ...m, base: { sheets: { nosuch: { walls: [] } }, pitch: "x" } }).base).toEqual({ sheets: {}, pitch: 20 });
+  });
+});
+
+describe("the first structure", () => {
+  const draft = () => {
+    const { model, sheets } = twoStorey();
+    const m = placed(model, sheets).model;
+    const { members, notes } = draftStructure(m);
+    return { m: { ...m, members }, members, notes };
+  };
+
+  it("turns the house's walls into members, with their openings", () => {
+    const { m, members } = draft();
+    const north = [across(0, 0, 3), across(5, 0, 10), across(0, 8, 10), down(0, 0, 8), down(10, 0, 8)];
+    const plain = emptyModel(1);
+    const id = plain.levels.find((l) => l.name === "Ground floor")!.id;
+    const withDoor = { ...plain, base: { sheets: { [id]: { walls: readWalls(north, M).walls } }, pitch: 20 }, levels: plain.levels.map((l) => (l.id === id ? { ...l, plan: { planId: "p", page: 1, scale: M, origin: { x: 0, y: 0 } } } : l)) };
+    const wall = draftStructure(withDoor).members.find((x) => x.wall?.openings.length);
+    expect(wall?.wall?.openings[0]).toMatchObject({ sill: 0 });
+    expect(wall?.wall?.openings[0].width).toBeCloseTo(2, 0);
+    expect(members.filter((x) => x.type === "wall").length).toBe(m.base!.sheets[m.levels.find((l) => l.name === "Ground floor")!.id].walls.length + m.base!.sheets[m.levels.find((l) => l.name === "First floor")!.id].walls.length);
+  });
+
+  it("frames the floor and roof, and nothing is left without a load path", () => {
+    const { m, members } = draft();
+    expect(members.some((x) => x.type === "joistzone" && !x.zone?.roof)).toBe(true);
+    expect(members.some((x) => x.zone?.roof?.framing === "trusses")).toBe(true);
+    const calcs = runCalcs(m);
+    expect([...calcs.results.values()].filter((r) => r.unstable)).toEqual([]);
+  });
+
+  it("spans joists the short way and puts a beam under a long room", () => {
+    const m0 = emptyModel(2);
+    const [g, f] = ["Ground floor", "First floor"].map((n) => m0.levels.find((l) => l.name === n)!.id);
+    const big = [across(0, 0, 12), across(0, 12, 12), down(0, 0, 12), down(12, 0, 12)];
+    const m = { ...m0, base: { sheets: { [g]: { walls: readWalls(big, M).walls }, [f]: { walls: readWalls(big, M).walls } }, pitch: 20 }, levels: m0.levels.map((l) => (l.id === g || l.id === f ? { ...l, plan: { planId: "p", page: 1, scale: M, origin: { x: 0, y: 0 } } } : l)) };
+    const { members } = draftStructure(m);
+    expect(members.filter((x) => x.type === "joistzone" && !x.zone?.roof)).toHaveLength(2);
+    expect(members.some((x) => x.type === "beam")).toBe(true);
+  });
+
+  it("doesn't add it twice", () => {
+    const { m } = draft();
+    expect(draftStructure(m).members).toEqual([]);
+  });
+
+  it("says what it left out", () => {
+    expect(draft().notes.join(" ")).toMatch(/foundations and bracing/);
   });
 });
 
