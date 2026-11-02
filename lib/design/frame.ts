@@ -287,7 +287,7 @@ export type BeamSpan = { length: number; supports: number[]; EI: number };
 // results of separate load cases can be added together.
 export function solveBeam(b: BeamSpan, w: (x0: number, x1: number) => number, points: { at: number; P: number }[], stationsPer = 120, extraCuts: number[] = [], exactPeaks = true) {
   const cuts = [...new Set([0, b.length, ...b.supports, ...points.map((p) => p.at), ...extraCuts].map((v) => Math.round(v * 1e6) / 1e6))]
-    .filter((v) => v >= 0 && v <= b.length + 1e-9)
+    .filter((v) => v >= 0 && v <= b.length + 1e-6) // cuts are rounded to 1e-6, so the end can round past the length
     .sort((a, c) => a - c);
   const sup = new Set(b.supports.map((v) => Math.round(v * 1e6) / 1e6));
   const first = Math.min(...sup);

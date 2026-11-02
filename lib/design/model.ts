@@ -74,6 +74,7 @@ export type Opening = {
   width: number; // m, clear
   sill: number; // m above floor; 0 = door
   head?: number; // m above floor to the top of the opening; default under the lintel at the top plates
+  dz?: number; // m, the lintel raised (+) or lowered (-) from there, and the top of the opening with it
   trib?: Trib;
   sizing?: Sizing;
   note?: string;
@@ -386,6 +387,8 @@ export const isPt = (p: unknown): p is Pt =>
 
 // A lintel sits in the wall, under its top plates, not up in the floor framing.
 export const lintelTop = (level: Level) => level.elevation + level.height - 0.09;
+// The top of an opening's lintel, in m: under the plates or on the opening's head, then raised or lowered. d: its depth, m.
+export const openingTop = (level: Level, o: Pick<Opening, "head" | "dz">, d: number) => (o.head != null && o.head > 0 ? level.elevation + o.head + d : lintelTop(level)) + (o.dz ?? 0);
 
 export const memberLength = (m: { a: Pt; b?: Pt }) => (m.b ? Math.hypot(m.b.x - m.a.x, m.b.y - m.a.y) : 0);
 

@@ -1071,7 +1071,7 @@ export function DesignEditor({
           ) : null}
           {mode === "3d" || mode === "split" ? (
             <div className={`relative min-h-0 min-w-0 flex-1 ${mode === "split" ? "border-t border-line lg:border-t-0 lg:border-l" : ""}`}>
-              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} onSelect={(id) => pick(id, true)} locked={locked} onEdit={updateMember} />
+              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} onSelect={(id) => pick(id, true)} locked={locked} onEdit={(id, patch, summary) => (id.includes("#") ? updateOpening(id, { dz: patch.dz }, summary) : updateMember(id, patch, summary))} />
               {colourBy === "material" ? (
                 <div className="absolute bottom-2 left-2 grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-surface/90 px-2.5 py-1.5 text-xs shadow">
                   {(Object.keys(FAMILY_COLOUR) as (keyof typeof FAMILY_COLOUR)[]).map((f) => (
@@ -1135,6 +1135,8 @@ export function DesignEditor({
                 <OpeningPanel
                   lintel={selectedLintel}
                   result={results.get(selectedLintel.id)}
+                  level={model.levels.find((l) => l.id === selectedLintel.wall.levelId)}
+                  gaps={openGaps(model, gapsFor(model, calcs)).filter((g) => g.id === selectedLintel.id)}
                   locked={locked}
                   onChange={(patch, summary) => updateOpening(selectedLintel.id, patch, summary)}
                   onDelete={() => removeOpening(selectedLintel.id)}

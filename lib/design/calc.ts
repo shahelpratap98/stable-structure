@@ -18,7 +18,7 @@ import { designConcreteBeam } from "./concrete";
 import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
 import { solveBeam } from "./frame";
 import { ALL_FAMILIES, candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, KEY_GRADE, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
-import { along, describeMember, framingTop, lintelTop, MEMBER_INFO, memberLength, roofHalfSpan, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type RoofSpec, type Sizing, type Trib } from "./model";
+import { along, describeMember, framingTop, lintelTop, MEMBER_INFO, memberLength, openingTop, roofHalfSpan, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type RoofSpec, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
 import { defaultRaft, designRaft, type RaftPost, type RaftWall } from "./raft";
 import { DECK_G, DECK_Q, deckLayout, STAIR_G, STAIR_Q, stairLayout } from "./deck";
@@ -268,7 +268,8 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
 // load is patterned (all spans, odd spans, even spans).
 type MultiCase = { M: number[]; V: number[]; d: number[]; R: number[] };
 function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; restraint?: "full" | "ends"; segment?: number }): BeamCheck {
-  const sup = [...new Set(supports.map((s) => Math.round(s * 1e4) / 1e4))].sort((a, b) => a - b);
+  // rounding can't be let push the end support past the end of the beam, where it would fall off
+  const sup = [...new Set(supports.map((s) => (s >= L - 1e-4 ? L : Math.round(s * 1e4) / 1e4)))].sort((a, b) => a - b);
   const sw = opts.selfWeight === false ? 0 : selfWeight(sec);
   const l = { ...base, G: base.G + sw };
   const P = opts.point ? p.Ppt : 0;
@@ -715,6 +716,7 @@ export function wallLintels(model: DesignModel): VirtualLintel[] {
         trib: o.trib,
         sizing: { mode: "auto", maxB: w.wall.thickness, ...(o.sizing ?? {}) },
         notes: o.note,
+        ...(o.dz ? { dz: o.dz } : {}),
       };
       out.push({ id: member.id, wall: w, opening: o, member });
     }
@@ -1122,7 +1124,8 @@ function runCalcsOnce(model: DesignModel): Calcs {
       const seatLevel = seat ? levelOf(model, seat.levelId) : undefined;
       const below = level ? downFrom(level)[0] : undefined;
       // a post passing down through a double-height space stands on that lower framing
-      const onLintel = seat?.kind === "beam" && byId.get(seat.id)?.type === "lintel" && seatLevel ? lintelTop(seatLevel) + (byId.get(seat.id)?.dz ?? 0) : undefined;
+      const onOpening = seat ? lintels.find((l) => l.id === seat.id) : undefined;
+      const onLintel = seat?.kind === "beam" && byId.get(seat.id)?.type === "lintel" && seatLevel ? (onOpening ? openingTop(seatLevel, onOpening.opening, (results.get(seat.id)?.sec?.d ?? 190) / 1000) : lintelTop(seatLevel) + (byId.get(seat.id)?.dz ?? 0)) : undefined;
       res.seatTop = onLintel;
       const bottom = onLintel ?? (seatLevel && below && seatLevel.elevation < below.elevation - 1e-6 ? framingTop(model, seatLevel) : (level?.elevation ?? 0));
       // split levels: the beams it carries and its own base can be offset from the level
@@ -1428,7 +1431,7 @@ function runCalcsOnce(model: DesignModel): Calcs {
         flush: m.type === "beam" && loadKind(model, level) === "floor",
         points,
         // held at one point it is a mechanism: size it as a plain span, it is flagged unstable below
-        supports: ((s) => (s && s.length < 2 ? undefined : s))(beamSupports(m)),
+        supports: ((s) => (s && new Set(s.map((v) => Math.round(v * 1e4))).size < 2 ? undefined : s))(beamSupports(m)),
         restraint: m.restraint,
         segment: m.segment,
         uplift: upliftKPa,

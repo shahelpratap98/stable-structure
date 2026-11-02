@@ -7,7 +7,7 @@
 
 import type { Calcs, Result } from "./calc";
 import { parseTimberSection, STEEL } from "./materials";
-import { along, framingTop, lintelTop, memberLength, type DesignModel, type Level, type Member, type Pt, type RoofSpec } from "./model";
+import { along, framingTop, lintelTop, memberLength, openingTop, type DesignModel, type Level, type Member, type Pt, type RoofSpec } from "./model";
 import { poleLayout } from "./retaining";
 import { defaultRaft } from "./raft";
 import { deckLayout, stairLayout } from "./deck";
@@ -154,13 +154,9 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
       // shading by storey, as on a framing model: ground floor walls tan, upper floors blue-grey
       const tone: Tone = w.kind === "block" ? "block" : w.kind === "int" ? "wallInt" : level.floor === "slab" ? "wallGround" : "wallUpper";
       const ops = [...w.openings].sort((a, b) => a.offset - b.offset);
-      const underPlates = lintelTop(level);
-      const head = (o: (typeof ops)[number]) => {
-        if (o.head != null && o.head > 0) return base + o.head;
-        const lr = calcs.results.get(`${m.id}#${o.id}`);
-        return underPlates - (lr?.sec?.d ?? 190) / 1000;
-      };
-      const headTop = (o: (typeof ops)[number]) => (o.head != null && o.head > 0 ? base + o.head + (calcs.results.get(`${m.id}#${o.id}`)?.sec?.d ?? 90) / 1000 : underPlates);
+      const depth = (o: (typeof ops)[number]) => (calcs.results.get(`${m.id}#${o.id}`)?.sec?.d ?? 190) / 1000;
+      const headTop = (o: (typeof ops)[number]) => openingTop(level, o, depth(o));
+      const head = (o: (typeof ops)[number]) => headTop(o) - depth(o);
       const panel = (s0: number, s1: number, z0: number, z1: number) => {
         if (s1 - s0 < 0.001 || z1 - z0 < 0.005) return;
         out.push({ kind: "bar", id: m.id, layer: "walls", tone, ...sub(m, s0, s1), z0, z1, w: th + (w.kind === "block" ? -0.02 : 0.016) });
@@ -168,7 +164,7 @@ export function partsFor(model: DesignModel, calcs: Calcs, m: Member): Part[] {
       let cur = 0;
       for (const o of ops) {
         panel(cur, o.offset, base, top);
-        panel(o.offset, o.offset + o.width, Math.min(head(o), underPlates), top); // lintel and plates over the opening
+        panel(o.offset, o.offset + o.width, Math.min(head(o), top), top); // lintel and plates over the opening
         if (o.sill > 0) {
           panel(o.offset, o.offset + o.width, base, base + o.sill);
           out.push({ kind: "bar", id: m.id, layer: "glass", tone: "glass", ...sub(m, o.offset, o.offset + o.width), z0: base + o.sill, z1: head(o), w: 0.012 });
@@ -445,8 +441,8 @@ export function allParts(model: DesignModel, calcs: Calcs): { part: Part; level:
     const r = calcs.results.get(vl.id);
     const s = secOf(vl.member, r);
     const o = vl.opening;
-    // under the double top plate, or on the opening's head
-    const top = o.head != null && o.head > 0 ? level.elevation + o.head + s.d : level.elevation + level.height - 0.09;
+    // under the double top plate, or on the opening's head, then raised or lowered
+    const top = openingTop(level, o, s.d);
     // lintels sit within the wall: cap the width to the wall
     const wallTh = (vl.wall.wall?.thickness ?? 90) / 1000;
     for (const part of beamParts(vl.id, "lintels", vl.member.a, vl.member.b, top, { ...s, b: Math.min(s.b, wallTh) })) out.push({ part, level });

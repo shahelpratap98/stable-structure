@@ -36,6 +36,8 @@ export function handlesFor(m: Member, parts: Part[]): Handle[] {
   }
   if (!m.b) return [];
   const mid = { x: (m.a.x + m.b.x) / 2, y: (m.a.y + m.b.y) / 2 };
+  // an opening's lintel only goes up and down: its length and place come from the opening
+  if (m.id.includes("#")) return [{ kind: "lift", at: { ...mid, z: z.z1 + 0.4 } }];
   return [
     { kind: "end", end: "a", at: { ...m.a, z: z.z1 } },
     { kind: "end", end: "b", at: { ...m.b, z: z.z1 } },
