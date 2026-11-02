@@ -1,0 +1,1970 @@
+// Preliminary design calculations, following Stable Structure's own framing
+// models (Lot 6 engine and the 26121 basis):
+//   - beams and lintels: tributary loads, combinations 1.35G, 1.2G+1.5Q,
+//     1.2G+1.5Qr+0.4Q, 1.2G+Su+0.4Q; bending, shear, long / short-term and
+//     point-load deflection; sizes picked in the order SG8 -> hySPAN -> steel
+//   - wall openings make their own lintels
+//   - joist zones and single joists / rafters
+//   - posts: SG8 stud packs then SHS, buckling k12 and bearing
+//   - loads passed from beam ends to posts, piles and footings
+// Bracing and retaining walls are in bracing.ts and retaining.ts.
+// Every result is preliminary until checked by a CPEng (see DRAFT_NOTE).
+
+import { braceCalcs, type BracingSheet } from "./bracing";
+import { DEFAULT_SITE, windBasis } from "./site";
+import { designPad, designStrip, slabPunch, type FootingResult } from "./foundations";
+import { designPortal } from "./lateral";
+import { designConcreteBeam } from "./concrete";
+import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
+import { solveBeam } from "./frame";
+import { ALL_FAMILIES, candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, KEY_GRADE, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
+import { along, describeMember, framingTop, lintelTop, MEMBER_INFO, memberLength, roofHalfSpan, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type RoofSpec, type Sizing, type Trib } from "./model";
+import { retainingCalc } from "./retaining";
+import { defaultRaft, designRaft, type RaftPost, type RaftWall } from "./raft";
+import { DECK_G, DECK_Q, deckLayout, STAIR_G, STAIR_Q, stairLayout } from "./deck";
+
+export { parseTimberSection, SG8_DEPTHS } from "./materials";
+
+export const DRAFT_NOTE =
+  "Preliminary design. Members outside NZS 3604 (hySPAN, steel, posts carrying beams) are specific engineering design and need checking and a PS1 from a CPEng before consent.";
+
+export type Status = "pass" | "close" | "fail" | "none";
+export type Line = { label: string; value: string; note?: string };
+export type Check = { name: string; demand: number; capacity: number; unit: string; ratio: number };
+export type Util = { label: string; u: number };
+export type Loads = { G: number; Qf: number; Qr: number; S: number };
+export type SecInfo = { name: string; fam: Candidate["fam"] | "SHS" | "other"; b: number; d: number; tw?: number; tf?: number };
+export type PointLoad = { at: number; G: number; Qf: number; Qr: number; S: number; from: string }; // at: m from end a
+export type SeqRow = { family: string; text: string; util: number | null; pass: boolean; chosen: boolean };
+
+export type Result = {
+  memberId: string;
+  mark: string;
+  status: Status;
+  ratio: number | null; // governing utilisation
+  summary: string;
+  sec?: SecInfo; // chosen (auto) or checked (fixed) section
+  govName?: string;
+  utils: Util[];
+  kv: Line[];
+  inputs: Line[];
+  loads: Line[];
+  checks: Check[];
+  seq?: SeqRow[];
+  notes: string[];
+  ends?: { a: Loads; b: Loads }; // unfactored reactions at each end (beams); axial at both for supports
+  carried?: PointLoad[]; // point loads from members bearing on this one
+  supportLoads?: { at: number; loads: Loads }[]; // beams over more than two supports: reaction at each (m from end 1)
+  bu?: { W: number; E: number; line: string; dir: "along" | "across" };
+  baseMoment?: number; // kN·m at the base of a cantilever post, for its footing
+  upliftEnd?: number; // kN hold-down needed at each end (wind uplift on roof framing)
+  unstable?: string; // nothing holds it up: a post with nothing under it, a beam end on nothing
+  misaligned?: { mm: number; mark: string; to: Pt; end?: "a" | "b" }; // off what carries it: mm off, by whose mark, and where it should be
+  seatTop?: number; // m, a post standing on a lintel: the top of that lintel, where the post stops
+};
+
+// A lintel made by an opening in a wall. Its id is "<wall id>#<opening id>".
+export type VirtualLintel = { id: string; wall: Member; opening: Opening; member: Member };
+
+export type Calcs = {
+  results: Map<string, Result>;
+  lintels: VirtualLintel[];
+  bracing: BracingSheet[];
+  connections: Connection[];
+};
+
+const fmt = (n: number, dp = 2) => (Number.isFinite(n) ? n.toFixed(dp) : "–");
+
+export function statusFor(ratio: number | null): Status {
+  if (ratio === null || !Number.isFinite(ratio)) return "none";
+  if (ratio > 1) return "fail";
+  if (ratio > 0.9) return "close";
+  return "pass";
+}
+
+function levelAbove(model: DesignModel, level: Level | undefined) {
+  if (!level) return undefined;
+  return [...model.levels].filter((l) => l.elevation > level.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation)[0];
+}
+const levelOf = (model: DesignModel, id: string) => model.levels.find((l) => l.id === id);
+
+// Each level holds the posts and walls of that storey and the framing at its
+// top. So framing on a level carries the surface above it: the roof when the
+// next level up is a roof (or it is the roof level), otherwise a floor.
+export function loadKind(model: DesignModel, level: Level | undefined): "floor" | "roof" {
+  if (!level) return "floor";
+  if (level.kind === "roof") return "roof";
+  return levelAbove(model, level)?.kind === "roof" ? "roof" : "floor";
+}
+
+// ---------------------------------------------------------------- loads
+
+export function lineLoads(t: Trib, p: DesignParams, extraG = 0, extraQ = 0): Loads {
+  let G = extraG,
+    Qf = extraQ,
+    Qr = 0,
+    S = 0;
+  if (t.floor) {
+    G += t.floor * p.Gf;
+    Qf += t.floor * p.Qf;
+  }
+  if (t.wet) G += t.wet * (p.Gwet - p.Gf);
+  if (t.wallExt) G += t.wallExt * p.gWallExt * p.wallHeight;
+  if (t.wallInt) G += t.wallInt * p.gWallInt * p.wallHeight;
+  if (t.wallBlock) G += t.wallBlock * p.gWallBlock * p.wallHeight;
+  if (t.roof) {
+    G += t.roof * p.Groof;
+    Qr += t.roof * p.Qroof;
+    S += t.roof * p.Su;
+  }
+  return { G, Qf, Qr, S };
+}
+
+type Combo = { name: string; w: number; k1: number; pf: number; G: number; Qf: number; Qr: number; S: number };
+
+function combos(l: Loads, p: DesignParams, point: boolean, extra: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 }): Combo[] {
+  const any = { Qf: l.Qf + extra.Qf, Qr: l.Qr + extra.Qr, S: l.S + extra.S };
+  const c: Combo[] = [{ name: "1.35G", w: 1.35 * l.G, k1: 0.6, pf: 0, G: 1.35, Qf: 0, Qr: 0, S: 0 }];
+  if (any.Qf > 0 || (point && p.Ppt > 0)) c.push({ name: "1.2G+1.5Q", w: 1.2 * l.G + 1.5 * l.Qf, k1: 0.8, pf: 1.5, G: 1.2, Qf: 1.5, Qr: 0, S: 0 });
+  if (any.Qr > 0) c.push({ name: "1.2G+1.5Qr+0.4Q", w: 1.2 * l.G + 1.5 * l.Qr + 0.4 * l.Qf, k1: p.k1Roof, pf: 0.4, G: 1.2, Qf: 0.4, Qr: 1.5, S: 0 });
+  if (any.S > 0) c.push({ name: "1.2G+Su+0.4Q", w: 1.2 * l.G + l.S + 0.4 * l.Qf, k1: 0.8, pf: 0.4, G: 1.2, Qf: 0.4, Qr: 0, S: 1 });
+  return c;
+}
+
+// ---------------------------------------------------------------- beams
+
+type BeamCheck = {
+  sec: Candidate;
+  ok: boolean;
+  util: number;
+  uM: number;
+  uV: number;
+  uDl: number;
+  uDs: number;
+  uDp: number;
+  M: number;
+  phiM: number;
+  V: number;
+  phiV: number;
+  dl: number;
+  limL: number;
+  ds: number;
+  limS: number;
+  dP: number;
+  gov: string;
+  govName: string;
+  l: Loads;
+  sw: number;
+  endA: Loads; // unfactored reactions, the midspan point load included as Qf
+  endB: Loads;
+  reactions?: { at: number; loads: Loads }[]; // every support, for beams over more than two
+  ltb?: { phiMb: number; Mo: number; as: number; am: number } | null; // when lateral-torsional buckling governs the steel capacity
+};
+
+function selfWeight(sec: Candidate) {
+  return "steel" in sec ? (sec.steel.kgm * 9.81) / 1000 : sec.b * sec.d * 1e-6 * sec.mat.dens;
+}
+
+const pointComp = (c: Combo, q: PointLoad) => c.G * q.G + c.Qf * q.Qf + c.Qr * q.Qr + c.S * q.S;
+
+function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; supports?: number[]; restraint?: "full" | "ends"; segment?: number }): BeamCheck {
+  if (opts.supports && !(opts.supports.length === 2 && opts.supports[0] < 1e-6 && Math.abs(opts.supports[1] - span) < 1e-6)) return checkMulti(span, opts.supports, base, sec, p, opts);
+  const L = span;
+  const Lmm = L * 1000;
+  // Floor and roof dead loads already include joists and rafters.
+  const sw = opts.selfWeight === false ? 0 : selfWeight(sec);
+  const l = { ...base, G: base.G + sw };
+  const P = opts.point ? p.Ppt : 0;
+  const pts = (opts.points ?? []).filter((q) => q.at > 0 && q.at < L);
+  const sum = pts.reduce((a, q) => ({ G: a.G + q.G, Qf: a.Qf + q.Qf, Qr: a.Qr + q.Qr, S: a.S + q.S }), { G: 0, Qf: 0, Qr: 0, S: 0 });
+  const cs = combos(l, p, opts.point, sum);
+  const EI = "steel" in sec ? ES * sec.steel.Ix : (sec.mat.E * sec.b * sec.d ** 3) / 12;
+  const k2 = "steel" in sec ? 1 : sec.mat.k2;
+  // simply supported: moment at x from a point load P at a
+  const mPt = (x: number, a: number) => (x <= a ? ((L - a) * x) / L : (a * (L - x)) / L);
+  // deflections (mm) at x (mm): UDL w (N/mm), point load F (N) at a (mm)
+  const dUdl = (w: number, x: number) => (w * x * (Lmm ** 3 - 2 * Lmm * x * x + x ** 3)) / (24 * EI);
+  const dPt = (F: number, a: number, x: number) => {
+    const b = Lmm - a;
+    return x <= a ? (F * b * x * (Lmm * Lmm - b * b - x * x)) / (6 * Lmm * EI) : (F * a * (Lmm - x) * (Lmm * Lmm - a * a - (Lmm - x) ** 2)) / (6 * Lmm * EI);
+  };
+  const xs = pts.length ? [...Array.from({ length: 41 }, (_, i) => (L * i) / 40), ...pts.map((q) => q.at)] : [L / 2];
+
+  let uM = 0,
+    uV = 0,
+    gov = cs[0].name,
+    Mg = 0,
+    phiMg = 0,
+    Vg = 0,
+    phiVg = 0;
+  let ltb: LtbInfo | null = null,
+    ltbGov: LtbInfo | null = null;
+  for (const c of cs) {
+    let M = 0;
+    for (const x of xs) {
+      const m = (c.w * x * (L - x)) / 2 + c.pf * P * mPt(x, L / 2) + pts.reduce((acc, q) => acc + pointComp(c, q) * mPt(x, q.at), 0);
+      if (m > M) M = m;
+    }
+    const RA = (c.w * L) / 2 + (c.pf * P) / 2 + pts.reduce((acc, q) => acc + (pointComp(c, q) * (L - q.at)) / L, 0);
+    const RB = (c.w * L) / 2 + (c.pf * P) / 2 + pts.reduce((acc, q) => acc + (pointComp(c, q) * q.at) / L, 0);
+    const V = Math.max(RA, RB);
+    let phiM: number, phiV: number;
+    if ("steel" in sec) {
+      phiM = (0.9 * sec.steel.fy * sec.steel.Ze) / 1e6;
+      phiV = (0.9 * 0.6 * FY * sec.steel.d * sec.steel.tw) / 1e3;
+      if (opts.restraint === "ends") {
+        // compression flange free between restraints: le = 1.4 × segment (gravity load on the top flange)
+        const mAt = (x: number) => (c.w * x * (L - x)) / 2 + c.pf * P * mPt(x, L / 2) + pts.reduce((acc, q) => acc + pointComp(c, q) * mPt(x, q.at), 0);
+        const am = opts.segment ? 1 : alphaM(M, mAt(L / 4), mAt(L / 2), mAt((3 * L) / 4));
+        ltb = steelPhiMb(sec.steel, 1.4 * (opts.segment || L), am);
+        phiM = Math.min(phiM, ltb.phiMb);
+      }
+    } else {
+      const t = sec.mat;
+      phiM = (t.phi * c.k1 * t.fb * sec.b * sec.d * sec.d) / 6 / 1e6;
+      phiV = (t.phi * c.k1 * t.fs * (2 / 3) * sec.b * sec.d) / 1e3;
+    }
+    if (M / phiM > uM) {
+      uM = M / phiM;
+      gov = c.name;
+      Mg = M;
+      phiMg = phiM;
+      ltbGov = ltb;
+    }
+    if (V / phiV > uV) {
+      uV = V / phiV;
+      Vg = V;
+      phiVg = phiV;
+    }
+  }
+  const dP = (P * 1e3 * Lmm ** 3) / (48 * EI);
+  let dl = 0,
+    ds = 0;
+  for (const x of xs) {
+    const xm = x * 1000;
+    const dlx = k2 * (dUdl(l.G + 0.4 * l.Qf, xm) + pts.reduce((acc, q) => acc + dPt((q.G + 0.4 * q.Qf) * 1e3, q.at * 1000, xm), 0)) + 0.4 * k2 * dPt(P * 1e3, Lmm / 2, xm);
+    const dsx = dUdl(0.7 * (l.Qf + l.Qr), xm) + pts.reduce((acc, q) => acc + dPt(0.7 * (q.Qf + q.Qr) * 1e3, q.at * 1000, xm), 0) + 0.7 * dPt(P * 1e3, Lmm / 2, xm);
+    if (dlx > dl) dl = dlx;
+    if (dsx > ds) ds = dsx;
+  }
+  const limL = Math.min(Lmm / 300, opts.dlim || p.dAbs || 1e9);
+  const limS = Lmm / 360;
+  const uDl = dl / limL;
+  const uDs = ds / limS;
+  const uDp = P > 0 && p.dPlim > 0 ? dP / p.dPlim : 0;
+  const util = Math.max(uM, uV, uDl, uDs, uDp);
+  const govName = util === uM ? "Bending" : util === uV ? "Shear" : util === uDl ? "Long-term δ" : util === uDs ? "Short-term δ" : "Point-load δ";
+  const half = { G: (l.G * L) / 2, Qf: (l.Qf * L) / 2 + P / 2, Qr: (l.Qr * L) / 2, S: (l.S * L) / 2 };
+  const share = (frac: (q: PointLoad) => number): Loads =>
+    pts.reduce((a, q) => ({ G: a.G + q.G * frac(q), Qf: a.Qf + q.Qf * frac(q), Qr: a.Qr + q.Qr * frac(q), S: a.S + q.S * frac(q) }), { ...half });
+  const endA = share((q) => (L - q.at) / L);
+  const endB = share((q) => q.at / L);
+  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB, ltb: ltbGov };
+}
+
+// Beams over more than two supports, or with an overhang: solved with the
+// frame solver. Moments don't depend on EI for a prismatic beam, so each
+// unit load case is solved once (EI = 1) and combined per combination; live
+// load is patterned (all spans, odd spans, even spans).
+type MultiCase = { M: number[]; V: number[]; d: number[]; R: number[] };
+function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; restraint?: "full" | "ends"; segment?: number }): BeamCheck {
+  const sup = [...new Set(supports.map((s) => Math.round(s * 1e4) / 1e4))].sort((a, b) => a - b);
+  const sw = opts.selfWeight === false ? 0 : selfWeight(sec);
+  const l = { ...base, G: base.G + sw };
+  const P = opts.point ? p.Ppt : 0;
+  const pts = (opts.points ?? []).filter((q) => q.at > 0 && q.at < L);
+  const sum = pts.reduce((a, q) => ({ G: a.G + q.G, Qf: a.Qf + q.Qf, Qr: a.Qr + q.Qr, S: a.S + q.S }), { G: 0, Qf: 0, Qr: 0, S: 0 });
+  const cs = combos(l, p, opts.point, sum);
+  const EI = ("steel" in sec ? ES * sec.steel.Ix : (sec.mat.E * sec.b * sec.d ** 3) / 12) / 1e9; // kN·m²
+  const k2 = "steel" in sec ? 1 : sec.mat.k2;
+  // regions between supports and to the free ends
+  const bounds = [...new Set([0, ...sup, L])].sort((a, b) => a - b);
+  const regions = bounds.slice(0, -1).map((x0, k) => ({ x0, x1: bounds[k + 1], cant: !sup.includes(x0) || !sup.includes(bounds[k + 1]) }));
+  const mids = regions.map((r) => (r.cant ? (sup.includes(r.x0) ? r.x1 : r.x0) : (r.x0 + r.x1) / 2)); // Ppt at mid-span, or the tip of an overhang
+  const cuts = [...pts.map((q) => q.at), ...mids];
+  const beam = { length: L, supports: sup, EI: 1 };
+  const run = (w: (x0: number, x1: number) => number, loads: { at: number; P: number }[]): MultiCase => {
+    const r = solveBeam(beam, w, loads, 160, cuts, false);
+    return { M: r.stations.map((s) => s.M), V: r.stations.map((s) => s.V), d: r.stations.map((s) => s.d), R: sup.map((x) => r.reactions.find((q) => Math.abs(q.at - x) < 1e-6)?.R ?? 0) };
+  };
+  const xs = solveBeam(beam, () => 0, [], 160, cuts, false).stations.map((s) => s.x);
+  const inRegion = (k: number) => (x0: number, x1: number) => (x0 >= regions[k].x0 - 1e-9 && x1 <= regions[k].x1 + 1e-9 ? 1 : 0);
+  const U = run(() => 1, []);
+  const R = regions.map((_, k) => run(inRegion(k), []));
+  const Pt = pts.map((q) => run(() => 0, [{ at: q.at, P: 1 }]));
+  const Pp = mids.map((m) => run(() => 0, [{ at: m, P: 1 }]));
+  const add = (acc: number[], c: number[], f: number) => (f ? acc.map((v, i) => v + f * c[i]) : acc);
+  const patterns = [regions.map((_, k) => k), regions.map((_, k) => k).filter((k) => k % 2 === 0), regions.map((_, k) => k).filter((k) => k % 2 === 1)].filter((pt) => pt.length);
+  const field = (key: "M" | "V" | "d" | "R", g: number, q: number, pattern: number[], ptF: (q: PointLoad) => number, ppt: number, at: number) => {
+    let a = (key === "R" ? U.R : U[key]).map((v) => g * v);
+    for (const k of pattern) a = add(a, R[k][key], q);
+    pts.forEach((qq, i) => (a = add(a, Pt[i][key], ptF(qq))));
+    if (ppt && at >= 0) a = add(a, Pp[at][key], ppt);
+    return a;
+  };
+
+  let uM = 0,
+    uV = 0,
+    gov = cs[0].name,
+    Mg = 0,
+    phiMg = 0,
+    Vg = 0,
+    phiVg = 0;
+  let ltb: LtbInfo | null = null,
+    ltbGov: LtbInfo | null = null;
+  for (const c of cs) {
+    const q = c.Qf * l.Qf + c.Qr * l.Qr + c.S * l.S;
+    let M = 0,
+      V = 0,
+      worstPhi = 1e12;
+    for (const pat of patterns)
+      for (let at = c.pf && P ? 0 : -1; at < (c.pf && P ? mids.length : 0); at++) {
+        const m = field("M", c.G * l.G, q, pat, (qq) => pointComp(c, qq), c.pf * P, at);
+        const v = field("V", c.G * l.G, q, pat, (qq) => pointComp(c, qq), c.pf * P, at);
+        V = Math.max(V, ...v.map(Math.abs));
+        if ("steel" in sec && opts.restraint === "ends") {
+          // each span between supports is a segment; overhangs are cantilevers (kl 2.0, am 1.25)
+          regions.forEach((r) => {
+            const idx = xs.map((x, i) => [x, i] as const).filter(([x]) => x >= r.x0 - 1e-9 && x <= r.x1 + 1e-9);
+            const Mk = Math.max(0, ...idx.map(([, i]) => Math.abs(m[i])));
+            const at = (f: number) => Math.abs(m[idx.reduce((b, [x, i]) => (Math.abs(x - (r.x0 + f * (r.x1 - r.x0))) < Math.abs(xs[b] - (r.x0 + f * (r.x1 - r.x0))) ? i : b), idx[0][1])]);
+            const len = r.x1 - r.x0;
+            const cap = r.cant ? steelPhiMb(sec.steel, 2.0 * len, 1.25) : steelPhiMb(sec.steel, 1.4 * (opts.segment || len), opts.segment ? 1 : alphaM(Mk, at(0.25), at(0.5), at(0.75)));
+            const phi = Math.min((0.9 * sec.steel.fy * sec.steel.Ze) / 1e6, cap.phiMb);
+            if (Mk / phi > M / Math.max(1e-9, worstPhi)) {
+              M = Mk;
+              worstPhi = phi;
+              ltb = cap;
+            }
+          });
+        } else M = Math.max(M, ...m.map(Math.abs));
+      }
+    let phiM: number, phiV: number;
+    if ("steel" in sec) {
+      phiM = opts.restraint === "ends" && worstPhi < 1e12 ? worstPhi : (0.9 * sec.steel.fy * sec.steel.Ze) / 1e6;
+      phiV = (0.9 * 0.6 * FY * sec.steel.d * sec.steel.tw) / 1e3;
+    } else {
+      const t = sec.mat;
+      phiM = (t.phi * c.k1 * t.fb * sec.b * sec.d * sec.d) / 6 / 1e6;
+      phiV = (t.phi * c.k1 * t.fs * (2 / 3) * sec.b * sec.d) / 1e3;
+    }
+    if (M / phiM > uM) {
+      uM = M / phiM;
+      gov = c.name;
+      Mg = M;
+      phiMg = phiM;
+      ltbGov = ltb;
+    }
+    if (V / phiV > uV) {
+      uV = V / phiV;
+      Vg = V;
+      phiVg = phiV;
+    }
+  }
+
+  // deflections per region (mm), against span/300 and span/360 (overhangs: twice their length)
+  const span = (k: number) => (regions[k].x1 - regions[k].x0) * (regions[k].cant ? 2 : 1) * 1000;
+  // an overhang is checked for its tip going down under load; lifting as the back span sags is not a serviceability limit
+  const maxIn = (d: number[], k: number) => {
+    const inK = d.filter((_, i) => xs[i] >= regions[k].x0 - 1e-9 && xs[i] <= regions[k].x1 + 1e-9);
+    if (!regions[k].cant) return Math.max(0, ...inK.map(Math.abs)) * (1000 / EI);
+    const down = Math.sign(d.reduce((a, v) => (Math.abs(v) > Math.abs(a) ? v : a), 0)) || 1;
+    return Math.max(0, ...inK.map((v) => v * down)) * (1000 / EI);
+  };
+  let uDl = 0,
+    uDs = 0,
+    uDp = 0,
+    dl = 0,
+    ds = 0,
+    dP = 0,
+    limL = 1,
+    limS = 1;
+  regions.forEach((_, k) => {
+    // coincident supports leave a region of no length, whose limit is ~0: nothing to check there
+    if (span(k) < 10) return;
+    const long = maxIn(field("d", k2 * (l.G + 0.4 * l.Qf), 0, [], (qq) => k2 * (qq.G + 0.4 * qq.Qf), 0.4 * k2 * P, k), k);
+    let short = 0;
+    for (const pat of patterns) short = Math.max(short, maxIn(field("d", 0, 0.7 * (l.Qf + l.Qr), pat, (qq) => 0.7 * (qq.Qf + qq.Qr), 0.7 * P, k), k));
+    const pl = P > 0 ? maxIn(field("d", 0, 0, [], () => 0, P, k), k) : 0;
+    const lL = Math.min(span(k) / 300, opts.dlim || p.dAbs || 1e9);
+    const lS = span(k) / 360;
+    if (long / lL > uDl) [uDl, dl, limL] = [long / lL, long, lL];
+    if (short / lS > uDs) [uDs, ds, limS] = [short / lS, short, lS];
+    if (P > 0 && p.dPlim > 0 && pl / p.dPlim > uDp) [uDp, dP] = [pl / p.dPlim, pl];
+  });
+
+  const util = Math.max(uM, uV, uDl, uDs, uDp);
+  const govName = util === uM ? "Bending" : util === uV ? "Shear" : util === uDl ? "Long-term δ" : util === uDs ? "Short-term δ" : "Point-load δ";
+  // unfactored reactions at each support: dead on everything, live as the worst pattern, the
+  // point load where it gives the largest reaction there
+  const reactions = sup.map((x, i) => {
+    const worst = (fn: (pat: number[]) => number) => Math.max(...patterns.map(fn));
+    const live = (w: number, key: "Qf" | "Qr" | "S") => worst((pat) => pat.reduce((a, k) => a + w * R[k].R[i], 0)) + pts.reduce((a, qq, j) => a + qq[key] * Pt[j].R[i], 0);
+    return {
+      at: x,
+      loads: {
+        G: l.G * U.R[i] + pts.reduce((a, qq, j) => a + qq.G * Pt[j].R[i], 0),
+        Qf: live(l.Qf, "Qf") + (P ? Math.max(0, ...Pp.map((c) => P * c.R[i])) : 0),
+        Qr: live(l.Qr, "Qr"),
+        S: live(l.S, "S"),
+      },
+    };
+  });
+  const zero: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 };
+  const endA = reactions.find((r) => r.at < 1e-6)?.loads ?? zero;
+  const endB = reactions.find((r) => Math.abs(r.at - L) < 1e-6)?.loads ?? zero;
+  return { sec, ok: util <= 1, util, uM, uV, uDl, uDs, uDp, M: Mg, phiM: phiMg, V: Vg, phiV: phiVg, dl, limL, ds, limS, dP, gov, govName, l, sw, endA, endB, reactions, ltb: ltbGov };
+}
+
+const upliftNotes = (net: number, span: number) =>
+  net > 0 ? [`Wind uplift: net ${fmt(net)} kN/m (roof width × (1.1q − 0.9G)), so each end needs a hold-down for ${fmt((net * span) / 2, 1)} kN (NZS 3604 fixing or a rated connector).`] : [];
+
+export const rStar = (e: Loads) => Math.max(1.35 * e.G, 1.2 * e.G + 1.5 * e.Qf, 1.2 * e.G + 1.5 * e.Qr + 0.4 * e.Qf, 1.2 * e.G + e.S + 0.4 * e.Qf);
+
+function secInfo(c: Candidate): SecInfo {
+  return "steel" in c ? { name: c.name, fam: c.fam, b: c.b, d: c.d, tw: c.steel.tw, tf: c.steel.tf } : { name: c.name, fam: c.fam, b: c.b, d: c.d };
+}
+
+type BeamSpec = { id: string; mark: string; role: string; span: number; trib: Trib; extraG?: number; extraQ?: number; sizing: Sizing; fixed: Candidate | null; point: boolean; fallbackMaxD: number; flush?: boolean; selfWeight?: boolean; points?: PointLoad[]; supports?: number[]; restraint?: "full" | "ends"; segment?: number; uplift?: number };
+
+function designBeam(spec: BeamSpec, p: DesignParams): Result {
+  const base: Result = { memberId: spec.id, mark: spec.mark, status: "none", ratio: null, summary: "", utils: [], kv: [], inputs: [], loads: [], checks: [], notes: [] };
+  if (spec.span < 0.1) return { ...base, summary: "Span too short to check." };
+  const loads = lineLoads(spec.trib, p, spec.extraG, spec.extraQ);
+
+  let chosen: BeamCheck | null = null;
+  let seq: SeqRow[] | undefined;
+  if (spec.sizing.mode === "fixed") {
+    if (!spec.fixed) return { ...base, summary: "Section not in the library (use e.g. 2/240x45, or 250PFC for steel)." };
+    chosen = checkBeam(spec.span, loads, spec.fixed, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports, restraint: spec.restraint, segment: spec.segment });
+  } else {
+    const all = candidates(spec.sizing, spec.fallbackMaxD);
+    const fams = [...new Set(all.map((c) => c.fam))];
+    seq = [];
+    let firstPass: BeamCheck | null = null;
+    let lastBest: BeamCheck | null = null;
+    for (const f of fams) {
+      let best: BeamCheck | null = null;
+      let pass: BeamCheck | null = null;
+      for (const c of all.filter((x) => x.fam === f)) {
+        const r = checkBeam(spec.span, loads, c, p, { point: spec.point, dlim: spec.sizing.dlim, selfWeight: spec.selfWeight, points: spec.points, supports: spec.supports, restraint: spec.restraint, segment: spec.segment });
+        if (!best || r.util < best.util) best = r;
+        if (r.ok) {
+          pass = r;
+          break;
+        }
+      }
+      const show = pass ?? best;
+      if (show) seq.push({ family: FAMILY_LABEL[f], text: pass ? pass.sec.name : `best: ${show.sec.name}`, util: show.util, pass: !!pass, chosen: false });
+      if (pass && !firstPass) firstPass = pass;
+      if (best) lastBest = best;
+    }
+    chosen = firstPass ?? lastBest;
+    if (!chosen) return { ...base, summary: "No section in the library fits the depth and width limits." };
+    const ch = chosen;
+    seq = seq.map((s) => ({ ...s, chosen: !!firstPass && s.text === ch.sec.name }));
+  }
+
+  const c = chosen;
+  const status = statusFor(c.util);
+  // wind uplift on roof framing: what the end fixings must hold down
+  const upNet = spec.uplift && spec.trib.roof ? spec.trib.roof * (spec.uplift - 0.9 * p.Groof) : 0;
+  // web bearing at each support and point load (cl 5.13), assuming 90 mm stiff bearing at supports and 50 mm under point loads
+  const webChecks: Check[] = [];
+  const webNotes: string[] = [];
+  if ("steel" in c.sec) {
+    const st = c.sec.steel;
+    const sups = c.reactions ?? [
+      { at: 0, loads: c.endA },
+      { at: spec.span, loads: c.endB },
+    ];
+    for (const r of sups) {
+      const end = r.at < 1e-6 || Math.abs(r.at - spec.span) < 1e-6;
+      const R = rStar(r.loads);
+      const cap = webBearing(st, 90, end);
+      webChecks.push({ name: `Web bearing at ${fmt(r.at)} m`, demand: R, capacity: cap, unit: "kN", ratio: R / cap });
+      if (R > cap) webNotes.push(`Web bearing at ${fmt(r.at)} m: R* ${fmt(R, 1)} kN > φRb ${fmt(cap, 1)} kN; fit load-bearing stiffeners (AS 4100 cl 5.14).`);
+    }
+    for (const q of spec.points ?? []) {
+      const R = rStar(q);
+      const cap = webBearing(st, 50, false);
+      webChecks.push({ name: `Web bearing under ${q.from}`, demand: R, capacity: cap, unit: "kN", ratio: R / cap });
+      if (R > cap) webNotes.push(`Web bearing under ${q.from}: R* ${fmt(R, 1)} kN > φRb ${fmt(cap, 1)} kN; fit stiffeners or a bearing plate.`);
+    }
+  }
+  const downstand = spec.flush ? Math.max(0, c.sec.d - 240) : null;
+  return {
+    ...base,
+    status,
+    ratio: c.util,
+    sec: secInfo(c.sec),
+    govName: c.govName,
+    seq,
+    summary: `${c.sec.name} · ${Math.round(c.util * 100)}% · ${c.govName.toLowerCase()}${c.ok ? "" : spec.sizing.mode === "auto" ? " · no listed section passes" : ""}`,
+    utils: [
+      { label: "Bending", u: c.uM },
+      { label: "Shear", u: c.uV },
+      { label: "Long-term δ", u: c.uDl },
+      { label: "Short-term δ", u: c.uDs },
+      ...(spec.point && p.Ppt > 0 ? [{ label: "Point-load δ", u: c.uDp }] : []),
+    ],
+    kv: [
+      { label: `M* (${c.gov})`, value: `${fmt(c.M, 1)} kNm` },
+      { label: c.ltb ? "φMb (lateral-torsional buckling)" : "φMn", value: `${fmt(c.phiM, 1)} kNm` },
+      ...(c.ltb ? [{ label: "Mo / αs / αm", value: `${fmt(c.ltb.Mo, 1)} kNm / ${fmt(c.ltb.as)} / ${fmt(c.ltb.am)}` }] : []),
+      { label: "V*", value: `${fmt(c.V, 1)} kN` },
+      { label: "φVn", value: `${fmt(c.phiV, 1)} kN` },
+      { label: "δ long-term", value: `${fmt(c.dl, 1)} / ${fmt(c.limL, 1)} mm` },
+      { label: "δ short-term", value: `${fmt(c.ds, 1)} / ${fmt(c.limS, 1)} mm` },
+      ...(spec.point && p.Ppt > 0 ? [{ label: `δ under ${fmt(p.Ppt, 1)} kN point load`, value: `${fmt(c.dP)} / ${fmt(p.dPlim)} mm` }] : []),
+      c.reactions
+        ? { label: "Support reactions R*", value: c.reactions.map((r) => `${fmt(r.at)} m: ${fmt(rStar(r.loads), 1)}`).join(" · ") + " kN" }
+        : { label: "End reactions R*", value: `${fmt(rStar(c.endA), 1)} / ${fmt(rStar(c.endB), 1)} kN` },
+      ...(downstand !== null ? [{ label: "Depth vs 240 joists", value: downstand > 0 ? `${downstand} mm downstand` : "flush" }] : []),
+    ],
+    inputs: [
+      { label: "Member", value: `${spec.mark} · ${spec.role}` },
+      c.reactions
+        ? { label: "Length", value: `${fmt(spec.span)} m`, note: `${c.reactions.length} supports at ${c.reactions.map((r) => fmt(r.at)).join(", ")} m${c.reactions[0].at > 1e-6 || Math.abs(c.reactions[c.reactions.length - 1].at - spec.span) > 1e-6 ? ", overhanging" : ""}; live load patterned` }
+        : { label: "Span", value: `${fmt(spec.span)} m`, note: "simply supported" },
+      { label: "Sizing", value: spec.sizing.mode === "auto" ? "Automatic (first section that passes)" : "Fixed" },
+    ],
+    loads: [
+      { label: "G (incl. self weight)", value: `${fmt(c.l.G)} kN/m` },
+      { label: "Q floor", value: `${fmt(c.l.Qf)} kN/m` },
+      { label: "Q roof", value: `${fmt(c.l.Qr)} kN/m` },
+      ...(c.l.S > 0 ? [{ label: "Su", value: `${fmt(c.l.S)} kN/m` }] : []),
+      { label: "Tributary", value: tribText(spec.trib) || "none set" },
+      ...(spec.points ?? []).map((q) => ({ label: `Point load from ${q.from}`, value: `${fmt(q.at)} m: G ${fmt(q.G)}, Q ${fmt(q.Qf + q.Qr)} kN` })),
+    ],
+    checks: [
+      { name: `Bending, ${c.gov}`, demand: c.M, capacity: c.phiM, unit: "kNm", ratio: c.uM },
+      { name: "Shear", demand: c.V, capacity: c.phiV, unit: "kN", ratio: c.uV },
+      { name: "Deflection, long term", demand: c.dl, capacity: c.limL, unit: "mm", ratio: c.uDl },
+      { name: "Deflection, short term", demand: c.ds, capacity: c.limS, unit: "mm", ratio: c.uDs },
+      ...(spec.point && p.Ppt > 0 ? [{ name: "Deflection, point load", demand: c.dP, capacity: p.dPlim, unit: "mm", ratio: c.uDp }] : []),
+      ...webChecks,
+    ],
+    notes:
+      "steel" in c.sec
+        ? [
+            `Steel fy ${c.sec.steel.fy} MPa (Grade 300 at tf ${c.sec.steel.tf} mm), Ze ${Math.round(c.sec.steel.Ze / 1e3)}×10³ mm³, φ 0.9; ${
+              spec.restraint === "ends"
+                ? `compression flange restrained at ${spec.segment ? `${fmt(spec.segment)} m centres` : "supports only"}: AS 4100 cl 5.6.1 with le = 1.4 × segment (top-flange load), overhangs kl 2.0 and αm 1.25`
+                : `full lateral restraint assumed (top flange held by the joists)${c.reactions ? "; over intermediate supports the bottom flange is in compression: brace it at the posts" : ""}`
+            }. Bolt a timber packer to the web for joist hangers.`,
+            ...webNotes,
+            ...upliftNotes(upNet, spec.span),
+          ]
+        : [`${c.sec.mat.note}${c.sec.mat.size ? ` (fb ${fmt(c.sec.mat.fb, 1)} MPa at ${c.sec.d} deep)` : ""}; k4 = k5 = k8 = 1.0 (compression edge restrained).`, ...upliftNotes(upNet, spec.span)],
+    ends: { a: c.endA, b: c.endB },
+    supportLoads: c.reactions,
+    upliftEnd: upNet > 0 ? (upNet * spec.span) / 2 : undefined,
+    carried: spec.points?.length ? spec.points : undefined,
+  };
+}
+
+export function tribText(t: Trib) {
+  return [
+    t.floor ? `floor ${t.floor} m` : "",
+    t.wet ? `wet ${t.wet} m` : "",
+    t.roof ? `roof ${t.roof} m` : "",
+    t.wallExt ? `${t.wallExt} ext wall` : "",
+    t.wallInt ? `${t.wallInt} int wall` : "",
+    t.wallBlock ? `${t.wallBlock} block wall` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// Roof framing over a joist zone (rafters or trusses), when the zone is marked as roof framing.
+export function zoneRoof(_model: DesignModel, z: Member): RoofSpec | null {
+  return z.type === "joistzone" && z.zone?.roof ? z.zone.roof : null;
+}
+
+// Default tributary for a member that has none set.
+function defaultTrib(model: DesignModel, m: Member): Trib {
+  const level = levelOf(model, m.levelId);
+  const roof = loadKind(model, level) === "roof";
+  if (m.type === "joist" || m.type === "rafter") {
+    const w = (m.spacing ?? (m.type === "joist" ? 400 : 900)) / 1000;
+    return roof ? { roof: w } : { floor: w };
+  }
+  return roof ? { roof: 1.0 } : { floor: 1.0 };
+}
+
+// Loads read off the drawing, for a beam or lintel with nothing typed in:
+// joist zones on its own level whose joists land on it (half their span; a
+// zone on roof framing counts as roof), and walls on the level above standing
+// along it. A zone or wall covering only part of the beam is averaged over its
+// length.
+export function autoTrib(model: DesignModel, m: Member): { trib: Trib; from: string[]; partial: boolean } | null {
+  if (!m.b) return null;
+  const L = memberLength(m);
+  if (L < 0.1) return null;
+  const ux = (m.b.x - m.a.x) / L,
+    uy = (m.b.y - m.a.y) / L;
+  const level = levelOf(model, m.levelId);
+  const roof = loadKind(model, level) === "roof";
+  const t: Required<Trib> = { floor: 0, wet: 0, roof: 0, wallExt: 0, wallInt: 0, wallBlock: 0 };
+  const from: string[] = [];
+  let partial = false;
+  const TOL = 0.3;
+  const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, Math.min(Math.max(a0, a1), Math.max(b0, b1)) - Math.max(Math.min(a0, a1), Math.min(b0, b1)));
+  for (const z of model.members) {
+    if (z.type !== "joistzone" || !z.b || !z.zone || z.levelId !== m.levelId) continue;
+    const x0 = Math.min(z.a.x, z.b.x),
+      x1 = Math.max(z.a.x, z.b.x),
+      y0 = Math.min(z.a.y, z.b.y),
+      y1 = Math.max(z.a.y, z.b.y);
+    // joists running along y bear on the zone's top and bottom edges (lines of constant y)
+    const alongY = z.zone.dir === "y";
+    const rs = zoneRoof(model, z);
+    const W = alongY ? y1 - y0 : x1 - x0;
+    if (alongY ? Math.abs(uy) > 0.1 : Math.abs(ux) > 0.1) {
+      // a hip roof's end beams, running along the rafters: the jack rafters land on them
+      if (rs?.form !== "hip") continue;
+      const c2 = alongY ? (m.a.x + m.b.x) / 2 : (m.a.y + m.b.y) / 2;
+      if (alongY ? Math.abs(ux) > 0.1 : Math.abs(uy) > 0.1) continue;
+      if (![alongY ? x0 : y0, alongY ? x1 : y1].some((e) => Math.abs(c2 - e) <= TOL)) continue;
+      const ov2 = alongY ? overlap(m.a.y, m.b.y, y0, y1) : overlap(m.a.x, m.b.x, x0, x1);
+      if (ov2 < 0.1) continue;
+      const f2 = Math.min(1, ov2 / L);
+      if (f2 < 0.98) partial = true;
+      t.roof += (W / 4) * f2;
+      from.push(z.label);
+      continue;
+    }
+    const c = alongY ? (m.a.y + m.b.y) / 2 : (m.a.x + m.b.x) / 2;
+    // flat, mono and low rafters over several supports: half the span each side, the eave to the outer ones
+    const sup = rs && !roofHalfSpan(rs) && rs.framing === "rafters" ? rafterSupports(model, z, rs) : null;
+    if (sup) {
+      const i = sup.at.findIndex((a) => Math.abs(sup.ua + a - c) <= TOL);
+      if (i < 0) continue;
+      const ovS = alongY ? overlap(m.a.x, m.b.x, x0, x1) : overlap(m.a.y, m.b.y, y0, y1);
+      if (ovS < 0.1) continue;
+      const fS = Math.min(1, ovS / L);
+      if (fS < 0.98) partial = true;
+      const lo = i === 0 ? sup.at[0] : (sup.at[i] - sup.at[i - 1]) / 2;
+      const hi = i === sup.at.length - 1 ? sup.length - sup.at[i] : (sup.at[i + 1] - sup.at[i]) / 2;
+      t.roof += (lo + hi) * fS;
+      from.push(z.label);
+      continue;
+    }
+    const edges = alongY ? [y0, y1] : [x0, x1];
+    const ridge = rs && roofHalfSpan(rs) && Math.abs(c - (alongY ? (y0 + y1) / 2 : (x0 + x1) / 2)) <= TOL;
+    if (!ridge && !edges.some((e) => Math.abs(c - e) <= TOL)) continue;
+    const ov = alongY ? overlap(m.a.x, m.b.x, x0, x1) : overlap(m.a.y, m.b.y, y0, y1);
+    if (ov < 0.1) continue;
+    const frac = Math.min(1, ov / L);
+    if (frac < 0.98) partial = true;
+    // rafters to a ridge: each eave a quarter of the width, the ridge half; otherwise half to each edge
+    const half = (rs && roofHalfSpan(rs) ? (ridge ? W / 2 : W / 4) : W / 2) * frac;
+    if (roof || rs) t.roof += half;
+    else {
+      t.floor += half;
+      if (z.zone.wet) t.wet += half;
+    }
+    from.push(z.label);
+  }
+  const above = levelAbove(model, level);
+  if (above)
+    for (const w of model.members) {
+      if (w.type !== "wall" || !w.b || w.levelId !== above.id) continue;
+      // both ends of the wall on the beam's line
+      const off = (q: Pt) => Math.abs((q.x - m.a.x) * uy - (q.y - m.a.y) * ux);
+      if (off(w.a) > 0.15 || off(w.b) > 0.15) continue;
+      const s0 = (w.a.x - m.a.x) * ux + (w.a.y - m.a.y) * uy,
+        s1 = (w.b.x - m.a.x) * ux + (w.b.y - m.a.y) * uy;
+      const ov = overlap(s0, s1, 0, L);
+      if (ov < 0.1) continue;
+      const frac = Math.min(1, ov / L);
+      if (frac < 0.98) partial = true;
+      const kind = w.wall?.kind ?? "ext";
+      if (kind === "block") t.wallBlock += frac;
+      else if (kind === "int") t.wallInt += frac;
+      else t.wallExt += frac;
+      from.push(w.label);
+    }
+  if (!from.length) return null;
+  const r = (v: number) => Math.round(v * 100) / 100;
+  const trib: Trib = Object.fromEntries(Object.entries(t).filter(([, v]) => v > 1e-6).map(([k, v]) => [k, r(v)]));
+  return { trib, from, partial };
+}
+
+// ---------------------------------------------------------------- wall openings
+
+export function wallLintels(model: DesignModel): VirtualLintel[] {
+  const out: VirtualLintel[] = [];
+  for (const w of model.members) {
+    if (w.type !== "wall" || !w.b || !w.wall) continue;
+    for (const o of w.wall.openings) {
+      const a = along(w, o.offset - 0.045);
+      const b = along(w, o.offset + o.width + 0.045);
+      const member: Member = {
+        id: `${w.id}#${o.id}`,
+        type: "lintel",
+        label: o.label,
+        levelId: w.levelId,
+        a,
+        b,
+        material: "timber",
+        grade: "SG8",
+        section: "2/190x45",
+        role: `Lintel, ${o.sill > 0.05 ? "window" : "door"} in ${w.label}`,
+        trib: o.trib,
+        sizing: { mode: "auto", maxB: w.wall.thickness, ...(o.sizing ?? {}) },
+        notes: o.note,
+      };
+      out.push({ id: member.id, wall: w, opening: o, member });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- posts
+
+function k12(S: number) {
+  const x = 1.05 * S;
+  return x <= 10 ? 1 : x <= 20 ? 1.5 - 0.05 * x : 200 / (x * x);
+}
+
+type PostCand = { name: string; fam: "SG8" | "SHS"; b: number; d: number; phiN?: number; A?: number; I?: number; S?: number; t?: number };
+
+// C350L0 square hollow sections: b (mm), t (mm), A (mm2), I (mm4), plastic
+// modulus S (mm3), from the published tables. Every one listed is fully
+// effective (kf = 1) at fy 350.
+export const SHS: [number, number, number, number, number][] = [
+  [89, 5, 1590, 1.82e6, 49.2e3],
+  [89, 6, 1870, 2.06e6, 56.7e3],
+  [100, 6, 2130, 3.04e6, 73.5e3],
+  [125, 6, 2730, 6.29e6, 120e3],
+  [100, 9, 3000, 3.91e6, 98.6e3],
+  [150, 6, 3330, 11.3e6, 178e3],
+  [125, 9, 3900, 8.38e6, 165e3],
+  [150, 9, 4800, 15.4e6, 248e3],
+  [150, 10, 5260, 16.5e6, 269e3],
+];
+// SHS effective section modulus (cl 5.2): flats as webs/flanges of a cold-formed hollow section, λep 30, λey 40
+export function shsZe(b: number, t: number, I: number, S: number) {
+  const Z = I / (b / 2);
+  const lam = ((b - 2 * t) / t) * Math.sqrt(350 / 250);
+  const Zc = Math.min(S, 1.5 * Z);
+  return lam <= 30 ? Zc : lam <= 40 ? Z + ((40 - lam) / 10) * (Zc - Z) : Z * (40 / lam);
+}
+// Member compression capacity phi·Nc (kN) for a steel section about an axis with radius of gyration r (mm), le (m)
+export function steelPhiNc(A: number, fy: number, r: number, le: number, ab: number) {
+  const ln = ((le * 1000) / r) * Math.sqrt(fy / 250);
+  return (0.9 * alphaC(ln, ab) * A * fy) / 1e3;
+}
+
+// AS 4100 cl 6.3.3 member capacity of a pin-ended SHS post of height h (m):
+// cold-formed, so alpha_b = -0.5; phi 0.9, fy 350.
+// ---------------------------------------------------------------- steel member checks (AS 4100 / NZS 3404.1)
+
+// Member slenderness reduction alpha_c (cl 6.3.3) for modified slenderness ln and section constant ab.
+export function alphaC(ln: number, ab: number) {
+  const aa = (2100 * (ln - 13.5)) / (ln * ln - 15.3 * ln + 2050);
+  const l = ln + aa * ab;
+  const eta = Math.max(0, 0.00326 * (l - 13.5));
+  const q = (l / 90) ** 2;
+  const xi = (q + 1 + eta) / (2 * q);
+  return Math.min(1, xi * (1 - Math.sqrt(Math.max(0, 1 - (90 / (xi * l)) ** 2))));
+}
+
+const GS = 80000; // MPa
+type LtbInfo = { phiMb: number; Mo: number; as: number; am: number };
+// Lateral-torsional buckling, cl 5.6.1.1: phi·Mb = phi·am·as·Ms <= phi·Ms (kN·m), le in m.
+export function steelPhiMb(s: SteelSec, le: number, am: number) {
+  const L = le * 1000;
+  const Ms = s.fy * s.Ze;
+  const Mo = Math.sqrt(((Math.PI ** 2 * ES * s.Iy) / L ** 2) * (GS * s.J + (Math.PI ** 2 * ES * s.Iw) / L ** 2));
+  const as = 0.6 * (Math.sqrt((Ms / Mo) ** 2 + 3) - Ms / Mo);
+  return { phiMb: (0.9 * Math.min(Ms, am * as * Ms)) / 1e6, Mo: Mo / 1e6, as, am };
+}
+// Moment modification factor, cl 5.6.1.1(a)(iii), from the peak and quarter-point moments.
+export const alphaM = (Mm: number, M2: number, M3: number, M4: number) => Math.min(2.5, (1.7 * Mm) / Math.max(1e-9, Math.sqrt(M2 * M2 + M3 * M3 + M4 * M4)));
+
+// Web bearing under a concentrated load or reaction, cl 5.13: bearing yield and buckling.
+// bs = stiff bearing length (mm); end = at the end of the member.
+export function webBearing(s: SteelSec, bs: number, end: boolean) {
+  const bbf = end ? bs + 2.5 * s.tf : bs + 5 * s.tf;
+  const d1 = s.d - 2 * s.tf;
+  const yieldCap = (0.9 * 1.25 * bbf * s.tw * s.fy) / 1e3;
+  const bb = end ? bbf + 0.5 * d1 : bbf + d1;
+  const ln = ((2.5 * d1) / s.tw) * Math.sqrt(s.fy / 250);
+  const buckle = (0.9 * alphaC(ln, 0.5) * bb * s.tw * s.fy) / 1e3;
+  return Math.min(yieldCap, buckle);
+}
+
+function shsCapacity(A: number, I: number, h: number) {
+  const fy = 350;
+  const r = Math.sqrt(I / A);
+  const ln = ((h * 1000) / r) * Math.sqrt(fy / 250);
+  const aa = (2100 * (ln - 13.5)) / (ln * ln - 15.3 * ln + 2050);
+  const l = ln + aa * -0.5;
+  const eta = Math.max(0, 0.00326 * (l - 13.5));
+  const q = (l / 90) ** 2;
+  const xi = (q + 1 + eta) / (2 * q);
+  const ac = Math.min(1, xi * (1 - Math.sqrt(Math.max(0, 1 - (90 / (xi * l)) ** 2))));
+  return (0.9 * ac * A * fy) / 1e3;
+}
+
+function designPost(loads: Loads, h: number, p: DesignParams, fixed: PostCand | null) {
+  const cs = combos(loads, p, false);
+  const cands: PostCand[] = fixed
+    ? [fixed]
+    : [
+        ...[2, 3, 4].map((n): PostCand => ({ name: `${n}/90×45 SG8`, fam: "SG8", b: 45 * n, d: 90 })),
+        // the 89 SHS keeps the 290 kN of the Lot 6 model as a ceiling
+        ...SHS.map(([b, t, A, I, S]): PostCand => ({ name: `${b}×${b}×${t.toFixed(1)} SHS`, fam: "SHS", b, d: b, A, I, S, t, ...(b === 89 && t === 5 ? { phiN: 290 } : {}) })),
+      ];
+  let out: { sec: PostCand; util: number; ok: boolean; N: number; cap: number; gov: string; k12: number | null } | null = null;
+  for (const c of cands) {
+    let u = 0,
+      N = 0,
+      cap = 0,
+      gov = cs[0].name,
+      k = 1;
+    for (const r of cs) {
+      const n = r.G * loads.G + r.Qf * loads.Qf + r.Qr * loads.Qr + r.S * loads.S;
+      let phiN: number;
+      if (c.fam === "SHS") phiN = Math.min(c.phiN ?? Infinity, c.A && c.I ? shsCapacity(c.A, c.I, h) : (c.phiN ?? 290));
+      else {
+        k = k12((h * 1000) / Math.min(c.b, c.d));
+        const A = c.b * c.d;
+        phiN = Math.min(0.8 * r.k1 * k * SG8.fc * A, 0.8 * r.k1 * SG8.fp * A) / 1e3;
+      }
+      if (n / phiN > u || N === 0) {
+        u = n / phiN;
+        N = n;
+        cap = phiN;
+        gov = r.name;
+      }
+    }
+    out = { sec: c, util: u, ok: u <= 1, N, cap, gov, k12: c.fam === "SG8" ? k : null };
+    if (out.ok) break;
+  }
+  return out!;
+}
+
+// ---------------------------------------------------------------- orchestration
+
+const BEARS = 0.05; // m, off the line of what carries it: within this is true bearing, past it a warning
+const near = (p: Pt, q: Pt, tol = 0.15) => Math.hypot(p.x - q.x, p.y - q.y) <= tol;
+const BEAM_LIKE = new Set(["beam", "lintel", "joist", "rafter"]);
+const SUPPORT = new Set(["post", "pile", "footing"]);
+const add = (a: Loads, b: Loads, k = 1): Loads => ({ G: a.G + k * b.G, Qf: a.Qf + k * b.Qf, Qr: a.Qr + k * b.Qr, S: a.S + k * b.S });
+const ZERO: Loads = { G: 0, Qf: 0, Qr: 0, S: 0 };
+
+// Members sharing a mark (a typical beam B2.8 drawn as several spans) take
+// one section: the largest any of them needs. The model is calculated once,
+// the governing section of each group fixed on its members, then again.
+// Where wall w crosses beam m: t m along the beam, s m along the wall, and the
+// opening it lands in (whose lintel then carries the beam there), if any.
+function wallCrossing(m: Member, w: Member): { t: number; s: number; opening?: Opening } | null {
+  if (!m.b || !w.b) return null;
+  const L = memberLength(m),
+    Lw = memberLength(w);
+  if (L < 1e-6 || Lw < 1e-6) return null;
+  const ux = (m.b.x - m.a.x) / L,
+    uy = (m.b.y - m.a.y) / L,
+    wx = (w.b.x - w.a.x) / Lw,
+    wy = (w.b.y - w.a.y) / Lw;
+  const den = ux * wy - uy * wx;
+  if (Math.abs(den) < 0.5) return null; // within 30° of parallel: runs along it, not across
+  const dx = w.a.x - m.a.x,
+    dy = w.a.y - m.a.y;
+  const t = (dx * wy - dy * wx) / den,
+    s = (dx * uy - dy * ux) / den;
+  // a wall at (or within 300 mm of) the beam's end is its end support, not another one
+  if (t < 0.3 || t > L - 0.3 || s < -0.05 || s > Lw + 0.05) return null;
+  return { t, s, opening: w.wall?.openings.find((o) => s > o.offset - 0.045 && s < o.offset + o.width + 0.045) };
+}
+
+// Rafters of a flat, mono or low roof zone over the loadbearing walls and beams
+// running across them (on the zone's storey), with the eaves as overhangs.
+function rafterSupports(model: DesignModel, z: Member, rs: RoofSpec): { ua: number; length: number; at: number[]; maxSpan: number; over: string[] } | null {
+  if (!z.b || !z.zone) return null;
+  const ns = z.zone.dir === "y";
+  const [u0, u1, v0, v1] = ns
+    ? [Math.min(z.a.y, z.b.y), Math.max(z.a.y, z.b.y), Math.min(z.a.x, z.b.x), Math.max(z.a.x, z.b.x)]
+    : [Math.min(z.a.x, z.b.x), Math.max(z.a.x, z.b.x), Math.min(z.a.y, z.b.y), Math.max(z.a.y, z.b.y)];
+  const ov = Math.max(0, rs.overhang);
+  const ua = u0 - ov,
+    ub = u1 + (rs.form === "mono" ? 0 : ov);
+  const width = v1 - v0;
+  const found: { u: number; mark: string }[] = [];
+  for (const s of model.members) {
+    if (!s.b || s.levelId !== z.levelId) continue;
+    if (!(s.type === "beam" || (s.type === "wall" && s.wall?.loadbearing !== false))) continue;
+    const [sa, sb] = ns ? [s.a.y, s.b.y] : [s.a.x, s.b.x];
+    const [ta, tb] = ns ? [s.a.x, s.b.x] : [s.a.y, s.b.y];
+    if (Math.abs(sb - sa) > 0.2 * Math.abs(tb - ta)) continue; // not across the rafters
+    const overlap = Math.min(v1, Math.max(ta, tb)) - Math.max(v0, Math.min(ta, tb));
+    if (overlap < 0.25 * width) continue;
+    const u = (sa + sb) / 2;
+    if (u < ua - 0.1 || u > ub + 0.1) continue;
+    found.push({ u: Math.min(ub, Math.max(ua, u)), mark: s.label });
+  }
+  const at = [...new Set(found.map((f) => Math.round((f.u - ua) * 1e3) / 1e3))].sort((a, b) => a - b);
+  if (at.length < 2) return null;
+  const length = ub - ua;
+  let maxSpan = 0;
+  for (let i = 1; i < at.length; i++) maxSpan = Math.max(maxSpan, at[i] - at[i - 1]);
+  return { ua, length, at, maxSpan, over: [...new Set(found.sort((a, b) => a.u - b.u).map((f) => f.mark))] };
+}
+
+export function runCalcs(model: DesignModel): Calcs {
+  const first = runCalcsOnce(model);
+  const groups = new Map<string, Member[]>();
+  for (const m of model.members)
+    if ((m.type === "beam" || m.type === "lintel") && m.material !== "concrete" && (m.sizing?.mode ?? "auto") === "auto") groups.set(`${m.type}|${m.label}`, [...(groups.get(`${m.type}|${m.label}`) ?? []), m]);
+  const size = (r: Result | undefined) => {
+    const sec = r?.sec;
+    if (!sec) return -1;
+    const steel = findSteel(sec.name);
+    return steel ? 1e6 + steel.kgm : (isTimberFam(sec.fam) ? ALL_FAMILIES.indexOf(sec.fam) * 1e5 : 0) + sec.d * 100 + sec.b;
+  };
+  const fix = new Map<string, Partial<Member>>();
+  for (const ms of groups.values()) {
+    if (ms.length < 2) continue;
+    const rs = ms.map((m) => first.results.get(m.id));
+    const top = rs.reduce((best, r) => (size(r) > size(best) ? r : best), rs[0]);
+    if (!top?.sec || rs.every((r) => r?.sec?.name === top.sec!.name)) continue;
+    const steel = findSteel(top.sec.name);
+    const patch: Partial<Member> = steel
+      ? { material: "steel", section: steel.name, sizing: { mode: "fixed" } }
+      : isTimberFam(top.sec.fam)
+        ? { material: "timber", grade: KEY_GRADE[top.sec.fam] as Member["grade"], section: top.sec.name.split(" ")[0].replace(/×/g, "x"), sizing: { mode: "fixed" } }
+        : {};
+    if (!patch.section) continue;
+    for (const m of ms) if (first.results.get(m.id)?.sec?.name !== top.sec.name) fix.set(m.id, { ...patch, sizing: { ...(m.sizing ?? { mode: "auto" }), mode: "fixed", dlim: m.sizing?.dlim } });
+  }
+  if (!fix.size) return first;
+  const second = runCalcsOnce({ ...model, members: model.members.map((m) => (fix.has(m.id) ? { ...m, ...fix.get(m.id) } : m)) });
+  for (const id of fix.keys()) {
+    const r = second.results.get(id);
+    if (r) r.notes.push(`Typical mark: sized with the other ${r.mark} members, which need ${r.sec?.name ?? "this section"}.`);
+  }
+  return second;
+}
+
+function runCalcsOnce(model: DesignModel): Calcs {
+  const p = model.params;
+  const results = new Map<string, Result>();
+  const lintels = wallLintels(model);
+
+  // beams, lintels, single joists and rafters (members plus opening lintels)
+  const beamLike = [...model.members.filter((m) => BEAM_LIKE.has(m.type)), ...lintels.map((l) => l.member)];
+  const posts = model.members.filter((m) => SUPPORT.has(m.type));
+  // A beam end that lands part-way along another beam on the same level (and
+  // not on a post) is a point load on that beam, so the carried beam is
+  // designed first and its reaction passed on.
+  type Bearing = { carrier: string; end: "a" | "b"; at: number };
+  const bearings = new Map<string, Bearing[]>(); // carried id -> where its ends land
+  for (const x of beamLike) {
+    if (!x.b) continue;
+    for (const end of ["a", "b"] as const) {
+      if (x.free === end) continue; // a cantilever tip rests on nothing
+      const pt = x[end]!;
+      if (posts.some((s) => near(s.a, pt))) continue;
+      for (const y of beamLike) {
+        if (y.id === x.id || !y.b || y.levelId !== x.levelId) continue;
+        const L = memberLength(y);
+        const t = ((pt.x - y.a.x) * (y.b.x - y.a.x) + (pt.y - y.a.y) * (y.b.y - y.a.y)) / (L * L || 1);
+        const at = t * L;
+        const foot = { x: y.a.x + t * (y.b.x - y.a.x), y: y.a.y + t * (y.b.y - y.a.y) };
+        if (at > 0.15 && at < L - 0.15 && near(foot, pt)) {
+          bearings.set(x.id, [...(bearings.get(x.id) ?? []), { carrier: y.id, end, at }]);
+          break;
+        }
+      }
+    }
+  }
+  // a beam crossing a loadbearing wall bears on it; where it lands in an opening, on that opening's lintel
+  const crossings = new Map<string, { beam: string; beamAt: number; at: number }[]>(); // lintel id -> beams bearing on it
+  for (const x of beamLike) {
+    if (x.type !== "beam" || !x.b) continue;
+    for (const w of model.members) {
+      if (w.type !== "wall" || w.levelId !== x.levelId || w.wall?.loadbearing === false) continue;
+      const c = wallCrossing(x, w);
+      if (!c?.opening) continue;
+      const id = `${w.id}#${c.opening.id}`;
+      crossings.set(id, [...(crossings.get(id) ?? []), { beam: x.id, beamAt: c.t, at: c.s - (c.opening.offset - 0.045) }]);
+    }
+  }
+  // order: a beam only after everything bearing on it (cycles fall back to drawing order)
+  const order: Member[] = [];
+  const done = new Set<string>();
+  const visiting = new Set<string>();
+  const byId = new Map(beamLike.map((m) => [m.id, m]));
+  const visit = (m: Member) => {
+    if (done.has(m.id) || visiting.has(m.id)) return;
+    visiting.add(m.id);
+    for (const [carried, list] of bearings) if (list.some((b) => b.carrier === m.id)) visit(byId.get(carried)!);
+    for (const c of crossings.get(m.id) ?? []) visit(byId.get(c.beam)!);
+    visiting.delete(m.id);
+    done.add(m.id);
+    order.push(m);
+  };
+  beamLike.forEach(visit);
+
+  // What each post stands on: the first thing below it, searching down level
+  // by level - a pile or footing on its own level, then on each lower level a
+  // post, pile or footing (stacked) or a beam part-way along (a point load).
+  // A post can pass down through a double-height space this way.
+  type Seat = { kind: "support"; id: string; levelId: string } | { kind: "beam"; id: string; levelId: string; at: number };
+  // rib rafts: a raft carries the walls and posts on its own level, and on the
+  // storey above when it is drawn on a foundation level
+  const rafts = model.members.filter((z) => z.type === "raft" && z.b);
+  const raftLevels = (z: Member) => {
+    const l = levelOf(model, z.levelId);
+    const up = l?.kind === "foundation" ? levelAbove(model, l) : undefined;
+    return new Set([z.levelId, ...(up ? [up.id] : [])]);
+  };
+  const inRect = (z: Member, q: Pt, tol = 0.05) =>
+    !!z.b && q.x >= Math.min(z.a.x, z.b.x) - tol && q.x <= Math.max(z.a.x, z.b.x) + tol && q.y >= Math.min(z.a.y, z.b.y) - tol && q.y <= Math.max(z.a.y, z.b.y) + tol;
+  const raftUnder = (levelId: string, q: Pt) => rafts.find((z) => raftLevels(z).has(levelId) && inRect(z, q));
+
+  const seats = new Map<string, Seat>();
+  const downFrom = (l: Level) => model.levels.filter((x) => x.elevation < l.elevation - 1e-6).sort((a, b) => b.elevation - a.elevation);
+  // Levels are traced from separate sheets, so between levels allow 300 mm.
+  const ACROSS = 0.3;
+  const partway = (m: Member, q: Pt, tol = 0.15) => {
+    if (!m.b) return null;
+    const L = memberLength(m);
+    const t = ((q.x - m.a.x) * (m.b.x - m.a.x) + (q.y - m.a.y) * (m.b.y - m.a.y)) / (L * L || 1);
+    const foot = { x: m.a.x + t * (m.b.x - m.a.x), y: m.a.y + t * (m.b.y - m.a.y) };
+    return t * L > 0.15 && t * L < L - 0.15 && near(foot, q, tol) ? t * L : null;
+  };
+  for (const q of posts) {
+    if (q.type !== "post") continue;
+    const ql = levelOf(model, q.levelId);
+    if (!ql) continue;
+    const base = posts.find((x) => x.type !== "post" && x.levelId === ql.id && near(x.a, q.a));
+    if (base) {
+      seats.set(q.id, { kind: "support", id: base.id, levelId: ql.id });
+      continue;
+    }
+    for (const v of downFrom(ql)) {
+      const under = posts
+        .filter((x) => x.levelId === v.id && near(x.a, q.a, ACROSS))
+        .sort((a, b) => Number(b.type === "post") - Number(a.type === "post") || Math.hypot(a.a.x - q.a.x, a.a.y - q.a.y) - Math.hypot(b.a.x - q.a.x, b.a.y - q.a.y))[0];
+      if (under) {
+        seats.set(q.id, { kind: "support", id: under.id, levelId: v.id });
+        break;
+      }
+      const beam = beamLike.find((m) => m.levelId === v.id && partway(m, q.a, ACROSS) !== null);
+      if (beam) {
+        seats.set(q.id, { kind: "beam", id: beam.id, levelId: v.id, at: partway(beam, q.a, ACROSS)! });
+        break;
+      }
+    }
+  }
+
+  // A post, pile or footing: beam ends on its own level (and roof beams for a
+  // top-storey post), plus the posts standing on it.
+  const designSupport = (s: Member) => {
+    const level = levelOf(model, s.levelId);
+    const above = levelAbove(model, level);
+    const beamLevels = new Set([s.levelId, ...(s.type === "post" && above?.kind === "roof" ? [above.id] : [])]);
+    let loads: Loads = { ...ZERO };
+    const from: string[] = [];
+    for (const m of beamLike) {
+      if (!beamLevels.has(m.levelId) || !m.b) continue;
+      const sl = results.get(m.id)?.supportLoads;
+      if (sl) {
+        // a beam over several supports: whichever of them is this one
+        const hit = sl.filter((r) => near(along(m, r.at), s.a));
+        hit.forEach((r) => (loads = add(loads, r.loads)));
+        if (hit.length) from.push(m.label);
+        continue;
+      }
+      const e = results.get(m.id)?.ends;
+      if (!e) continue;
+      const atA = near(m.a, s.a),
+        atB = near(m.b, s.a);
+      if (atA) loads = add(loads, e.a);
+      if (atB) loads = add(loads, e.b);
+      if (atA || atB) from.push(m.label);
+    }
+    for (const o of posts) {
+      const seat = seats.get(o.id);
+      const e = results.get(o.id)?.ends;
+      if (seat?.kind === "support" && seat.id === s.id && e) {
+        loads = add(loads, e.a);
+        from.push(o.label);
+      }
+    }
+    const res: Result = {
+      memberId: s.id,
+      mark: s.label,
+      status: "none",
+      ratio: null,
+      summary: from.length ? `Carries ${from.join(", ")}` : "No members bearing on it yet.",
+      utils: [],
+      kv: [],
+      inputs: [{ label: "Member", value: `${s.label} · ${MEMBER_INFO[s.type].label}` }],
+      loads: [
+        { label: "Carries", value: from.length ? from.join(", ") : "nothing yet" },
+        { label: "Axial G / Q / Qr", value: `${fmt(loads.G)} / ${fmt(loads.Qf)} / ${fmt(loads.Qr)} kN` },
+      ],
+      checks: [],
+      notes: [],
+      ends: { a: loads, b: loads },
+    };
+    if (s.type === "post") {
+      // up to the underside of the deepest beam it carries
+      const deepest = Math.max(0, ...beamLike.filter((m) => from.includes(m.label) && beamLevels.has(m.levelId)).map((m) => (results.get(m.id)?.sec?.d ?? 0) / 1000));
+      const topOfPost = level ? (level.kind === "roof" ? level.elevation : framingTop(model, level)) - deepest : 2.4;
+      const seat = seats.get(s.id);
+      const seatLevel = seat ? levelOf(model, seat.levelId) : undefined;
+      const below = level ? downFrom(level)[0] : undefined;
+      // a post passing down through a double-height space stands on that lower framing
+      const onLintel = seat?.kind === "beam" && byId.get(seat.id)?.type === "lintel" && seatLevel ? lintelTop(seatLevel) + (byId.get(seat.id)?.dz ?? 0) : undefined;
+      res.seatTop = onLintel;
+      const bottom = onLintel ?? (seatLevel && below && seatLevel.elevation < below.elevation - 1e-6 ? framingTop(model, seatLevel) : (level?.elevation ?? 0));
+      // split levels: the beams it carries and its own base can be offset from the level
+      const dzs = beamLike.filter((m) => from.includes(m.label) && beamLevels.has(m.levelId)).map((m) => m.dz ?? 0);
+      const topDz = dzs.length ? Math.max(...dzs) : 0;
+      const h = s.height ?? Math.max(0.3, topOfPost + topDz - bottom - (s.dz ?? 0));
+      const fixed: PostCand | null =
+        s.sizing?.mode === "fixed"
+          ? (() => {
+              const c = fixedCandidate(s.section, s.material, s.grade);
+              return c && !("steel" in c) ? { name: c.name, fam: "SG8", b: c.b, d: c.d } : null;
+            })()
+          : null;
+      const d = designPost(loads, h, p, fixed);
+      res.status = from.length ? statusFor(d.util) : "none";
+      res.ratio = from.length ? d.util : null;
+      res.sec = { name: d.sec.name, fam: d.sec.fam, b: d.sec.b, d: d.sec.d };
+      res.summary = from.length ? `${d.sec.name} · N* ${fmt(d.N, 1)} kN · ${Math.round(d.util * 100)}%` : res.summary;
+      res.utils = from.length ? [{ label: "Axial", u: d.util }] : [];
+      res.kv = [
+        { label: `N* (${d.gov})`, value: `${fmt(d.N, 1)} kN` },
+        { label: "φN (min of buckling, bearing)", value: `${fmt(d.cap, 1)} kN` },
+        { label: "Height", value: `${fmt(h)} m` },
+        ...(d.k12 !== null ? [{ label: `k12 (L/d = ${fmt((h * 1000) / Math.min(d.sec.b, d.sec.d), 1)})`, value: fmt(d.k12) }] : []),
+      ];
+      res.checks = from.length ? [{ name: `Axial, ${d.gov}`, demand: d.N, capacity: d.cap, unit: "kN", ratio: d.util }] : [];
+      res.notes = ["Post sits within the wall; linings and nogs restrain it in the plane of the wall. Continue the load path to a pad footing and check bottom-plate bearing."];
+      // a cantilever post: fixed at the base, H at the top; SHS for combined actions
+      if (s.lateral && s.lateral > 0) {
+        const H = s.lateral;
+        let pick: { name: string; b: number; u: number; uN: number; uM: number; drift: number; Nc: number; Ms: number } | null = null;
+        for (const [b, t, A, I, S] of SHS) {
+          const Nc = steelPhiNc(A, 350, Math.sqrt(I / A), 2 * h, -0.5);
+          const Ms = (0.9 * 350 * shsZe(b, t, I, S)) / 1e6;
+          const M = H * h;
+          const uN = d.N / Nc,
+            uM = M / Ms;
+          const drift = ((H * 1e3) * (h * 1000) ** 3) / (3 * ES * I);
+          const u = Math.max(uN + uM, drift / ((h * 1000) / 40));
+          pick = { name: `${b}×${b}×${t.toFixed(1)} SHS`, b, u, uN, uM, drift, Nc, Ms };
+          if (u <= 1) break;
+        }
+        if (pick) {
+          res.sec = { name: pick.name, fam: "SHS", b: pick.b, d: pick.b };
+          res.ratio = pick.u;
+          res.status = statusFor(pick.u);
+          res.summary = `${pick.name} cantilever · N* ${fmt(d.N, 1)} kN, H ${fmt(H, 1)} kN · ${Math.round(pick.u * 100)}%`;
+          res.utils = [{ label: "N/φNc + M/φMs", u: pick.uN + pick.uM }, { label: "Drift (h/40)", u: pick.drift / ((h * 1000) / 40) }];
+          res.kv.push(
+            { label: "Cantilever M* = H·h", value: `${fmt(H * h, 1)} kNm` },
+            { label: "φNc (le = 2h) / φMs", value: `${fmt(pick.Nc, 1)} kN / ${fmt(pick.Ms, 1)} kNm` },
+            { label: "Top drift", value: `${fmt(pick.drift, 1)} mm (h/40 = ${fmt((h * 1000) / 40, 1)})` },
+          );
+          res.checks.push({ name: "Combined N*/φNc + M*/φMs", demand: pick.uN + pick.uM, capacity: 1, unit: "", ratio: pick.uN + pick.uM });
+          res.notes = [
+            "Cantilever post: fixed at the base, lateral H at the top; linear interaction N*/φNc + M*/φMs ≤ 1 (conservative against AS 4100 cl 8.4), le = 2h. Fix it to its footing with a base plate and hold-down bolts for the base moment.",
+          ];
+          res.baseMoment = H * h;
+        }
+      }
+      // a post standing straight on a ground slab: punching through the slab
+      if (from.length && !seats.get(s.id) && level?.floor === "slab" && !raftUnder(s.levelId, s.a)) {
+        const Nst = d.N;
+        const sp = slabPunch(Nst, Math.max(d.sec.b, d.sec.d, d.sec.fam === "SHS" ? 200 : 0));
+        res.kv.push({ label: "Slab punching (100 mm slab)", value: `${fmt(Nst, 1)} / ${fmt(sp.cap, 1)} kN` });
+        res.checks.push({ name: "Punching through a 100 mm slab", demand: Nst, capacity: sp.cap, unit: "kN", ratio: sp.u });
+        if (sp.u > 1) res.notes.push(`The slab can't take this post on its own: thicken it to ${sp.need} mm under the post, or give it a pad footing.`);
+      }
+    } else {
+      const N = Math.max(1.35 * loads.G, 1.2 * loads.G + 1.5 * loads.Qf, 1.2 * loads.G + 1.5 * loads.Qr + 0.4 * loads.Qf);
+      res.kv.push({ label: "N*", value: `${fmt(N, 1)} kN` });
+      res.summary = from.length ? `N* ${fmt(N, 1)} kN from ${from.join(", ")}` : res.summary;
+      res.notes = [];
+      if (s.type === "footing" && from.length) {
+        // the post on it sets the punching perimeter (a steel post's base plate at least 200 mm)
+        const post = posts.find((o) => o.type === "post" && seats.get(o.id)?.id === s.id);
+        const ps = post ? results.get(post.id)?.sec : undefined;
+        const c = ps ? Math.max(ps.b, ps.d, ps.fam === "SHS" ? 200 : 0) : 150;
+        const dims = s.section.split(/x/i).map(Number);
+        const fixed = s.sizing?.mode !== "auto" && dims.length >= 2 && dims[0] > 0 ? { B: dims[0], D: dims[2] || 300 } : undefined;
+        const f = designPad(N, c, site, fixed, post ? (results.get(post.id)?.baseMoment ?? 0) : 0);
+        const u = Math.max(f.uBearing, f.uPunch, f.uShear);
+        res.status = statusFor(u);
+        res.ratio = u;
+        res.sec = { name: `${f.B}×${f.B}×${f.D} pad`, fam: "other", b: f.B, d: f.D };
+        res.summary = `${f.B}×${f.B}×${f.D} pad · ${f.bars} · ${Math.round(u * 100)}%`;
+        res.utils = [
+          { label: "Bearing", u: f.uBearing },
+          { label: "Punching", u: f.uPunch },
+          { label: "One-way shear", u: f.uShear },
+        ];
+        res.kv.push(...f.lines);
+        res.checks = [
+          { name: "Bearing", demand: f.qStar, capacity: f.qCap, unit: "kPa", ratio: f.uBearing },
+          { name: "Punching shear (NZS 3101 12.7)", demand: f.uPunch * 100, capacity: 100, unit: "%", ratio: f.uPunch },
+          { name: "One-way shear", demand: f.uShear * 100, capacity: 100, unit: "%", ratio: f.uShear },
+        ];
+        res.notes = [...f.notes, ...(model.site ? [] : ["No site data entered: good ground (300 kPa ultimate, φ 0.5) assumed."])];
+        if (fixed) res.inputs.push({ label: "Size", value: `${fixed.B} × ${fixed.B} × ${fixed.D} (fixed; choose Pick the size to let the app size it)` });
+      } else if (s.type === "pile" && from.length) {
+        // an ordinary timber pile: axial in the pile above ground, then its concrete footing
+        const round = /d(ia)?\b|ø/i.test(s.section);
+        const size = parseFloat(s.section) || 125;
+        const side = round ? Math.round(size * 0.886) : size; // round pile as the square of the same area
+        const h = s.height ?? 0.6; // exposed height, ground to underside of bearer
+        const pd = designPost(loads, h + 0.15, p, { name: round ? `${size} dia H5 pile` : `${size}×${size} H5 pile`, fam: "SG8", b: side, d: side });
+        let f = designPad(N, side, site, { B: 350, D: 200 });
+        const fu = (x: FootingResult) => Math.max(x.uBearing, x.uPunch, x.uShear);
+        if (fu(f) > 1) f = designPad(N, side, site);
+        const u = Math.max(pd.util, fu(f));
+        res.status = statusFor(u);
+        res.ratio = u;
+        res.sec = { name: pd.sec.name, fam: "SG8", b: side, d: side };
+        res.summary = `${pd.sec.name} on ${f.B}×${f.B}×${f.D} footing · N* ${fmt(N, 1)} kN · ${Math.round(u * 100)}%`;
+        res.utils = [
+          { label: "Pile axial", u: pd.util },
+          { label: "Footing bearing", u: f.uBearing },
+          { label: "Footing punching", u: f.uPunch },
+        ];
+        res.kv.push(
+          { label: "Pile φN (le = exposed height + 0.15 m)", value: `${fmt(pd.cap, 1)} kN` },
+          { label: "Exposed height", value: `${fmt(h)} m${s.height === undefined ? " (assumed: set the height)" : ""}` },
+          { label: "Footing", value: `${f.B} × ${f.B} × ${f.D} deep` },
+          ...f.lines.filter((l) => l.label.startsWith("Bearing")),
+        );
+        res.checks = [
+          { name: "Pile axial (NZS 3603)", demand: N, capacity: pd.cap, unit: "kN", ratio: pd.util },
+          { name: "Footing bearing", demand: f.qStar, capacity: f.qCap, unit: "kPa", ratio: f.uBearing },
+        ];
+        res.notes = [
+          `H5 treated pile, SG8 properties assumed${round ? ", round pile checked as the square of the same area" : ""}. Ordinary pile: carries gravity only; bracing and anchor piles, embedment and fixings to NZS 3604 Section 6.`,
+          ...(model.site ? [] : ["No site data entered: good ground (300 kPa ultimate, φ 0.5) assumed."]),
+        ];
+      } else res.notes = ["Check bearing against the site's geotechnical report."];
+    }
+    results.set(s.id, res);
+  };
+
+  // What a beam end rests on: the posts or beams under it (ids), or something
+  // solid, a loadbearing (or retaining) wall or a raft. A roof level's beams sit
+  // on the storey below.
+  const segDist = (q: Pt, w: Member) => {
+    if (!w.b) return Infinity;
+    const L2 = (w.b.x - w.a.x) ** 2 + (w.b.y - w.a.y) ** 2 || 1;
+    const t = Math.min(1, Math.max(0, ((q.x - w.a.x) * (w.b.x - w.a.x) + (q.y - w.a.y) * (w.b.y - w.a.y)) / L2));
+    return Math.hypot(q.x - (w.a.x + t * (w.b.x - w.a.x)), q.y - (w.a.y + t * (w.b.y - w.a.y)));
+  };
+  const bearingWalls = model.members.filter((w) => w.b && ((w.type === "wall" && w.wall?.loadbearing !== false) || w.type === "retaining"));
+  const endHolders = (m: Member, e: "a" | "b") => {
+    const ml = levelOf(model, m.levelId);
+    const lids = new Set([m.levelId, ...(ml?.kind === "roof" && downFrom(ml)[0] ? [downFrom(ml)[0].id] : [])]);
+    const q = m[e]!;
+    return {
+      ids: [
+        ...(bearings.get(m.id) ?? []).filter((b) => b.end === e).map((b) => b.carrier),
+        ...posts.filter((s) => lids.has(s.levelId) && near(s.a, q)).map((s) => s.id), // the distance designSupport takes a reaction over
+        ...beamLike.filter((y) => y.id !== m.id && lids.has(y.levelId) && partway(y, q, ACROSS) !== null).map((y) => y.id),
+      ],
+      solid: bearingWalls.some((w) => lids.has(w.levelId) && segDist(q, w) <= ACROSS) || [...lids].some((lid) => raftUnder(lid, q) !== undefined),
+    };
+  };
+  const endHeld = (m: Member, e: "a" | "b") => {
+    const h = endHolders(m, e);
+    return h.solid || h.ids.length > 0;
+  };
+  const innerHolders = (m: Member) => [
+    ...posts.filter((s) => s.type === "post" && s.levelId === m.levelId && partway(m, s.a) !== null).map((s) => ({ ids: [s.id], solid: false })),
+    ...(m.type === "beam" ? model.members.filter((w) => w.type === "wall" && w.levelId === m.levelId && w.wall?.loadbearing !== false && wallCrossing(m, w)).map(() => ({ ids: [] as string[], solid: true })) : []),
+  ];
+  // posts on its own level and loadbearing walls across it, m from end a
+  const innerSupports = (m: Member) =>
+    [
+      ...posts.filter((s) => s.type === "post" && s.levelId === m.levelId).map((s) => partway(m, s.a)),
+      ...(m.type === "beam" ? model.members.filter((w) => w.type === "wall" && w.levelId === m.levelId && w.wall?.loadbearing !== false).map((w) => wallCrossing(m, w)?.t ?? null) : []),
+    ].filter((x): x is number => x !== null);
+  // A beam end with nothing under it, on a beam held at two other points,
+  // overhangs: it is designed as the cantilever it is. Held at fewer points it
+  // is unstable (flagged below).
+  const looseEnds = new Map<string, ("a" | "b")[]>();
+  for (const m of beamLike) {
+    if (m.type !== "beam" || !m.b) continue;
+    const loose = (["a", "b"] as const).filter((e) => m.free !== e && !endHeld(m, e));
+    if (loose.length) looseEnds.set(m.id, loose);
+  }
+  const heldAt = (m: Member) => (m.free ? 1 : 2) - (looseEnds.get(m.id)?.length ?? 0) + innerSupports(m).length;
+  const isFree = (m: Member, e: "a" | "b") => m.free === e || (heldAt(m) >= 2 && !!looseEnds.get(m.id)?.includes(e));
+
+  // Where a beam is held up: its ends (unless free) and any post or wall on its
+  // own level part-way along it. Undefined for a plain two-end span.
+  const beamSupports = (m: Member): number[] | undefined => {
+    if (!m.b) return undefined;
+    const L = memberLength(m);
+    const inner = innerSupports(m);
+    const fa = isFree(m, "a"),
+      fb = isFree(m, "b");
+    const at = [...(fa ? [] : [0]), ...inner, ...(fb ? [] : [L])].sort((a, b) => a - b);
+    return inner.length || fa || fb ? at : undefined;
+  };
+
+  // typed-in loads win; otherwise read them off the drawing; otherwise 1 m of floor or roof
+  const tribOf = (m: Member): { trib: Trib; note?: string } => {
+    if (m.trib && Object.values(m.trib).some((v) => v)) return { trib: m.trib };
+    if (m.type !== "joist" && m.type !== "rafter") {
+      const a = autoTrib(model, m);
+      if (a) return { trib: a.trib, note: `from the drawing: ${a.from.join(", ")}${a.partial ? " (part-length loads averaged over the span)" : ""}` };
+    }
+    // line loads typed in on their own: just those, not an assumed metre of floor as well
+    if (m.extraG || m.extraQ) return { trib: {}, note: "typed line loads only" };
+    return { trib: defaultTrib(model, m), note: "assumed: nothing typed in or found on the drawing" };
+  };
+
+  // net roof uplift pressure for tie-downs: external −0.9 with internal +0.2 (AS/NZS 1170.2)
+  const upliftKPa = model.site ? (windBasis(model.site, Math.max(...model.levels.map((l) => l.elevation + l.height)) - Math.min(...model.levels.map((l) => l.elevation))).q * 1.1) / 1000 : undefined;
+
+  const site = model.site ?? DEFAULT_SITE;
+
+  // reinforced concrete beam: section "300x600" (larger figure is the depth)
+  const concreteResult = (m: Member, spec: BeamSpec): Result => {
+    const dims = m.section.split(/[x×]/i).map((v) => parseFloat(v)).filter((v) => v > 0);
+    const base: Result = { memberId: m.id, mark: m.label, status: "none", ratio: null, summary: "", utils: [], kv: [], inputs: [], loads: [], checks: [], notes: [] };
+    if (dims.length < 2) return { ...base, summary: "Give the section as width × depth in mm, e.g. 300x600." };
+    const b = Math.min(dims[0], dims[1]),
+      D = Math.max(dims[0], dims[1]);
+    const ll = lineLoads(spec.trib, p, spec.extraG, spec.extraQ);
+    const r = designConcreteBeam({
+      L: spec.span,
+      supports: spec.supports ?? [0, spec.span],
+      b,
+      D,
+      fc: m.fc ?? 25,
+      G: ll.G,
+      Q: ll.Qf + ll.Qr + ll.S,
+      points: (spec.points ?? []).map((q) => ({ at: q.at, G: q.G, Q: q.Qf + q.Qr + q.S })),
+    });
+    const ends = { a: r.reactions.find((x) => x.at < 1e-6)?.loads ?? ZERO, b: r.reactions.find((x) => Math.abs(x.at - spec.span) < 1e-6)?.loads ?? ZERO };
+    return {
+      ...base,
+      status: statusFor(r.util),
+      ratio: r.util,
+      sec: { name: `${b}×${D} RC`, fam: "other", b, d: D },
+      govName: r.gov,
+      summary: `${b}×${D} RC · ${r.lines[2].value.split(" (")[0]} bottom · ${Math.round(r.util * 100)}% · ${r.gov.toLowerCase()}`,
+      utils: r.utils,
+      kv: r.lines,
+      inputs: [
+        { label: "Member", value: `${spec.mark} · ${spec.role}` },
+        { label: "Span", value: `${fmt(spec.span)} m`, note: spec.supports ? `${spec.supports.length} supports` : "simply supported" },
+      ],
+      loads: [
+        { label: "G (incl. self weight)", value: `${fmt(r.G)} kN/m` },
+        { label: "Q", value: `${fmt(ll.Qf + ll.Qr + ll.S)} kN/m` },
+        { label: "Tributary", value: tribText(spec.trib) || "none set" },
+      ],
+      checks: r.utils.map((u) => ({ name: u.label, demand: u.u * 100, capacity: 100, unit: "%", ratio: u.u })),
+      notes: r.notes,
+      ends,
+      supportLoads: spec.supports ? r.reactions : undefined,
+      carried: spec.points?.length ? spec.points : undefined,
+    };
+  };
+
+  const levelsDown = [...model.levels].sort((a, b) => b.elevation - a.elevation);
+  const onLevel = (m: Member, l: Level) => m.levelId === l.id || (l === levelsDown[levelsDown.length - 1] && !levelOf(model, m.levelId));
+  for (const lvl of levelsDown) {
+    for (const m of order.filter((x) => onLevel(x, lvl))) {
+      const level = levelOf(model, m.levelId);
+      const single = m.type === "joist" || m.type === "rafter";
+      const sizing: Sizing = m.sizing ?? { mode: single ? "fixed" : "auto", ...(m.type === "lintel" ? { maxB: 90 } : {}) };
+      const points: PointLoad[] = [];
+      for (const [carried, list] of bearings)
+        for (const b of list) {
+          if (b.carrier !== m.id) continue;
+          const r = results.get(carried);
+          const e = r?.ends?.[b.end];
+          if (e) points.push({ at: b.at, ...e, from: r!.mark });
+        }
+      for (const c of crossings.get(m.id) ?? []) {
+        const r = results.get(c.beam);
+        const e = r?.supportLoads?.find((x) => Math.abs(x.at - c.beamAt) < 1e-3)?.loads;
+        if (e) points.push({ at: c.at, ...e, from: r!.mark });
+      }
+      for (const [qid, seat] of seats) {
+        if (seat.kind !== "beam" || seat.id !== m.id) continue;
+        const r = results.get(qid);
+        const e = r?.ends?.a;
+        if (!r || !e) continue;
+        points.push({ at: seat.at, ...e, from: `${r.mark} above` });
+        r.kv.push({ label: "Stands on", value: `${m.label}, ${fmt(seat.at)} m from its end 1` });
+      }
+      const spec: BeamSpec = {
+        id: m.id,
+        mark: m.label,
+        role: m.role || `${MEMBER_INFO[m.type].label}${level ? ` · ${level.name}` : ""}`,
+        span: memberLength(m),
+        trib: tribOf(m).trib,
+        extraG: m.extraG,
+        extraQ: m.extraQ,
+        sizing,
+        fixed: fixedCandidate(m.section, m.material, m.grade),
+        point: !single,
+        selfWeight: !single,
+        fallbackMaxD: m.type === "beam" && loadKind(model, level) === "floor" ? p.beamMaxD : 0,
+        flush: m.type === "beam" && loadKind(model, level) === "floor",
+        points,
+        // held at one point it is a mechanism: size it as a plain span, it is flagged unstable below
+        supports: ((s) => (s && s.length < 2 ? undefined : s))(beamSupports(m)),
+        restraint: m.restraint,
+        segment: m.segment,
+        uplift: upliftKPa,
+      };
+      const res = m.material === "concrete" ? concreteResult(m, spec) : designBeam(spec, p);
+      const tn = tribOf(m).note;
+      if (tn) res.loads = res.loads.map((l) => (l.label === "Tributary" ? { ...l, note: tn } : l));
+      // ends resting on another beam don't also load a post
+      for (const b of bearings.get(m.id) ?? []) res.kv.push({ label: `End ${b.end === "a" ? "1" : "2"} bears on`, value: results.get(b.carrier)?.mark ?? byId.get(b.carrier)?.label ?? "" });
+      results.set(m.id, res);
+    }
+
+    // then this level's posts, piles and footings (posts first, so a footing
+    // or pile under one sees it)
+    for (const s of posts.filter((x) => onLevel(x, lvl)).sort((a, b) => Number(b.type === "post") - Number(a.type === "post"))) designSupport(s);
+  }
+
+  // joist zones, and rafter and truss zones over the top storey
+  for (const z of model.members) {
+    if (z.type !== "joistzone" || !z.b || !z.zone) continue;
+    const width = z.zone.dir === "x" ? Math.abs(z.b.y - z.a.y) : Math.abs(z.b.x - z.a.x);
+    const s = z.zone.spacing / 1000;
+    const rs = zoneRoof(model, z);
+    if (rs) {
+      const W = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
+      // flat, mono and low roofs: rafters over the walls and beams under them, eaves as overhangs
+      const rafterSup = !roofHalfSpan(rs) && rs.framing === "rafters" ? rafterSupports(model, z, rs) : null;
+      const run = rafterSup ? rafterSup.maxSpan : roofHalfSpan(rs) ? W / 2 : W;
+      const slope = 1 / Math.cos((rs.pitch * Math.PI) / 180);
+      const count = Math.floor(width / s) + 1;
+      if (rs.framing === "trusses") {
+        const w = lineLoads({ roof: s }, p);
+        const R = { G: (w.G * W) / 2, Qf: 0, Qr: (w.Qr * W) / 2, S: (w.S * W) / 2 };
+        results.set(z.id, {
+          memberId: z.id,
+          mark: z.label,
+          status: "none",
+          ratio: null,
+          summary: `Trusses @ ${z.zone.spacing} · span ${fmt(W)} m · ${rs.form} ${rs.pitch}°`,
+          utils: [],
+          kv: [
+            { label: "Trusses", value: `${count} @ ${z.zone.spacing} crs, span ${fmt(W)} m` },
+            { label: "Roof", value: `${rs.form}, ${rs.pitch}° pitch, ${fmt(rs.overhang)} m eaves` },
+            { label: "Reaction per truss end G / Qr", value: `${fmt(R.G)} / ${fmt(R.Qr)} kN` },
+            { label: "R* per truss end", value: `${fmt(rStar(R))} kN` },
+          ],
+          inputs: [{ label: "Framing", value: "Prefabricated timber trusses" }],
+          loads: [{ label: "Roof", value: `G ${p.Groof} / Q ${p.Qroof} kPa on plan` }],
+          checks: [],
+          notes: ["Trusses are designed by the truss supplier to NZS 3603 and AS/NZS 1170 for these loads and the site wind; fix each truss to the top plate for uplift. The reactions shown are for the supporting walls and beams."],
+        });
+        continue;
+      }
+      const r = designBeam(
+        {
+          id: z.id,
+          mark: z.label,
+          role: z.role || `Rafters (${rs.form === "low" ? "low-slope" : rs.form} roof, ${rs.pitch}°)`,
+          span: rafterSup ? rafterSup.length : run,
+          supports: rafterSup?.at,
+          trib: { roof: s },
+          sizing: { mode: "fixed" },
+          fixed: fixedCandidate(z.section, z.material, z.grade),
+          point: false,
+          selfWeight: false,
+          fallbackMaxD: 0,
+        },
+        p,
+      );
+      r.kv.push(
+        rafterSup
+          ? { label: "Rafters", value: `${count} @ ${z.zone.spacing} crs on ${rafterSup.over.join(", ")}: longest span ${fmt(run)} m` }
+          : { label: "Rafters", value: `${count} @ ${z.zone.spacing} crs, run ${fmt(run)} m (${fmt(run * slope)} m on the slope)` },
+        { label: "Roof", value: `${rs.form}, ${rs.pitch}°${rs.purlins ? `, purlins @ ${rs.purlins}` : ""}, ${fmt(rs.overhang)} m eaves` },
+      );
+      r.notes.push(
+        `Rafters designed on their horizontal run with the roof loads on plan. ${roofHalfSpan(rs) ? "They span from the eaves to a ridge beam, which carries half the roof width; " : ""}hip, valley and ridge members and fixings for uplift to NZS 3604 Section 10 or specific design.`,
+      );
+      r.summary = r.sec ? `${z.section} rafters @ ${z.zone.spacing} · ${rafterSup ? "span" : "run"} ${fmt(run)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
+      r.ends = undefined;
+      results.set(z.id, r);
+      continue;
+    }
+    const span = z.zone.dir === "x" ? Math.abs(z.b.x - z.a.x) : Math.abs(z.b.y - z.a.y);
+    const r = designBeam(
+      {
+        id: z.id,
+        mark: z.label,
+        role: z.role || `Floor joists${z.zone.wet ? " (wet area)" : ""}`,
+        span,
+        trib: z.zone.wet ? { floor: s, wet: s } : { floor: s },
+        sizing: { mode: "fixed", dlim: 20 },
+        fixed: fixedCandidate(z.section, z.material, z.grade),
+        point: false,
+        selfWeight: false,
+        fallbackMaxD: 0,
+      },
+      p,
+    );
+    if (z.zone.tableSpan && r.ratio !== null) {
+      const uT = span / z.zone.tableSpan;
+      r.utils.push({ label: "NZS 3604 span", u: uT });
+      r.kv.push({ label: "NZS 3604 Table 7.1", value: `${fmt(span)} ≤ ${fmt(z.zone.tableSpan)} m` });
+      if (uT > r.ratio) {
+        r.ratio = uT;
+        r.govName = "NZS 3604 span";
+      }
+      r.status = statusFor(r.ratio);
+    }
+    // Floor vibration, BRANZ SR57: fo = 17.7 / √δ (mm) for a simply supported
+    // span under a UDL, δ here under G + 0.3Q; at least 8 Hz.
+    const jc = fixedCandidate(z.section, z.material, z.grade);
+    if (jc && !("steel" in jc) && r.ratio !== null) {
+      const EIj = (jc.mat.E * jc.b * jc.d ** 3) / 12;
+      const wq = s * ((z.zone.wet ? p.Gwet : p.Gf) + 0.3 * p.Qf); // kN/m = N/mm
+      const dv = (5 * wq * (span * 1000) ** 4) / (384 * EIj);
+      const fo = 17.7 / Math.sqrt(Math.max(dv, 1e-6));
+      const uf = 8 / fo;
+      r.utils.push({ label: "Vibration", u: uf });
+      r.kv.push({ label: "Floor frequency fo = 17.7/√δ", value: `${fmt(fo, 1)} Hz (≥ 8)` });
+      r.checks.push({ name: "Floor vibration (SR57, ≥ 8 Hz)", demand: 8, capacity: fo, unit: "Hz", ratio: uf });
+      r.notes.push("Vibration: fo = 17.7/√δ with δ the midspan deflection under G + 0.3Q (BRANZ SR57). Long spans or light, lively floors may also need the 1 kN point-load check with load sharing between joists.");
+      if (uf > r.ratio) {
+        r.ratio = uf;
+        r.govName = "Vibration";
+      }
+      r.status = statusFor(r.ratio);
+    }
+    const count = Math.floor(width / s) + 1 + z.zone.doubled.length;
+    r.kv.push({ label: "Joists", value: `${count} @ ${z.zone.spacing} crs, ${z.zone.dir === "x" ? "E–W" : "N–S"}` });
+    if (r.ends) r.kv.push({ label: "Hanger / bearing R* per joist", value: `${fmt(Math.max(1.35 * r.ends.a.G, 1.2 * r.ends.a.G + 1.5 * r.ends.a.Qf), 2)} kN` });
+    r.summary = r.sec ? `${z.section} @ ${z.zone.spacing} · span ${fmt(span)} m · ${Math.round((r.ratio ?? 0) * 100)}%` : r.summary;
+    r.ends = undefined; // joist zones don't load posts directly
+    results.set(z.id, r);
+  }
+
+  // decks: joists on bearers, bearers on piles, piles on pad footings (balcony loads)
+  for (const z of model.members) {
+    if (z.type !== "deck" || !z.deck) continue;
+    const lay = deckLayout(z);
+    if (!lay) continue;
+    const pd = { ...p, Gf: DECK_G, Qf: DECK_Q, Ppt: 0 };
+    const s = z.deck.spacing / 1000;
+    const joists = designBeam(
+      { id: z.id, mark: z.label, role: "Deck joists (H3.2)", span: lay.joistSpan, trib: { floor: s }, sizing: { mode: "fixed" }, fixed: fixedCandidate(z.section, "timber", "SG8"), point: false, selfWeight: false, fallbackMaxD: 0 },
+      pd,
+    );
+    // the most loaded bearer line carries half the joist span each side of it (an edge bearer, half of one)
+    const bearerW = Math.max(0, ...lay.bearers.map((b, i, all) => (b.ledger ? 0 : ((i > 0 ? b.u - all[i - 1].u : 0) + (i < all.length - 1 ? all[i + 1].u - b.u : 0)) / 2)));
+    const bearer = designBeam(
+      { id: z.id + "~b", mark: z.label, role: "Deck bearers (H3.2)", span: lay.pileSpan, trib: { floor: bearerW }, sizing: { mode: "auto", families: ["SG8"], maxB: 90, maxD: 290, minD: 140 }, fixed: null, point: false, selfWeight: true, fallbackMaxD: 0 },
+      pd,
+    );
+    // a pile carries the bearer's width of deck, a pile spacing along it
+    const area = bearerW * lay.pileSpan;
+    const pl: Loads = { G: DECK_G * area, Qf: DECK_Q * area, Qr: 0, S: 0 };
+    const pile = designPost(pl, Math.max(0.3, z.deck.drop - 0.25), p, { name: "125×125 H5 pile", fam: "SG8", b: 125, d: 125 });
+    const Np = rStar(pl);
+    const pad = designPad(Np, 125, site, { B: 400, D: 600 });
+    const uPad = Math.max(pad.uBearing, pad.uPunch, pad.uShear);
+    const util = Math.max(joists.ratio ?? 0, bearer.ratio ?? 0, pile.util, uPad);
+    const nPiles = lay.bearers.reduce((a, b) => a + b.piles.length, 0);
+    if (!nPiles) {
+      // on beams or the building at both edges: just the joists and their fixings
+      results.set(z.id, {
+        ...joists,
+        summary: `Deck · ${z.section} @ ${z.deck.spacing} on beams · ${Math.round((joists.ratio ?? 0) * 100)}%`,
+        kv: [
+          { label: "Joists", value: `${z.section} SG8 H3.2 @ ${z.deck.spacing}, span ${fmt(lay.joistSpan)} m · ${Math.round((joists.ratio ?? 0) * 100)}%` },
+          { label: "Stringers", value: `${z.section} bolted each edge, R* ${fmt(rStar({ G: (DECK_G * lay.joistSpan) / 2, Qf: (DECK_Q * lay.joistSpan) / 2, Qr: 0, S: 0 }), 1)} kN/m` },
+          { label: "Boards", value: "140×20 H3.2 at 145 centres" },
+        ],
+        inputs: [{ label: "Loads", value: `G ${DECK_G} kPa, Q ${DECK_Q} kPa (balconies and decks)` }],
+        loads: [],
+        notes: [`Deck joists SG8 H3.2 (NZS 3602), checked to NZS 3603 for G ${DECK_G} kPa and Q ${DECK_Q} kPa, carried at each edge on the beams or the building (design those separately).`],
+      });
+      continue;
+    }
+    results.set(z.id, {
+      ...joists,
+      status: statusFor(util),
+      ratio: util,
+      govName: util === (joists.ratio ?? 0) ? `joists: ${joists.govName ?? ""}` : util === (bearer.ratio ?? 0) ? `bearers: ${bearer.govName ?? ""}` : util === pile.util ? "pile axial" : "pile footing",
+      summary: `Deck · ${z.section} @ ${z.deck.spacing} on ${bearer.sec?.name ?? "bearers"} · ${nPiles} piles · ${Math.round(util * 100)}%`,
+      utils: [
+        { label: "Joists", u: joists.ratio ?? 0 },
+        { label: "Bearers", u: bearer.ratio ?? 0 },
+        { label: "Piles", u: pile.util },
+        { label: "Pile footings", u: uPad },
+      ],
+      kv: [
+        { label: "Joists", value: `${z.section} SG8 H3.2 @ ${z.deck.spacing}, span ${fmt(lay.joistSpan)} m · ${Math.round((joists.ratio ?? 0) * 100)}%` },
+        { label: "Bearers", value: `${bearer.sec?.name ?? "–"} H3.2, ${lay.bearers.filter((b) => !b.ledger).length} lines, span ${fmt(lay.pileSpan)} m · ${Math.round((bearer.ratio ?? 0) * 100)}%` },
+        { label: "Piles", value: `${nPiles} × 125×125 H5, N* ${fmt(Np, 1)} kN · ${Math.round(pile.util * 100)}%` },
+        { label: "Pile footings", value: `400 × 400 × 600 deep · ${Math.round(uPad * 100)}%` },
+        ...(z.deck.ledger !== "none" ? [{ label: "Stringer to the building", value: `${z.section} bolted, R* ${fmt(rStar({ G: (DECK_G * lay.joistSpan) / 2, Qf: (DECK_Q * lay.joistSpan) / 2, Qr: 0, S: 0 }), 1)} kN/m` }] : []),
+        { label: "Boards", value: "140×20 H3.2 at 145 centres" },
+      ],
+      inputs: [{ label: "Loads", value: `G ${DECK_G} kPa, Q ${DECK_Q} kPa (balconies and decks)` }],
+      loads: [],
+      notes: [
+        `Deck joists and bearers SG8 H3.2 (NZS 3602), checked to NZS 3603 for G ${DECK_G} kPa and Q ${DECK_Q} kPa; 125×125 H5 piles on 400 × 400 × 600 footings. A deck more than 1 m above the ground needs a barrier (by others) and bracing piles or a braced connection to the building (NZS 3604 Section 6).`,
+      ],
+    });
+  }
+
+  // external stairs: stringers spanning the run
+  for (const z of model.members) {
+    if (z.type !== "stair" || !z.stair || !z.b) continue;
+    const lvl = levelOf(model, z.levelId);
+    const above = lvl ? levelAbove(model, lvl) : undefined;
+    const rise = z.stair.rise ?? (lvl && above ? above.elevation - lvl.elevation : (lvl?.height ?? 2.4));
+    const lay = stairLayout(z, rise);
+    if (!lay) continue;
+    const n = z.stair.stringers;
+    const ps = { ...p, Gf: STAIR_G, Qf: STAIR_Q, Ppt: 0 };
+    const r = designBeam(
+      { id: z.id, mark: z.label, role: "Stair stringers (H3.2)", span: lay.run, trib: { floor: z.stair.width / (n - 1) }, sizing: { mode: "auto", families: ["SG8"], maxB: 45, minD: 190, maxD: 300 }, fixed: null, point: false, selfWeight: true, fallbackMaxD: 0 },
+      ps,
+    );
+    // rounded to 0.1 mm, so a going drawn at exactly 280 is not failed by floating point
+    const uGeom = Math.max(Math.round(lay.R * 1e4) / 1e4 / 0.19, 0.28 / (Math.round(lay.G * 1e4) / 1e4));
+    const util = Math.max(r.ratio ?? 0, uGeom);
+    results.set(z.id, {
+      ...r,
+      status: statusFor(util),
+      ratio: util,
+      govName: util === uGeom && uGeom > (r.ratio ?? 0) ? "rise / going" : r.govName,
+      summary: `Stair · ${n} × ${r.sec?.name ?? "stringers"} · ${lay.risers} risers ${Math.round(lay.R * 1000)} / going ${Math.round(lay.G * 1000)} · ${Math.round(util * 100)}%`,
+      utils: [...r.utils, { label: "Rise / going (D1/AS1)", u: uGeom }],
+      kv: [
+        ...r.kv,
+        { label: "Rise / run", value: `${fmt(lay.rise)} / ${fmt(lay.run)} m, ${lay.pitch.toFixed(0)}°` },
+        { label: "Risers / going", value: `${lay.risers} × ${Math.round(lay.R * 1000)} mm / ${lay.risers - 1} × ${Math.round(lay.G * 1000)} mm` },
+        { label: "Treads", value: `2/140×30 H3.2 slats, ${Math.round(z.stair.width * 1000)} wide` },
+      ],
+      notes: [
+        ...r.notes,
+        `Stringers SG8 H3.2 on their horizontal run for G ${STAIR_G} kPa and Q ${STAIR_Q} kPa, each carrying ${fmt(z.stair.width / (n - 1))} m of stair. Private stairway geometry checked against rise ≤ 190 mm and going ≥ 280 mm (confirm against D1/AS1); handrail and barrier by others.`,
+      ],
+    });
+  }
+
+  // retaining walls
+  for (const m of model.members) if (m.type === "retaining") results.set(m.id, retainingCalc(m));
+
+  // bracing
+  const bracing = braceCalcs(model);
+  for (const sheet of bracing)
+    for (const line of sheet.lines)
+      for (const el of line.els) {
+        const m = model.members.find((x) => x.id === el.memberId);
+        if (!m) continue;
+        const okLine = line.okW && line.okE;
+        results.set(m.id, {
+          memberId: m.id,
+          mark: m.label,
+          status: okLine && sheet.okTotal ? "pass" : "fail",
+          ratio: Math.max(line.minW / Math.max(1, line.sumW), line.minE / Math.max(1, line.sumE)),
+          summary: `${describeMember(m)} · ${el.W} W / ${el.E} EQ BU · line ${line.id} ${okLine ? "OK" : "NG"}`,
+          utils: [],
+          kv: [
+            { label: "Line", value: `${line.id} (${sheet.dir})` },
+            { label: "Length", value: `${fmt(el.L)} m` },
+            { label: "Wind BUs", value: String(el.W) },
+            { label: "EQ BUs", value: String(el.E) },
+            { label: "Line achieved / min (W)", value: `${line.sumW} / ${line.minW}` },
+            { label: "Line achieved / min (EQ)", value: `${line.sumE} / ${line.minE}` },
+          ],
+          inputs: [],
+          loads: [],
+          checks: [],
+          notes: [
+            "Ratings from GIB EzyBrace® Systems 2016 (BU/m), interpolated between 0.4 m and 1.2 m and multiplied by 2.4 / stud height; capped at 120 BU/m on timber floors and 150 on slab.",
+          ],
+          bu: { W: el.W, E: el.E, line: line.id, dir: sheet.dir },
+        });
+        // a specifically designed portal: frame analysis of the legs and beam for the force it is rated at
+        if (el.system === "PORTAL" && m.b) {
+          const near3 = (q: Pt, r: Pt) => Math.hypot(q.x - r.x, q.y - r.y) <= 0.3;
+          const mb = m.b;
+          const beam = beamLike.find((x) => x.levelId === m.levelId && !!x.b && ((near3(x.a, m.a) && near3(x.b, mb)) || (near3(x.a, mb) && near3(x.b, m.a))));
+          const ll = beam ? lineLoads(tribOf(beam).trib, p, beam.extraG, beam.extraQ) : { G: 0, Qf: 0, Qr: 0, S: 0 };
+          const lvl = levelOf(model, m.levelId);
+          const pr = designPortal({ span: memberLength(m), height: lvl?.height ?? 2.4, base: m.brace?.base ?? "fixed", H: Math.max(el.W, el.E) / 20, gG: ll.G, gQ: ll.Qf + ll.Qr });
+          const r = results.get(m.id)!;
+          r.status = okLine && sheet.okTotal ? statusFor(pr.util) : "fail";
+          r.ratio = Math.max(r.ratio ?? 0, pr.util);
+          r.sec = pr.sec ? { name: pr.sec.name, fam: pr.sec.fam, b: pr.sec.b, d: pr.sec.d, tw: pr.sec.tw, tf: pr.sec.tf } : undefined;
+          r.summary = `Portal ${pr.sec?.name ?? "?"} · ${el.W} BU · ${Math.round(pr.util * 100)}% (${pr.gov})${beam ? ` · beam ${beam.label}` : ""}`;
+          r.kv.push(...pr.lines);
+          r.utils = [{ label: "Portal", u: pr.util }];
+          r.checks = [{ name: `Portal (${pr.gov})`, demand: pr.util * 100, capacity: 100, unit: "%", ratio: pr.util }];
+          r.notes = [...pr.notes, ...(beam ? [`Gravity on the portal beam from ${beam.label}'s loads.`] : ["No beam drawn along the portal: gravity load on its beam not included."]), ...r.notes];
+        }
+      }
+
+  // what a wall standing on the ground brings down, per metre
+  const wallLine = (w: Member) => {
+    const a = autoTrib(model, w);
+    const lvl = levelOf(model, w.levelId);
+    const self = (w.wall?.kind === "block" ? p.gWallBlock : w.wall?.kind === "int" ? p.gWallInt : p.gWallExt) * (lvl?.height ?? 2.4);
+    const ll = lineLoads(a?.trib ?? {}, p, self);
+    const wStar = Math.max(1.35 * ll.G, 1.2 * ll.G + 1.5 * ll.Qf, 1.2 * ll.G + 1.5 * ll.Qr + 0.4 * ll.Qf);
+    return { a, ll, wStar };
+  };
+
+  // rib rafts
+  for (const z of rafts) {
+    const spec = z.raft ?? defaultRaft();
+    const lv = raftLevels(z);
+    const x0 = Math.min(z.a.x, z.b!.x),
+      x1 = Math.max(z.a.x, z.b!.x),
+      y0 = Math.min(z.a.y, z.b!.y),
+      y1 = Math.max(z.a.y, z.b!.y);
+    const nearEdge = (q: Pt) => Math.min(q.x - x0, x1 - q.x, q.y - y0, y1 - q.y) <= 0.4;
+    const walls: RaftWall[] = [];
+    for (const w of model.members) {
+      if (w.type !== "wall" || !w.b || !lv.has(w.levelId) || !inRect(z, along(w, memberLength(w) / 2))) continue;
+      const { a, ll, wStar } = wallLine(w);
+      const edge = nearEdge(w.a) && nearEdge(w.b) && nearEdge(along(w, memberLength(w) / 2));
+      walls.push({ mark: w.label, edge, length: memberLength(w), wStar, G: ll.G, Q: ll.Qf + ll.Qr });
+      results.set(w.id, {
+        memberId: w.id,
+        mark: w.label,
+        status: "none",
+        ratio: null,
+        summary: `${describeMember(w)} · on rib raft ${z.label} · w* ${fmt(wStar, 1)} kN/m`,
+        utils: [],
+        kv: [{ label: "Line load w* on the raft", value: `${fmt(wStar, 1)} kN/m${edge ? " (edge beam)" : ""}` }],
+        inputs: [{ label: "Carries", value: a ? `${tribText(a.trib)} (${a.from.join(", ")})` : "its own weight only" }],
+        loads: [
+          { label: "G (incl. wall)", value: `${fmt(ll.G)} kN/m` },
+          { label: "Q", value: `${fmt(ll.Qf + ll.Qr)} kN/m` },
+        ],
+        checks: [],
+        notes: [`Stands on rib raft ${z.label}, which is designed for it.`],
+      });
+    }
+    const ps: RaftPost[] = posts
+      .filter((s) => s.type === "post" && lv.has(s.levelId) && !seats.get(s.id) && inRect(z, s.a))
+      .map((s) => ({ mark: results.get(s.id)?.mark ?? s.label, Nstar: rStar(results.get(s.id)?.ends?.a ?? ZERO) }))
+      .filter((q) => q.Nstar > 0);
+    const d = designRaft(spec, { Lx: x1 - x0, Ly: y1 - y0, Gsup: 0, Q: p.Qf, walls, posts: ps }, site);
+    results.set(z.id, {
+      memberId: z.id,
+      mark: z.label,
+      status: statusFor(d.util),
+      ratio: d.util,
+      govName: d.gov,
+      sec: { name: `Rib raft ${d.D} (${spec.pod} pods)`, fam: "other", b: spec.ribWidth, d: d.D },
+      summary: `Rib raft ${d.D} deep, ribs ${spec.ribWidth} @ ${spec.ribSpacing}${d.bot ? `, ${d.bot.text} bottom` : ""}${d.top ? ` / ${d.top.text} top` : ""} · ${Math.round(d.util * 100)}%`,
+      utils: d.utils,
+      kv: d.lines,
+      inputs: [
+        { label: "Carries", value: [...walls.map((w) => w.mark), ...ps.map((q) => q.mark)].join(", ") || "floor loads only" },
+        { label: "Floor live load", value: `${p.Qf} kPa` },
+      ],
+      loads: [
+        { label: "Self-weight", value: `${fmt(d.sw)} kPa` },
+        { label: "Walls on it", value: walls.length ? walls.map((w) => `${w.mark} ${fmt(w.wStar, 1)}${w.edge ? " (edge)" : ""}`).join(", ") + " kN/m" : "none" },
+      ],
+      checks: d.checks,
+      notes: [...d.notes, ...(model.site ? [] : ["No site data entered: good ground (300 kPa ultimate, φ 0.5) and non-expansive soil assumed."])],
+    });
+  }
+
+  // walls on the lowest level: a strip footing for what they carry
+  const lowest = [...model.levels].sort((a, b) => a.elevation - b.elevation)[0];
+  for (const w of model.members) {
+    if (w.type !== "wall" || !w.b || w.levelId !== lowest?.id || results.has(w.id)) continue;
+    const { a, ll, wStar } = wallLine(w);
+    const f = designStrip(wStar, site, w.wall?.thickness ?? 90);
+    results.set(w.id, {
+      memberId: w.id,
+      mark: w.label,
+      status: statusFor(f.u),
+      ratio: f.u,
+      summary: `${describeMember(w)} · strip ${f.B}×${f.D} · w* ${fmt(wStar, 1)} kN/m`,
+      utils: [{ label: "Bearing", u: f.u }],
+      kv: f.lines,
+      inputs: [{ label: "Carries", value: a ? `${tribText(a.trib)} (${a.from.join(", ")})` : "its own weight only" }],
+      loads: [
+        { label: "G (incl. wall)", value: `${fmt(ll.G)} kN/m` },
+        { label: "Q", value: `${fmt(ll.Qf + ll.Qr)} kN/m` },
+      ],
+      checks: [{ name: "Strip footing bearing", demand: f.q, capacity: f.qCap, unit: "kPa", ratio: f.u }],
+      notes: [`Strip footing under the wall: bearing to φb ${site.phiBearing} × ${site.bearing} kPa. Point loads from posts in the wall need their own pads.`],
+    });
+  }
+
+  for (const m of model.members) {
+    if (results.has(m.id)) continue;
+    results.set(m.id, {
+      memberId: m.id,
+      mark: m.label,
+      status: "none",
+      ratio: null,
+      summary: m.type === "wall" ? `${describeMember(m)}${m.wall?.openings.length ? ` · ${m.wall.openings.length} opening${m.wall.openings.length === 1 ? "" : "s"}` : ""}` : "No calculation for this element.",
+      utils: [],
+      kv: [],
+      inputs: [],
+      loads: [],
+      checks: [],
+      notes: [],
+    });
+  }
+  // ---------------------------------------------------------------- stability
+  // Each member is designed as if it were held up, so check that something is
+  // there: under every post a post, pile, footing, beam, loadbearing wall, raft
+  // or slab; under every beam end a post, wall or beam (a cantilever needs two
+  // supports besides its free end).
+  const flag = (id: string, why: string) => {
+    const r = results.get(id);
+    if (!r) return;
+    r.unstable = why;
+    r.notes = [`Unstable: ${why}.`, ...r.notes];
+  };
+  for (const q of posts) {
+    if (q.type !== "post" || seats.has(q.id)) continue;
+    const ql = levelOf(model, q.levelId);
+    if (!ql || ql.floor === "slab" || raftUnder(ql.id, q.a)) continue;
+    const below = downFrom(ql)[0];
+    if (below && bearingWalls.some((w) => w.levelId === below.id && segDist(q.a, w) <= ACROSS)) continue;
+    flag(q.id, below ? `nothing under it on the ${below.name} (add a post, pile, footing or beam below)` : "it stands on a timber floor with nothing under it (add a pile or footing)");
+  }
+  const endName = (e: "a" | "b") => (e === "a" ? "end 1" : "end 2");
+  for (const m of beamLike) {
+    const loose = looseEnds.get(m.id);
+    if (m.type !== "beam" || !m.b) continue;
+    const held = heldAt(m);
+    if (held < 2)
+      flag(
+        m.id,
+        loose?.length
+          ? `nothing under ${loose.map(endName).join(" or ")}, so it is held at ${held === 1 ? "only one point" : "no point"} (add a post, wall or beam there)`
+          : "a cantilever held at only one point (it needs a back span over a second support)",
+      );
+    else if (loose?.length) results.get(m.id)?.notes.unshift(`Nothing under ${loose.map(endName).join(" or ")}: it overhangs its supports there and is designed as a cantilever.`);
+  }
+  // The load path has to reach the ground: a post on an unstable member is
+  // unstable, and so is a beam left with fewer than two sound supports.
+  const unstable = (id: string) => !!results.get(id)?.unstable;
+  const named = (ids: string[]) => {
+    const list = [...new Set(ids)].map((id) => `${posts.some((s) => s.id === id) ? "post" : "beam"} ${results.get(id)?.mark ?? id}`);
+    return `${list.join(" and ")} ${list.length > 1 ? "have" : "has"} no load path to the ground`;
+  };
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const q of posts) {
+      const seat = seats.get(q.id);
+      if (q.type !== "post" || unstable(q.id) || !seat || !unstable(seat.id)) continue;
+      flag(q.id, `it stands on ${results.get(seat.id)?.mark}, which is unstable`);
+      changed = true;
+    }
+    for (const m of beamLike) {
+      if (m.type !== "beam" || !m.b || unstable(m.id)) continue;
+      const at = [...(["a", "b"] as const).filter((e) => m.free !== e && endHeld(m, e)).map((e) => endHolders(m, e)), ...innerHolders(m)];
+      if (at.filter((h) => h.solid || h.ids.some((id) => !unstable(id))).length >= 2) continue;
+      flag(m.id, named(at.flatMap((h) => (h.solid ? [] : h.ids.filter(unstable)))));
+      changed = true;
+    }
+  }
+  // A member near what carries it is taken to bear on it, so a slip of the mouse
+  // can hide a missing connection. Past BEARS, say so.
+  const offBy = (r: Result | undefined, from: Pt, to: Pt, mark: string, end?: "a" | "b") => {
+    const d = Math.hypot(from.x - to.x, from.y - to.y);
+    if (r && d > BEARS && (!r.misaligned || d * 1000 > r.misaligned.mm)) r.misaligned = { mm: Math.round(d * 1000), mark, to, end };
+  };
+  for (const q of posts) {
+    const seat = seats.get(q.id);
+    if (q.type !== "post" || !seat) continue;
+    const under = seat.kind === "support" ? posts.find((x) => x.id === seat.id)?.a : byId.get(seat.id) && along(byId.get(seat.id)!, seat.at);
+    if (under) offBy(results.get(q.id), q.a, under, results.get(seat.id)?.mark ?? "the member below");
+  }
+  for (const m of beamLike) {
+    if (m.type !== "beam" || !m.b) continue;
+    for (const e of ["a", "b"] as const) {
+      if (m.free === e) continue;
+      const s = posts.find((x) => x.levelId === m.levelId && near(x.a, m[e]!));
+      if (s) offBy(results.get(m.id), m[e]!, s.a, results.get(s.id)?.mark ?? "the post", e);
+    }
+  }
+
+  // ---------------------------------------------------------------- connection schedule
+  const connections: Connection[] = [];
+  const post = (lid: string, q: Pt) => posts.find((x) => x.type === "post" && x.levelId === lid && near(x.a, q));
+  for (const m of beamLike) {
+    const r = results.get(m.id);
+    if (!r?.sec || !m.b) continue;
+    const sups = r.supportLoads ?? [
+      ...(isFree(m, "a") ? [] : [{ at: 0, loads: r.ends?.a ?? ZERO }]),
+      ...(isFree(m, "b") ? [] : [{ at: memberLength(m), loads: r.ends?.b ?? ZERO }]),
+    ];
+    const steel = findSteel(r.sec.name);
+    for (const sp of sups) {
+      const R = rStar(sp.loads);
+      if (R <= 0) continue;
+      const where = sp.at < 1e-6 ? "end 1" : Math.abs(sp.at - memberLength(m)) < 1e-6 ? "end 2" : `at ${fmt(sp.at)} m`;
+      const under = post(m.levelId, along(m, sp.at));
+      if (steel) connections.push(beamEnd(r.mark, where, R, steel));
+      else if (under && isTimberFam(r.sec.fam)) {
+        const ps = results.get(under.id)?.sec;
+        if (ps && ps.fam !== "SHS") connections.push(timberBearing(`${r.mark} ${where} on ${results.get(under.id)!.mark}`, R, r.sec.b, Math.min(ps.b, ps.d), TIMBER[r.sec.fam].fp));
+        else connections.push(rated(`${r.mark} ${where} on ${results.get(under.id)?.mark ?? "post"}`, "Beam to post", R, "Cap plate or bracket"));
+      } else if (!steel) connections.push(rated(`${r.mark} ${where}`, "Beam support", R, "Hanger or bearing"));
+    }
+    if (r.upliftEnd) connections.push(rated(`${r.mark} each end`, "Wind uplift tie-down", r.upliftEnd, "Strap or bolted tie-down"));
+  }
+  for (const z of model.members) {
+    if (z.type !== "joistzone") continue;
+    const hv = results.get(z.id)?.kv.find((k) => k.label.startsWith("Hanger"));
+    const R = hv ? parseFloat(hv.value) : 0;
+    if (R > 0) connections.push(rated(results.get(z.id)!.mark, "Joist hangers", R, "Joist hanger at every joist"));
+  }
+  for (const s of posts) {
+    const r = results.get(s.id);
+    if (!r?.sec || s.type !== "post") continue;
+    const N = r.kv.find((k) => k.label.startsWith("N*"));
+    const Nv = N ? parseFloat(N.value) : 0;
+    if (r.sec.fam === "SHS") connections.push(basePlate(r.mark, Nv, r.sec.b, r.baseMoment ?? 0));
+  }
+  for (const r of results.values()) {
+    if (!r.summary.startsWith("Portal") || !r.sec) continue;
+    const bm = r.kv.find((k) => k.label.startsWith("Base M"));
+    const [M, , up] = bm ? bm.value.split("/").map((v) => parseFloat(v)) : [0, 0, 0];
+    connections.push(basePlate(`${r.mark} legs`, 0, r.sec.d, M || 0, up || 0));
+  }
+
+  return { results, lintels, bracing, connections };
+}
+
+export const STATUS_COLOUR: Record<Status, string> = {
+  pass: "#16a34a",
+  close: "#d97706",
+  fail: "#dc2626",
+  none: "#64748b",
+};
+export const STATUS_LABEL: Record<Status, string> = { pass: "Passes", close: "Close to limit", fail: "Fails", none: "No check" };

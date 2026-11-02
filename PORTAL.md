@@ -53,6 +53,8 @@ is the same four files concatenated for pasting into the Supabase SQL editor.
 | `0700_external_invoices` | `invoices.is_external` + `record_external_invoice` for time billed from another system |
 | `0800_leave` | annual / sick / bereavement / parental leave requests (half days), `v_leave_calendar` (type hidden from other staff), `leave_balances` with carry-over via `app.leave_balance` (opening balances + anniversary accrual, sick capped), `decide_leave`, leave-aware `hours_check` |
 | `0900_leave_balance_booked` | balance deducts approved leave booked for the future too |
+| `1000_design` | structural design app: `design_jobs` (model as jsonb, `member_count`), `design_revisions` (every save), `design_plans`, `save_design` (conflict and sign-off checks), private storage bucket `design-plans` (PDF, 50 MB) |
+| `1100_design_signoff` | review and CPEng sign-off: `design_engineers` (CPEng register, admin managed), `design_people()`, `submit_design` / `return_design` / `sign_design` (named checker, exact revision) / `reopen_design` (admin, with reason); a guard trigger allows status changes only through those |
 
 Roles: `employee` (own time only, never sees rates or values), `approver`
 (all time, rates, approve / return), `admin` (approver + setup + invoices).
@@ -76,6 +78,154 @@ where email = 'gajan@stablestructure.co.nz';
 | Staff | `/my/day` (enter, save draft, submit; week strip), `/leave` (team calendar, request, own balance), `/reports/hours-check`, `/reports/employee` (own time only) |
 | Approvers | `/approvals`, `/entries` (+ `/entries/new`, `/entries/[id]`), all six `/reports/*` with `/export` (xlsx), `/invoices` (read) |
 | Admin | `/invoices/new`, `/invoices/[id]` (+ `/pdf`), `/admin/*`: staff, projects & rates, clients, work types, public holidays, company & GST, audit log |
+| All staff | `/design` (design jobs; admins manage CPEngs there), `/design/[id]` (plan editor, 3D model, calculations, IFC export, sign-off, council report PDF), `/design/guide` |
+
+## Structural design app
+
+BedRock IT quotation BRIT-2610-001. Lives at `/portal/design`; code in
+`app/portal/(app)/design/` (pages, editor, plan view, 3D view) and
+`lib/design/` (model, calculations, geometry, IFC export).
+
+- **Model**: one jsonb document per job (`lib/design/model.ts`), saved by the
+  editor's autosave through `save_design`, which refuses a stale revision
+  (someone else saved) or a signed-off job. Every save is a row in
+  `design_revisions`; the History tab restores any of them.
+- **Plans**: PDFs upload from the browser straight to the private
+  `design-plans` bucket under the person's own session, then
+  `registerPlan` records them. pdf.js renders the page in the browser.
+- **Levels**: each level holds the posts and walls of that storey and the
+  framing at its top. Ground-floor joists and bearers go on Foundation. All
+  levels share one metre frame: set the scale, then the origin (the same
+  corner) on every level.
+- **3D**: three.js, loaded only when the 3D view opens. Picking a member in
+  3D opens its level on the plan.
+- **IFC**: `lib/design/ifc.ts` writes IFC4 (IfcBeam, IfcMember RAFTER,
+  IfcColumn, IfcWall SHEAR, IfcFooting, IfcPile, one IfcBuildingStorey per
+  level). Checked with IfcOpenShell: no schema errors.
+- **Calculations** follow Stable Structure's own framing models (Lot 6 and
+  26121), and were checked against them member by member:
+  `lib/design/calc.ts` (tributary loads, combinations incl. roof live and
+  snow, 1 kN midspan point load, deflection caps; sections picked SG8 →
+  hySPAN → PFC → UB → UC (the full Grade 300 range, lightest first; fy 280 over 17 mm flanges, Ze to AS 4100 5.2) within depth and width limits; a beam ending part-way
+  along another passes its reaction on as a point load, and beams are
+  designed in that order; posts as SG8 stud packs (k12) then SHS 89–150 (AS 4100 6.3.3 buckling over the post height), standing on the first post, footing or beam below them, passing down through empty levels; joist zones with the NZS 3604 span check and hanger R*; loads
+  passed from beam ends to posts and footings), `materials.ts`,
+  `bracing.ts` (NZS 3604 / GIB EzyBrace® 2016 lines, ratings, demand and line
+  minimums), `retaining.ts` (pole bands and block walls). Wall openings make
+  their own lintels (ids `<wall id>#<opening id>`). All results are marked
+  preliminary until checked by a CPEng.
+- **Sheets** view: member, joist, lintel, post, wall, bracing and retaining
+  schedules plus the design basis and the job's assumptions to confirm.
+- **Sign-off**: draft → in review (designer names a CPEng checker) → signed
+  (the checker signs the revision they reviewed; the job then locks). The
+  checker or designer can send it back; an admin can reopen a signed job.
+- **Council report**: `[id]/report.tsx` builds a PDF in the browser with
+  @react-pdf/renderer (logo on every sheet, cover with sign-off, design basis,
+  schedule, bracing, a marked-up plan per level from `plan-image.ts`, a 3D
+  still from `snapshot3d`, every calc). Watermarked DRAFT until signed.
+  Also a design features report and PS1 details (`lib/design/paperwork.ts`,
+  entered under Consent paperwork on the Sign-off tab; the PS1 page is
+  information for the official form, never a signed statement), typical
+  details picked from the connection schedule (`[id]/details.tsx`), and,
+  when comparing with an earlier revision (History tab, `lib/design/diff.ts`),
+  a changes table with revision clouds on the plans.
+- **Piles**: ordinary H5 timber piles (square, or round as the square of the
+  same area) checked for axial load to NZS 3603, on a 350 × 350 × 200 footing
+  or larger, sized from the site bearing. Gravity only: braced and anchor
+  piles follow NZS 3604 Section 6.
+- **Roof framing**: a joist zone with a `roof` spec (drawn on the top storey)
+  is rafters or trusses over a flat, mono, gable or hip roof, or a low-slope
+  roof as on the 26121 model: level rafters on the plates, a tapered firring
+  on each falling to a box gutter (`gutter`, metres in from the zone's start
+  edge, may lie outside it) and purlins on the firrings. Rafters are
+  designed on their run (to the ridge for gable and hip); trusses report
+  their reactions for the supplier. `autoTrib` gives eaves a quarter of the
+  width and the ridge half (trusses: half to each eave; hip ends a quarter).
+  The 3D view draws sloped rafters, hips, ridge, purlins, trusses and
+  roofing (`beam3` and `poly` parts in `geometry.ts`), with flooring over
+  joist zones and a toggle per level. "Find beams on the sheet" can add a
+  colour set as walls too (blue sets as blockwork).
+- **3D framing model** (`[id]/view-3d.tsx`) is drawn like Stable Structure's
+  own Lot 6 and 26121 framing models: matte role colours (timber joists,
+  studs, rafters and purlins, steel beams in steel blue, timber lintels in
+  burnt orange, steel and timber posts), faint edges, see-through wall
+  shading tinted by storey, GIB bracing panels on the wall faces, coloured
+  ID tags in the model, set-out grid lines with bubbles (`model.grids`,
+  entered on the Levels tab and shown on the plans too), grouped layers and
+  a "lift roof" slider. Like those models it uses three.js colours as given
+  (colour management off, linear output), has a toolbar across the top
+  (Iso / Plan / elevations, then a toggle per set: each storey's walls, the
+  floor framing over it, the roof, retaining walls) and a Selected card,
+  plus a 1 m ground grid (a layer) and an X / Y / Z axes gizmo in the
+  bottom-right corner that turns with the camera.
+  Block walls (and block retaining walls) are drawn block by block: 390 x 190
+  units at 400 x 200 in running bond, courses fitted to the height, a bond beam
+  as the top course, openings left clear up to the lintel, on their own
+  "Blockwork" layer; the plain wall panel sits just inside them for the IFC
+  export and for when blockwork is switched off.
+  Tags are coloured by kind; failing members' tags turn red only when
+  colouring by result. Headers in non-loadbearing walls are not tagged.
+- **Completeness** (`lib/design/complete.ts`): passing members are half of a
+  design. The Overview's "To finish" list shows what the model still lacks:
+  floors without joists and storeys without roof framing (sampled inside the
+  walls at 0.5 m, patches of 2 m² or more, placed by the set-out grid),
+  bracing missing in either direction or with no demand, outside walls with
+  no doors or windows, beams and lintels sized on an assumed metre of load,
+  posts and beams carrying nothing, and no site data. Each item opens its
+  member or level, and the engineer can mark it OK (stored in `model.ack`).
+  The summary chip says "All checks pass" only when nothing fails and
+  nothing is open, and the checker can't sign until then. Typed line loads
+  on their own no longer add an assumed metre of floor, and walls and beams
+  under flat, mono and low-slope rafters pick up their share of roof from
+  the rafters' supports.
+- **Earthquake and wind sources** (`lib/design/site.ts`): the Z table is the
+  whole of NZS 1170.5 Table 3.3 (128 places, as MBIE publishes it) with town
+  coordinates from OpenStreetMap, so "Find site" picks the nearest listed
+  place; design keeps Z at least 0.13. B1/VM1 2nd edition (28 July 2025) still
+  cites AS/NZS 1170.2:2011 with Amendments 1-5. Region A V500/V1000 and the
+  TC2.5 and TC3 terrain/height multipliers match published reproductions of
+  the tables; V100, Region W and TC1, TC2 and TC4 still need confirming in the
+  standard (WIND_NOTE says so on every report).
+- **Site from its address** (`lib/design/linz.ts`, server-only): "Find site"
+  on the Loads tab searches LINZ NZ Addresses (layer 123113) through the LDS
+  WFS with the `LINZ_KEY` environment variable (Vercel, Preview and
+  Production; never sent to the browser), then measures the distance to the
+  LINZ 1:50k coastline (layer 50258). It sets the nearest Z-table town and its
+  wind region, and exposure zone D within 500 m of the coast, and keeps the
+  result on the site (`site.lookup`) with a BRANZ Maps link to confirm the
+  wind zone. Soil class and terrain stay with the engineer. Rate-limited
+  (`siteLookups`).
+- **Supports read off the model** (as the 26121 calcs take them): a
+  loadbearing wall crossing under a beam (more than 300 mm from its ends)
+  is a support; where it crosses at an opening, the beam's reaction there is
+  a point load on that opening's lintel. Flat, mono and low-slope rafters
+  span between the loadbearing walls and beams running across them, with
+  the eaves as overhangs. Overhangs are checked for the tip going down (not
+  lifting as the back span sags). A deck's most loaded bearer and its piles
+  carry half the joist span each side. Retaining walls take a `fall` (the
+  base stepping down along the wall). A wall's panel lists its lintels with
+  their sections and results.
+- **Decks and stairs** (`lib/design/deck.ts`): a deck is an area of H3.2
+  joists on 2/190×45-class bearers on 125×125 H5 piles with 400 × 400 × 600
+  footings and 140×20 boards (optionally bolted to the building along one
+  edge, or carried on beams at both edges with no piles), designed for
+  G 0.7 / Q 2.0 kPa. A stair is a line from foot to head:
+  risers ≤ 190 and goings ≥ 280 are checked and the stringers designed on
+  their run. Both draw like the 26121 framing model.
+- **Windows from the drawing** (`lib/design/walls.ts`): wall pieces found on
+  the sheet that lie in line are joined into one wall, and breaks of
+  0.5–3.6 m become openings (windows, sill 0.9; 2.4 m or more, doors), each
+  with its own lintel.
+- **Rib rafts**: `lib/design/raft.ts`. Drawn as a rectangle; carries the
+  walls and posts on its level (or the storey above, when drawn on the
+  foundation level). Average, edge beam and under-wall bearing, post
+  thickenings, ribs as T-beams for loss of support (span and edge cantilever
+  from the geotechnical report, else assumed from the site's expansive soil
+  setting), rib stirrups where shear needs them, topping mesh.
+- **Verification**: `lib/design/verify.ts` holds the known-answer cases
+  (textbook frame results, AS 4100 capacity tables, hand checks, Lot 6 and
+  26121 results). `npm test` runs them with Vitest, `/portal/design/verification`
+  runs them live, and every report ends with the result.
 
 ## Environment
 

@@ -32,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ...(approver ? [{ href: "/portal/invoices", label: "Invoices" }] : []),
     { href: "/portal/reports", label: approver ? "Reports" : "My hours" },
     { href: "/portal/leave", label: "Leave", badge: leavePending },
+    { href: "/portal/design", label: "Design" },
     ...(isAdmin(profile.role) ? [{ href: "/portal/admin", label: "Setup" }] : []),
     { href: "/portal/guide", label: "Guide" },
   ];

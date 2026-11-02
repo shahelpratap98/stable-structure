@@ -17,6 +17,7 @@ export const LIMITS = {
   saves: [120, 5 * 60], // My day saves, per person
   bulkActions: [60, 5 * 60], // approve / return / invoice actions, per person
   emails: [20, 60 * 60], // invoice emails, per admin
+  siteLookups: [40, 10 * 60], // design site address lookups (LINZ), per person
 } as const satisfies Record<string, readonly [number, number]>;
 
 export type LimitName = keyof typeof LIMITS;
