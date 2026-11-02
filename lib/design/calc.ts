@@ -268,7 +268,8 @@ function checkBeam(span: number, base: Loads, sec: Candidate, p: DesignParams, o
 // load is patterned (all spans, odd spans, even spans).
 type MultiCase = { M: number[]; V: number[]; d: number[]; R: number[] };
 function checkMulti(L: number, supports: number[], base: Loads, sec: Candidate, p: DesignParams, opts: { point: boolean; dlim?: number; selfWeight?: boolean; points?: PointLoad[]; restraint?: "full" | "ends"; segment?: number }): BeamCheck {
-  const sup = [...new Set(supports.map((s) => Math.round(s * 1e4) / 1e4))].sort((a, b) => a - b);
+  // rounding can't be let push the end support past the end of the beam, where it would fall off
+  const sup = [...new Set(supports.map((s) => (s >= L - 1e-4 ? L : Math.round(s * 1e4) / 1e4)))].sort((a, b) => a - b);
   const sw = opts.selfWeight === false ? 0 : selfWeight(sec);
   const l = { ...base, G: base.G + sw };
   const P = opts.point ? p.Ppt : 0;
@@ -1428,7 +1429,7 @@ function runCalcsOnce(model: DesignModel): Calcs {
         flush: m.type === "beam" && loadKind(model, level) === "floor",
         points,
         // held at one point it is a mechanism: size it as a plain span, it is flagged unstable below
-        supports: ((s) => (s && s.length < 2 ? undefined : s))(beamSupports(m)),
+        supports: ((s) => (s && new Set(s.map((v) => Math.round(v * 1e4))).size < 2 ? undefined : s))(beamSupports(m)),
         restraint: m.restraint,
         segment: m.segment,
         uplift: upliftKPa,

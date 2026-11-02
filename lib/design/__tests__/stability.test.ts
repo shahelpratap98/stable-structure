@@ -98,3 +98,35 @@ describe("stability", () => {
     expect(g[0]).toMatchObject({ kind: "unstable", id: "B1" });
   });
 });
+
+describe("beams of any length", () => {
+  // Drawn with a mouse, a length has long decimals. Rounded up, the far support landed past
+  // the end of the beam and fell off it, which left a mechanism that took the editor down.
+  it.each([2.7342781, 2.7300001, 3.1415926, 4.0000499, 4.00005, 5.12346])("takes a post part-way along a %s m beam", (L) => {
+    const m = emptyModel();
+    const g = m.levels.find((l) => l.name === "Ground floor")!.id;
+    const post = (id: string, x: number): Member => ({ id, type: "post", label: id, levelId: g, a: { x, y: 0 }, material: "timber", grade: "SG8", section: "90x90", sizing: { mode: "auto" } });
+    const beam: Member = { id: "B", type: "beam", label: "B", levelId: g, a: { x: 0, y: 0 }, b: { x: L, y: 0 }, material: "timber", grade: "SG8", section: "", sizing: { mode: "auto" } };
+    const calcs = runCalcs({ ...m, members: [post("P1", 0.4), post("P2", L), beam] });
+    expect(calcs.results.get("B")?.sec).toBeTruthy();
+  });
+
+  it("copes with any length", () => {
+    const m = emptyModel();
+    const g = m.levels.find((l) => l.name === "Ground floor")!.id;
+    const post = (id: string, x: number): Member => ({ id, type: "post", label: id, levelId: g, a: { x, y: 0 }, material: "timber", grade: "SG8", section: "90x90", sizing: { mode: "auto" } });
+    for (let i = 0; i < 60; i++) {
+      const L = 2 + i * 0.0687731;
+      const beam: Member = { id: "B", type: "beam", label: "B", levelId: g, a: { x: 0, y: 0 }, b: { x: L, y: 0 }, material: "timber", grade: "SG8", section: "", sizing: { mode: "auto" } };
+      expect(() => runCalcs({ ...m, members: [post("P1", 0.2 + i * 0.005), post("P2", L), beam] })).not.toThrow();
+    }
+  });
+
+  it("treats two supports on one spot as one", () => {
+    const m = emptyModel();
+    const g = m.levels.find((l) => l.name === "Ground floor")!.id;
+    const post = (id: string, x: number): Member => ({ id, type: "post", label: id, levelId: g, a: { x, y: 0 }, material: "timber", grade: "SG8", section: "90x90", sizing: { mode: "auto" } });
+    const beam: Member = { id: "B", type: "beam", label: "B", levelId: g, a: { x: 0, y: 0 }, b: { x: 3.3, y: 0 }, material: "timber", grade: "SG8", section: "", sizing: { mode: "auto" } };
+    expect(() => runCalcs({ ...m, members: [post("P1", 1.5), post("P2", 1.50001), beam] })).not.toThrow();
+  });
+});
