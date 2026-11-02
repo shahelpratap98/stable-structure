@@ -10,6 +10,15 @@ import { defaultRoof, defaultWall, defaultZone, newId, nextMark, type DesignMode
 
 export const DRAFTED = "Drafted from the plans";
 
+// The pitch the engineer gives the house, carried onto the roof zones drafted from
+// it. A drafted zone whose pitch has been changed by hand keeps its own.
+export function setHousePitch(model: DesignModel, pitch: number): DesignModel {
+  const base = model.base;
+  if (!base) return model;
+  const members = model.members.map((m) => (m.notes === DRAFTED && m.zone?.roof && m.zone.roof.pitch === base.pitch ? { ...m, zone: { ...m.zone, roof: { ...m.zone.roof, pitch } } } : m));
+  return { ...model, members, base: { ...base, pitch, pitchFrom: "engineer" } };
+}
+
 const CELL = 0.1; // m
 const BLOCK = 0.15; // m, this much wall that isn't a stud wall with cladding beside it is blockwork
 const SILL = 0.9; // m
@@ -20,7 +29,6 @@ const SNAP = 0.25; // m
 const MIN_SIDE = 0.5; // m, smaller strips of a room don't get their own zone
 const MIN_AREA = 2; // m2
 const EAVES = 0.45; // m, on the lower roofs
-const LOWER_PITCH = 10; // degrees, a lean-to under the upper wall
 const JOISTS: [number, string][] = [[3.4, "190x45"], [4.2, "240x45"], [5, "290x45"]]; // m of span, SG8 at 400 centres
 const SLACK = 1.2; // pieces of a room join up if their box is no bigger than this over their area
 const ROOF_SLACK = 1.4; // the roof needs fewer zones than the floor does
@@ -265,7 +273,7 @@ export function draftStructure(model: DesignModel): { members: Member[]; notes: 
         for (const r0 of joined(rooms((x, y) => low(x, y) && !up(x, y), b2, []), ROOF_SLACK)) {
           const r = snapped(r0, walls.get(l.id) ?? []);
           if (!bigEnough(r)) continue;
-          member("joistzone", l.id, "RZ", { x: r.x0, y: r.y0 }, { x: r.x1, y: r.y1 }, { grade: "SG8", section: "190x45", zone: { ...defaultZone(), dir: r.y1 - r.y0 <= r.x1 - r.x0 ? "y" : "x", spacing: 900, roof: { ...defaultRoof(), form: "mono", pitch: LOWER_PITCH, framing: "rafters", overhang: EAVES } } });
+          member("joistzone", l.id, "RZ", { x: r.x0, y: r.y0 }, { x: r.x1, y: r.y1 }, { grade: "SG8", section: "190x45", zone: { ...defaultZone(), dir: r.y1 - r.y0 <= r.x1 - r.x0 ? "y" : "x", spacing: 900, roof: { ...defaultRoof(), form: "mono", pitch: base.pitch, framing: "rafters", overhang: EAVES } } });
         }
       }
     }

@@ -107,8 +107,13 @@ export function readHouse(model: DesignModel, sheets: Map<string, SheetData>): H
     }
   }
   const text = placed.filter((l) => l.kind === "roof").map((l) => sheets.get(l.id)!.text);
-  const pitch = text.map(roofPitch).find((p) => p !== null) ?? model.base?.pitch ?? 20;
-  return { base: { sheets: read, pitch }, plans, notes, walls: Object.values(read).reduce((n, s) => n + s.walls.length, 0) };
+  const printed = text.map(roofPitch).find((p) => p !== null) ?? null;
+  const typed = model.base?.pitchFrom === "engineer" ? model.base.pitch : null; // what the engineer typed stands
+  const pitch = typed ?? printed ?? model.base?.pitch ?? 20;
+  if (typed !== null && printed !== null && printed !== typed) notes.push(`Roof pitch: set to ${typed}°, but the roof sheet says ${printed}°. Check it.`);
+  else if (typed === null && printed === null && Object.keys(read).length) notes.push(`Roof pitch: couldn't read it off the roof sheet, so ${pitch}° is only a starting figure. Check the sheet and type it in.`);
+  const pitchFrom = typed !== null ? ("engineer" as const) : printed !== null ? ("sheet" as const) : undefined;
+  return { base: { sheets: read, pitch, ...(pitchFrom ? { pitchFrom } : {}) }, plans, notes, walls: Object.values(read).reduce((n, s) => n + s.walls.length, 0) };
 }
 
 // ---------------------------------------------------------------- in 3D

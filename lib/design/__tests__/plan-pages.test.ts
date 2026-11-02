@@ -68,6 +68,12 @@ describe("reading the sheets", () => {
     expect(sheetTitle(sheetSet[7])).toBe("PROPOSED NORTH ELEVATION");
     expect(sheetTitle("nothing here")).toBeNull();
   });
+
+  it("takes the title printed after the scale, not notes or a stale title block", () => {
+    expect(sheetTitle(sheetSet[6])).toBe("PROPOSED ROOF PLAN");
+    expect(sheetTitle("ALL TO BE CHECKED FROM FLOOR PLANS AND ELEVATIONS. A Scale: 1:50 PROPOSED FIRST FLOOR DIMENSION PLAN 12 EXAMPLE STREET PLAN")).toBe("PROPOSED FIRST FLOOR DIMENSION PLAN");
+    expect(sheetTitle("Scale: 1:50 CHECK ON SITE")).toBeNull();
+  });
 });
 
 describe("setting up a job", () => {
