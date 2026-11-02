@@ -5,7 +5,7 @@
 // engineer marks it OK (a stair void, say), and "All checks pass" waits for them.
 
 import type { Calcs } from "./calc";
-import { levelAboveOf, type DesignModel, type Level, type Member, type Pt } from "./model";
+import { levelAboveOf, lintelTop, openingTop, type DesignModel, type Level, type Member, type Pt } from "./model";
 
 export type Gap = {
   key: string; // stable, for marking it OK
@@ -20,6 +20,8 @@ export type Gap = {
 const CELL = 0.5; // m, sampling grid for floor and roof coverage
 const REACH = 0.3; // m, a zone drawn to joist or rafter centres still covers the plates beside it
 const MIN_GAP_M2 = 2; // smaller uncovered patches are drawing slop
+const DOOR_HEAD = 2.1; // m above the floor: a lintel lower than this may not clear a door
+const WINDOW_MIN = 0.3; // m, an opening this short between sill and lintel is probably a mistake
 
 const storeys = (model: DesignModel) => [...model.levels].filter((l) => l.kind !== "roof").sort((a, b) => a.elevation - b.elevation);
 const wallsOn = (model: DesignModel, l: Level) => model.members.filter((m) => m.type === "wall" && m.levelId === l.id && m.b);
@@ -206,6 +208,29 @@ export function completeness(model: DesignModel, calcs: Calcs): Gap[] {
       gaps.push({ key: `loads:${r.memberId}`, kind: "assumed", what: `${r.mark}: ${detail[0].toLowerCase()}${detail.slice(1)}`, detail, ...ofMember });
     } else if (r.status === "none" && (m.type === "beam" || m.type === "post") && !lintel)
       gaps.push({ key: `none:${r.memberId}`, kind: "unchecked", what: `${r.mark}: carries nothing, so it isn't checked`, detail: "Carries nothing, so it isn't checked", ...ofMember });
+  }
+
+  // A lintel moved up or down, or just deep: does the opening still work, and does it still fit?
+  const lintelGap = (id: string, mark: string, levelId: string, key: string, detail: string) => gaps.push({ key: `${key}:${id}`, kind: "assumed", what: `${mark}: ${detail[0].toLowerCase()}${detail.slice(1)}`, detail, mark, id, levelId });
+  const plates = (id: string, mark: string, level: Level, top: number) => {
+    const up = Math.round((top - lintelTop(level)) * 1000);
+    if (up > 0) lintelGap(id, mark, level.id, "plates", `Raised ${up} mm into the top plates: check it fits`);
+  };
+  for (const vl of calcs.lintels) {
+    const level = model.levels.find((l) => l.id === vl.wall.levelId);
+    const r = calcs.results.get(vl.id);
+    if (!level || !r?.sec) continue;
+    const d = r.sec.d / 1000;
+    const top = openingTop(level, vl.opening, d);
+    plates(vl.id, r.mark, level, top);
+    const under = top - d - level.elevation;
+    const clear = Math.round(under * 1000);
+    if (vl.opening.sill <= 0.05 && under < DOOR_HEAD - 1e-6) lintelGap(vl.id, r.mark, level.id, "head", `Only ${clear} mm clear under it: check the door fits`);
+    else if (vl.opening.sill > 0.05 && under - vl.opening.sill < WINDOW_MIN) lintelGap(vl.id, r.mark, level.id, "head", `Only ${Math.round((under - vl.opening.sill) * 1000)} mm between the sill and the lintel: check the window fits`);
+  }
+  for (const m of model.members) {
+    const level = model.levels.find((l) => l.id === m.levelId);
+    if (m.type === "lintel" && level && m.dz) plates(m.id, calcs.results.get(m.id)?.mark ?? m.label, level, lintelTop(level) + m.dz);
   }
   return gaps;
 }

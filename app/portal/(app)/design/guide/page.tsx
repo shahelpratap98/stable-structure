@@ -203,6 +203,13 @@ export default async function DesignGuidePage() {
       </Card>
 
       <Card>
+        <H id="lintels">Moving a lintel up or down</H>
+        <p className="mt-2">
+          A lintel sits under the top plates unless you move it. To drop it to a door or window head, or raise it, select it and type <T>Raise / lower lintel</T> in millimetres (up is +, down is −), or drag the green arrow in 3D. This works the same for lintels from openings and lintels you draw. The opening, the studs either side, the cripple studs above and any post standing on it all follow, and the card shows the lintel&apos;s top and underside above the floor. <T>To finish</T> flags a lintel raised into the plates, one that leaves under 2100 mm clear at a door, or one too close to a window sill. Moving a lintel doesn&apos;t change its size: check how the load gets to it, such as through cripple studs.
+        </p>
+      </Card>
+
+      <Card>
         <H id="house3d">The 3D house</H>
         <p className="mt-2">
           The house is read off the architect&apos;s sheets when you upload them: walls, doors and windows, the upper floors and the roof, including a lower roof over anything that sticks

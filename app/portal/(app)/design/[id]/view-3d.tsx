@@ -486,11 +486,11 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const [view, setViewName] = useState<"iso" | "top" | "north" | "south" | "east" | "west" | null>("iso"); // null once orbited
   const [built, setBuilt] = useState(0); // bumps after each rebuild, so the selection is reapplied
   const [dragText, setDragText] = useState<{ text: string; x: number; y: number } | null>(null);
-  const live = useRef({ model, onEdit });
+  const live = useRef({ model, calcs, onEdit });
   useEffect(() => {
     select.current = onSelect;
-    live.current = { model, onEdit };
-  }, [onSelect, model, onEdit]);
+    live.current = { model, calcs, onEdit };
+  }, [onSelect, model, calcs, onEdit]);
 
   // Renderer, camera, lights and controls: once.
   useEffect(() => {
@@ -619,9 +619,9 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       aim(e);
       const mesh = handleUnder();
       if (!mesh) return;
-      const { model } = live.current;
+      const { model, calcs } = live.current;
       const { h, id, height } = mesh.userData as { h: Handle; id: string; height: number };
-      const m = model.members.find((x) => x.id === id);
+      const m = model.members.find((x) => x.id === id) ?? calcs.lintels.find((l) => l.id === id)?.member;
       if (!m) return;
       controls.enabled = false; // this listener runs first, so the drag doesn't also orbit
       down = null;
@@ -815,7 +815,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
 
   // Drag handles on the selected member. Not with the storeys pulled apart: the
   // handles would sit away from what they move.
-  const selected = selectedId ? model.members.find((m) => m.id === selectedId) : undefined;
+  const selected = selectedId ? (model.members.find((m) => m.id === selectedId) ?? calcs.lintels.find((l) => l.id === selectedId)?.member) : undefined;
   const canEdit = !locked && !!onEdit && editable(selected);
   useEffect(() => {
     const s = stage.current;
@@ -936,7 +936,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
           {canEdit && selected ? (
             <div className="mt-2 flex flex-col gap-1 border-t border-[#c9cfca] pt-2">
               {selected.type !== "wall" ? <MmField key={`${selected.id}:dz:${selected.dz ?? 0}`} label="Raise / lower (mm)" value={Math.round((selected.dz ?? 0) * 1000)} onCommit={(v) => onEdit!(selected.id, { dz: v / 1000 || undefined }, `${selected.label}: raised or lowered to ${v} mm`)} /> : null}
-              {selected.b ? (
+              {selected.b && !selected.id.includes("#") ? (
                 <MmField
                   key={`${selected.id}:len:${memberLength(selected)}`}
                   label="Length (mm)"

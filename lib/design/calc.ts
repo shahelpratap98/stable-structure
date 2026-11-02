@@ -18,7 +18,7 @@ import { designConcreteBeam } from "./concrete";
 import { basePlate, beamEnd, rated, timberBearing, type Connection } from "./connections";
 import { solveBeam } from "./frame";
 import { ALL_FAMILIES, candidates, findSteel, fixedCandidate, FAMILY_LABEL, FY, ES, isTimberFam, KEY_GRADE, SG8, TIMBER, type Candidate, type SteelSec } from "./materials";
-import { along, describeMember, framingTop, lintelTop, MEMBER_INFO, memberLength, roofHalfSpan, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type RoofSpec, type Sizing, type Trib } from "./model";
+import { along, describeMember, framingTop, lintelTop, MEMBER_INFO, memberLength, openingTop, roofHalfSpan, type DesignModel, type DesignParams, type Level, type Member, type Opening, type Pt, type RoofSpec, type Sizing, type Trib } from "./model";
 import { retainingCalc } from "./retaining";
 import { defaultRaft, designRaft, type RaftPost, type RaftWall } from "./raft";
 import { DECK_G, DECK_Q, deckLayout, STAIR_G, STAIR_Q, stairLayout } from "./deck";
@@ -716,6 +716,7 @@ export function wallLintels(model: DesignModel): VirtualLintel[] {
         trib: o.trib,
         sizing: { mode: "auto", maxB: w.wall.thickness, ...(o.sizing ?? {}) },
         notes: o.note,
+        ...(o.dz ? { dz: o.dz } : {}),
       };
       out.push({ id: member.id, wall: w, opening: o, member });
     }
@@ -1123,7 +1124,8 @@ function runCalcsOnce(model: DesignModel): Calcs {
       const seatLevel = seat ? levelOf(model, seat.levelId) : undefined;
       const below = level ? downFrom(level)[0] : undefined;
       // a post passing down through a double-height space stands on that lower framing
-      const onLintel = seat?.kind === "beam" && byId.get(seat.id)?.type === "lintel" && seatLevel ? lintelTop(seatLevel) + (byId.get(seat.id)?.dz ?? 0) : undefined;
+      const onOpening = seat ? lintels.find((l) => l.id === seat.id) : undefined;
+      const onLintel = seat?.kind === "beam" && byId.get(seat.id)?.type === "lintel" && seatLevel ? (onOpening ? openingTop(seatLevel, onOpening.opening, (results.get(seat.id)?.sec?.d ?? 190) / 1000) : lintelTop(seatLevel) + (byId.get(seat.id)?.dz ?? 0)) : undefined;
       res.seatTop = onLintel;
       const bottom = onLintel ?? (seatLevel && below && seatLevel.elevation < below.elevation - 1e-6 ? framingTop(model, seatLevel) : (level?.elevation ?? 0));
       // split levels: the beams it carries and its own base can be offset from the level

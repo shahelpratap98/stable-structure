@@ -24,6 +24,7 @@ import {
   formatLength,
   MEMBER_INFO,
   memberLength,
+  openingTop,
   type BraceSystem,
   type DesignModel,
   type DesignParams,
@@ -869,6 +870,8 @@ function WallEditor({ m, locked, set, results, onPick }: { m: Member; locked: bo
 export function OpeningPanel({
   lintel,
   result,
+  level,
+  gaps = [],
   locked,
   onChange,
   onDelete,
@@ -876,6 +879,8 @@ export function OpeningPanel({
 }: {
   lintel: VirtualLintel;
   result: Result | undefined;
+  level?: Level;
+  gaps?: Gap[];
   locked: boolean;
   onChange: (patch: Partial<Opening>, summary: string) => void;
   onDelete: () => void;
@@ -884,8 +889,20 @@ export function OpeningPanel({
   const o = lintel.opening;
   const set = (p: Partial<Opening>, w: string) => onChange(p, `${o.label}: ${w}`);
   const wallLen = memberLength(lintel.wall);
+  const depth = (result?.sec?.d ?? 190) / 1000;
+  const top = level ? openingTop(level, o, depth) - level.elevation : null;
   return (
     <div>
+      {gaps.length ? (
+        <ul className="m-3 flex flex-col gap-1 text-sm">
+          {gaps.map((g) => (
+            <li key={g.key} className="flex items-start gap-2">
+              <span className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOUR.close }} aria-hidden />
+              <span>{g.detail ?? g.what}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <Section
         title={`Opening in ${lintel.wall.label}`}
         aside={
@@ -904,8 +921,10 @@ export function OpeningPanel({
           <NumberField label="Clear width" unit="m" value={o.width} min={0.1} onCommit={(v) => v && set({ width: Math.min(v, wallLen - o.offset) }, `width ${v} m`)} />
           <NumberField label="From wall start" unit="m" value={o.offset} min={0} onCommit={(v) => v !== undefined && set({ offset: Math.min(v, Math.max(0, wallLen - o.width)) }, `moved to ${v} m`)} />
           <NumberField label="Sill height (0 = door)" unit="m" value={o.sill} min={0} onCommit={(v) => v !== undefined && set({ sill: v }, v > 0.05 ? "window" : "door")} />
+          <NumberField label="Raise / lower lintel" unit="mm" value={o.dz === undefined ? undefined : Math.round(o.dz * 1000)} placeholder="under the plates" onCommit={(v) => set({ dz: (v ?? 0) / 1000 || undefined }, `lintel raised or lowered ${v ?? 0} mm`)} />
           <TextField label="Note" value={o.note ?? ""} wide onCommit={(v) => set({ note: v || undefined }, "note")} />
         </fieldset>
+        {top !== null ? <p className="mt-2 text-xs text-muted tabular-nums">Lintel top {Math.round(top * 1000)} mm, underside {Math.round((top - depth) * 1000)} mm above the floor. Up is +, down is −.</p> : null}
         <p className="mt-2 text-xs text-muted">Design span is the clear width plus 90 mm bearing.</p>
       </Section>
       <Section title="Lintel section">
