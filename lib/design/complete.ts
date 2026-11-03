@@ -138,6 +138,7 @@ export function completeness(model: DesignModel, calcs: Calcs): Gap[] {
   }
 
   if (!model.site) gaps.push({ key: "site", kind: "missing", what: "No site data: wind and earthquake demand and footing bearing use defaults (Loads tab, Find site)" });
+  if (model.base && !model.base.pitchFrom) gaps.push({ key: "pitch", kind: "assumed", what: `Roof pitch ${model.base.pitch}° is a default, not read from the plans: check it against the roof sheet and type it on the Levels tab` });
 
   for (const l of all) {
     const walls = wallsOn(model, l);

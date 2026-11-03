@@ -35,7 +35,7 @@ import { loadRevision, registerPlan, saveDesign } from "../actions";
 import { HistoryPanel, JobSection, LevelsPanel, MemberPanel, OpeningPanel, BulkPanel, ChangesPanel, GridPanel, Overview, PaperworkPanel, ParamsPanel, SchedulePanel, SitePanel, type PlanFile } from "./panels";
 import { countPages, findLines, labelLines, loadPdf, pageTexts, pageWords, renderPage, sheetData, type FoundLine, type RenderedPage } from "./pdf";
 import { readHouse, type BaseWall, type SheetData } from "@/lib/design/base-house";
-import { draftStructure } from "@/lib/design/base-structure";
+import { draftStructure, setHousePitch } from "@/lib/design/base-structure";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
 import { SignoffPanel, type Signoff } from "./signoff";
@@ -1236,7 +1236,7 @@ export function DesignEditor({
                 onHouseOnPlan={(onPlan) => setHouse((h) => ({ ...h, onPlan }))}
                 onPitch={(pitch) => {
                   const m = modelRef.current;
-                  if (m.base) commit({ ...m, base: { ...m.base, pitch } }, `House roof pitch ${pitch}°`);
+                  if (m.base) commit(setHousePitch(m, pitch), `House roof pitch ${pitch}°`);
                 }}
                 onClearHouse={() => {
                   const m = modelRef.current;

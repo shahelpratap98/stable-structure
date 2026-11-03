@@ -35,9 +35,13 @@ export function sheetScales(text: string) {
   return [...new Set([...text.matchAll(/\b1\s*:\s*(\d{1,4})\b/g)].map((m) => Number(m[1])).filter((n) => n >= 10))];
 }
 
-// The drawing's title. Title blocks run into phone numbers and addresses, so
-// keep the capitalised words after the last number, and prefer drawing words.
+// The drawing's title. The one printed straight after its scale is the drawing's
+// own: notes and a title block left over from another sheet can say anything. If
+// there's none, title blocks run into phone numbers and addresses, so keep the
+// capitalised words after the last number, and prefer drawing words.
 export function sheetTitle(text: string) {
+  const scaled = /\b1\s*:\s*\d{1,4}\s+([A-Z][A-Z &/-]*?\b(?:PLAN|ELEVATIONS?|SECTIONS?|DETAILS?|NOTES|LAYOUT|BRACING))\b/.exec(text);
+  if (scaled) return scaled[1];
   const found = text.match(/[A-Z0-9][A-Z0-9 &/-]*\b(PLAN|ELEVATIONS?|SECTIONS?|DETAILS?|NOTES|LAYOUT|BRACING)\b/g) ?? [];
   const titles = found.map((t) => t.split(/\s+/).reduce<string[]>((kept, w) => (/\d/.test(w) ? [] : [...kept, w]), []).slice(-6).join(" ")).filter((t) => t.length > 4);
   const drawing = /PROPOSED|EXISTING|FLOOR|ROOF|FOUNDATION|FRAMING|ELEVATION|SECTION|SITE/;

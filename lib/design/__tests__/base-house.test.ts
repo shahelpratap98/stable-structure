@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { houseParts, readHouse, type SheetData } from "../base-house";
 import { alignWalls, isHipped, readEaves, readPaths, readWalls, roofPitch, scaleFromDimensions, type BaseWall, type SheetPath, type SheetWord } from "../base-read";
-import { draftStructure } from "../base-structure";
+import { draftStructure, setHousePitch } from "../base-structure";
 import { runCalcs } from "../calc";
+import { completeness } from "../complete";
 import { emptyModel, normaliseModel, type DesignModel, type Pt } from "../model";
 
 const M = (50 * 0.0254) / 72; // metres per point at 1:50
@@ -163,6 +164,78 @@ describe("the roof", () => {
     expect(roofPitch("ROOF PITCH 25°")).toBe(25);
     expect(roofPitch("22.5 deg roof pitch")).toBe(22.5);
     expect(roofPitch("compass 45° north")).toBeNull();
+  });
+
+  it("reads a roof angle or slope, the other ways a sheet puts it", () => {
+    expect(roofPitch("ROOFING SHINGLES. ROOF ANGLE 22°")).toBe(22);
+    expect(roofPitch("roof slope: 15 deg")).toBe(15);
+    expect(roofPitch("22° ROOF ANGLE")).toBe(22);
+    expect(roofPitch("45° ANGLE BRACKET")).toBeNull();
+    expect(roofPitch("SITE SLOPE 12°")).toBeNull();
+  });
+});
+
+describe("the roof pitch", () => {
+  const roofText = (model: DesignModel, sheets: Map<string, SheetData>, text: string) => {
+    const roof = model.levels.find((l) => l.kind === "roof")!.id;
+    return new Map(sheets).set(roof, { ...sheets.get(roof)!, text });
+  };
+  const owed = (m: DesignModel) => completeness(m, runCalcs(m)).some((g) => g.key === "pitch");
+
+  it("says so when it's only the default, and asks for it once there's structure", () => {
+    const { model, sheets } = twoStorey();
+    const { read, model: m } = placed(model, sheets);
+    expect(read.base).toMatchObject({ pitch: 20 });
+    expect(read.base.pitchFrom).toBeUndefined();
+    expect(read.notes.join(" ")).toMatch(/couldn't read it off the roof sheet/);
+    expect(owed({ ...m, members: draftStructure(m).members })).toBe(true);
+  });
+
+  it("doesn't ask when the sheet gave it", () => {
+    const { model, sheets } = twoStorey();
+    const { read, model: m } = placed(model, roofText(model, sheets, "ROOF ANGLE 22°"));
+    expect(read.base).toMatchObject({ pitch: 22, pitchFrom: "sheet" });
+    expect(owed({ ...m, members: draftStructure(m).members })).toBe(false);
+  });
+
+  it("drafts every roof at the house's pitch and carries a new one across", () => {
+    const { model, sheets } = twoStorey();
+    const m = placed(model, sheets).model;
+    const drafted = { ...m, members: draftStructure(m).members };
+    const roofs = (d: DesignModel) => d.members.filter((z) => z.zone?.roof).map((z) => z.zone!.roof!.pitch);
+    expect(roofs(drafted).length).toBeGreaterThan(1);
+    expect(new Set(roofs(drafted))).toEqual(new Set([20]));
+    const set = setHousePitch(drafted, 22);
+    expect(new Set(roofs(set))).toEqual(new Set([22]));
+    expect(set.base).toMatchObject({ pitch: 22, pitchFrom: "engineer" });
+    expect(owed(set)).toBe(false);
+  });
+
+  it("leaves a zone given its own pitch, and anything the engineer drew", () => {
+    const { model, sheets } = twoStorey();
+    const m = placed(model, sheets).model;
+    const members = draftStructure(m).members;
+    const [own, drawn] = members.filter((z) => z.zone?.roof);
+    const edited = members.map((z) => (z === own ? { ...z, zone: { ...z.zone!, roof: { ...z.zone!.roof!, pitch: 35 } } } : z === drawn ? { ...z, notes: "" } : z));
+    const set = setHousePitch({ ...m, members: edited }, 22);
+    expect(set.members.find((z) => z.id === own.id)!.zone!.roof!.pitch).toBe(35);
+    expect(set.members.find((z) => z.id === drawn.id)!.zone!.roof!.pitch).toBe(20);
+  });
+
+  it("keeps a typed pitch through reading the sheets again, and flags a sheet that disagrees", () => {
+    const { model, sheets } = twoStorey();
+    const typed = setHousePitch(placed(model, sheets).model, 22);
+    expect(readHouse(typed, sheets).base).toMatchObject({ pitch: 22, pitchFrom: "engineer" });
+    const again = readHouse(typed, roofText(model, sheets, "ROOF PITCH 30°"));
+    expect(again.base).toMatchObject({ pitch: 22, pitchFrom: "engineer" });
+    expect(again.notes.join(" ")).toMatch(/set to 22°, but the roof sheet says 30°/);
+  });
+
+  it("survives saving and loading", () => {
+    const { model, sheets } = twoStorey();
+    const typed = setHousePitch(placed(model, sheets).model, 22);
+    expect(normaliseModel(typed).base?.pitchFrom).toBe("engineer");
+    expect(normaliseModel({ ...typed, base: { ...typed.base!, pitchFrom: "nonsense" as never } }).base?.pitchFrom).toBeUndefined();
   });
 });
 

@@ -16,7 +16,7 @@ export type BaseOpening = { s0: number; s1: number; kind: "window" | "door" }; /
 export type BaseWall = { id: string; a: Pt; b: Pt; t: number; ext: boolean; openings: BaseOpening[]; inferred?: boolean; core?: number };
 export type WallRead = { walls: BaseWall[]; bands: number }; // bands: m of filled or hatched wall found
 export type BaseSheet = { walls: BaseWall[]; eaves?: Pt[]; hip?: boolean }; // PDF points on the level's own sheet, so it moves with the sheet's scale and origin
-export type BaseHouse = { sheets: Record<string, BaseSheet>; pitch: number }; // sheets by level id; pitch in degrees
+export type BaseHouse = { sheets: Record<string, BaseSheet>; pitch: number; pitchFrom?: "sheet" | "engineer" }; // sheets by level id; pitch in degrees, pitchFrom unset while it's only the default
 
 type OpsList = { fnArray: number[] | Uint32Array; argsArray: unknown[] };
 type Matrix = number[];
@@ -803,7 +803,7 @@ export function isHipped(paths: SheetPath[], eaves: Pt[]) {
 }
 
 export function roofPitch(text: string): number | null {
-  const m = text.match(/pitch\D{0,20}(\d{1,2}(?:\.\d)?)\s*(?:°|deg)/i) ?? text.match(/(\d{1,2}(?:\.\d)?)\s*(?:°|deg\w*)\s*(?:roof\s*)?pitch/i);
+  const m = text.match(/(?:pitch|roof\s+(?:angle|slope))\D{0,20}(\d{1,2}(?:\.\d)?)\s*(?:°|deg)/i) ?? text.match(/(\d{1,2}(?:\.\d)?)\s*(?:°|deg\w*)\s*(?:pitch|roof\s+(?:pitch|angle|slope))/i);
   const v = m ? Number(m[1]) : NaN;
   return v >= 1 && v <= 60 ? v : null;
 }

@@ -1189,10 +1189,10 @@ export function Overview({
       ) : null}
       <Section title="Getting started">
         <ol className="list-decimal space-y-1.5 pl-4 text-sm text-text">
-          <li>On the <b>Levels</b> tab, upload the architect&apos;s PDF and pick the page for each level.</li>
-          <li>Choose <b>Scale</b> and click both ends of a dimension you know, then <b>Origin</b> on the same corner on every level.</li>
-          <li>Draw <b>Walls</b>, then use <b>Opening</b> on each door and window: every opening gets its own lintel, sized automatically.</li>
-          <li>Add beams, posts and <b>Joist zones</b>; set what each beam carries. Sections are picked SG8 → hySPAN → steel.</li>
+          <li>On the <b>Levels</b> tab, upload the architect&apos;s PDF. The app picks each level&apos;s page, reads the scale, lines the levels up and builds the 3D house.</li>
+          <li>Check each level&apos;s page, scale and origin, and the roof pitch against the roof sheet. If a sheet couldn&apos;t be read, set it by hand with <b>Scale</b>, <b>Origin</b> and <b>House wall</b>.</li>
+          <li>Choose <b>Add structural elements</b> on the Levels tab for a first structure, or draw <b>Walls</b> and use <b>Opening</b> on each door and window: every opening gets its own lintel, sized automatically.</li>
+          <li>Add or correct beams, posts and <b>Joist zones</b>; set what each beam carries. Sections are picked SG8 → hySPAN → steel.</li>
           <li>Set the job&apos;s loads on the <b>Loads</b> tab, and bracing demand per level there too.</li>
           <li>Each level holds that storey&apos;s posts and walls and the framing at its top. Ground floor joists and bearers go on <b>Foundation</b>.</li>
           <li>Work through <b>To finish</b> on this tab until it&apos;s empty (or each item is marked OK). When everything passes too, submit it on the <b>Sign-off</b> tab for a CPEng to check, and download the council report there.</li>
@@ -1417,6 +1417,7 @@ export function LevelsPanel({
                 Show on the plan
               </label>
               {built ? <span className="text-muted">Wrong wall? Use the House wall tool.</span> : <span className="text-muted">Nothing read. Trace the walls with the House wall tool.</span>}
+              {!model.base.pitchFrom && !(model.ack ?? []).includes("pitch") ? <span className="w-full font-semibold text-warn">The pitch couldn&apos;t be read off the sheets. Check it against the roof sheet and type it in.</span> : null}
               {!locked ? (
                 <button type="button" className="font-semibold text-bad hover:underline" onClick={onClearHouse}>
                   Remove

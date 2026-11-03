@@ -362,7 +362,7 @@ function normaliseBase(raw: unknown, ids: Set<string>): BaseHouse | undefined {
     const walls = s.walls.filter((w: BaseWall) => w && isPt(w.a) && isPt(w.b) && Number.isFinite(w.t)).map((w: BaseWall) => ({ ...w, openings: Array.isArray(w.openings) ? w.openings : [] }));
     sheets[id] = { walls, ...(Array.isArray(s.eaves) && s.eaves.every(isPt) ? { eaves: s.eaves, hip: !!s.hip } : {}) };
   }
-  return { sheets, pitch: Number.isFinite(b.pitch) ? (b.pitch as number) : 20 };
+  return { sheets, pitch: Number.isFinite(b.pitch) ? (b.pitch as number) : 20, ...(b.pitchFrom === "sheet" || b.pitchFrom === "engineer" ? { pitchFrom: b.pitchFrom } : {}) };
 }
 
 export const defaultWall = (): WallSpec => ({ kind: "ext", thickness: 90, loadbearing: true, cladding: "light", studSpacing: 600, openings: [] });

@@ -220,7 +220,12 @@ export default async function DesignGuidePage() {
           The <T>3D house</T> part of the <T>Levels</T> tab says what was read from each sheet, and has <T>Read the sheets again</T> for when you change a page. It works from the filled or
           hatched walls on a floor plan, so check it against the sheet. On the plan, dark green walls are outside, light green are inside and amber were worked out from lines; blue dashes
           are windows and purple are doors. To correct it, use the <T>House wall</T> tool (U): click a wall to remove it, or click two points to add one. A scanned sheet has nothing to
-          read, so trace its walls this way. The roof pitch isn&apos;t usually on the plans, so type it in. Members you draw snap to the house walls and the sides of their openings.
+          read, so trace its walls this way. Members you draw snap to the house walls and the sides of their openings.
+        </p>
+        <p className="mt-2">
+          The roof pitch is read off the roof sheet where its text gives one, but a sheet&apos;s text is often unreadable even when the drawing shows it. If there&apos;s no pitch to read, the app
+          starts at 20° and <T>To finish</T> asks you to check it. Type the right pitch on the <T>Levels</T> tab: the 3D roof and the roof zones drafted from the house follow it, and
+          reading the sheets again keeps it. A zone you&apos;ve given its own pitch stays as it is. A mix of pitches needs setting zone by zone.
         </p>
         <p className="mt-2">
           <T>Add structural elements</T> turns the house into a first structure for the calcs to size: walls with their openings and lintels, trusses over the top storey and rafters on
