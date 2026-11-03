@@ -219,12 +219,12 @@ describe("moving a lintel up or down", () => {
     expect(normaliseModel(JSON.parse(JSON.stringify(j))).members[0].wall?.openings[0].dz).toBe(-0.25);
   });
 
-  it("offers only the up and down handle on an opening's lintel", () => {
+  it("offers width, slide and up-and-down handles on an opening's lintel", () => {
     const j = job({});
     const c = runCalcs(j);
     const vl = c.lintels[0];
     const parts = allParts(j, c).filter((p) => p.part.id === vl.id).map((p) => p.part);
-    expect(handlesFor(vl.member, parts).map((h) => h.kind)).toEqual(["lift"]);
+    expect(handlesFor(vl.member, parts).map((h) => h.kind)).toEqual(["end", "end", "move", "lift"]);
   });
 });
 
