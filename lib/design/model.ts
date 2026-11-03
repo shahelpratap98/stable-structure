@@ -109,6 +109,7 @@ export type RoofSpec = {
   purlins: number; // mm centres along the slope, 0 = none
   overhang: number; // m, eaves past the zone edge
   gutter?: number; // low roofs: m from the zone's start edge (north or west) to the box gutter the firrings fall to; default the far edge
+  high?: "start"; // mono roofs: high along the zone's start edge (north or west), as a lean-to on a wall there; default the far edge
 };
 export const defaultRoof = (): RoofSpec => ({ form: "gable", pitch: 20, framing: "rafters", purlins: 900, overhang: 0.45 });
 export const roofHalfSpan = (r: RoofSpec) => r.framing === "rafters" && (r.form === "gable" || r.form === "hip");
@@ -362,7 +363,7 @@ function normaliseBase(raw: unknown, ids: Set<string>): BaseHouse | undefined {
     const walls = s.walls.filter((w: BaseWall) => w && isPt(w.a) && isPt(w.b) && Number.isFinite(w.t)).map((w: BaseWall) => ({ ...w, openings: Array.isArray(w.openings) ? w.openings : [] }));
     sheets[id] = { walls, ...(Array.isArray(s.eaves) && s.eaves.every(isPt) ? { eaves: s.eaves, hip: !!s.hip } : {}) };
   }
-  return { sheets, pitch: Number.isFinite(b.pitch) ? (b.pitch as number) : 20, ...(b.pitchFrom === "sheet" || b.pitchFrom === "engineer" ? { pitchFrom: b.pitchFrom } : {}) };
+  return { sheets, pitch: Number.isFinite(b.pitch) ? (b.pitch as number) : 20, ...(b.pitchFrom === "sheet" || b.pitchFrom === "engineer" ? { pitchFrom: b.pitchFrom } : {}), ...(Number.isFinite(b.eaves) ? { eaves: b.eaves } : {}) };
 }
 
 export const defaultWall = (): WallSpec => ({ kind: "ext", thickness: 90, loadbearing: true, cladding: "light", studSpacing: 600, openings: [] });
