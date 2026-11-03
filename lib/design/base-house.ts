@@ -2,7 +2,7 @@
 // together across the levels and drawn plain and see-through in 3D, for the
 // engineer to design over. It lives beside the members and never reaches the calcs.
 
-import { alignWalls, drawn, flood, isHipped, readEaves, readWalls, roofPitch, scaleFromDimensions, scaleFromWalls, type BaseHouse, type BaseSheet, type BaseWall, type SheetPath, type SheetWord } from "./base-read";
+import { alignWalls, drawn, eavesWidth, flood, isHipped, readEaves, readWalls, roofPitch, scaleFromDimensions, scaleFromWalls, type BaseHouse, type BaseSheet, type BaseWall, type SheetPath, type SheetWord } from "./base-read";
 import type { MeshPart, Part } from "./geometry";
 import type { DesignModel, Level, Pt } from "./model";
 import { sheetScales } from "./plan-pages";
@@ -113,7 +113,9 @@ export function readHouse(model: DesignModel, sheets: Map<string, SheetData>): H
   if (typed !== null && printed !== null && printed !== typed) notes.push(`Roof pitch: set to ${typed}°, but the roof sheet says ${printed}°. Check it.`);
   else if (typed === null && printed === null && Object.keys(read).length) notes.push(`Roof pitch: couldn't read it off the roof sheet, so ${pitch}° is only a starting figure. Check the sheet and type it in.`);
   const pitchFrom = typed !== null ? ("engineer" as const) : printed !== null ? ("sheet" as const) : undefined;
-  return { base: { sheets: read, pitch, ...(pitchFrom ? { pitchFrom } : {}) }, plans, notes, walls: Object.values(read).reduce((n, s) => n + s.walls.length, 0) };
+  const eaves = text.map(eavesWidth).find((e) => e !== null) ?? null;
+  if (eaves !== null) notes.push(`Roof: eaves ${Math.round(eaves * 1000)} mm, from the sheet's notes.`);
+  return { base: { sheets: read, pitch, ...(pitchFrom ? { pitchFrom } : {}), ...(eaves !== null ? { eaves } : {}) }, plans, notes, walls: Object.values(read).reduce((n, s) => n + s.walls.length, 0) };
 }
 
 // ---------------------------------------------------------------- in 3D
@@ -121,7 +123,7 @@ export function readHouse(model: DesignModel, sheets: Map<string, SheetData>): H
 const HEAD = 2.1; // m, top of a door or window
 const SILL = 0.9; // m
 const EAVES = 0.6; // m, assumed where there's no roof sheet
-const LOWER_EAVES = 0.45; // m
+export const LOWER_EAVES = 0.45; // m, where the sheet doesn't give the eaves
 const CELL = 0.1; // m
 
 type Field = { W: number; H: number; x0: number; y0: number };
@@ -149,6 +151,26 @@ export function footprint(segs: { a: Pt; b: Pt; t: number }[]) {
     };
   }
   return null;
+}
+
+// The main roof in plan, as the roof sheet draws it, where its eaves were read.
+// Anything under it is under the main roof, whatever the floor above covers.
+export function mainRoof(model: DesignModel): { pts: Pt[]; inside: (x: number, y: number) => boolean; depth: (x: number, y: number) => number } | null {
+  const roof = model.levels.find((l) => l.kind === "roof");
+  const eaves = roof?.plan?.scale ? model.base?.sheets[roof.id]?.eaves : undefined;
+  if (!roof || !eaves) return null;
+  const pts = eaves.map(frameOf(roof));
+  // how far in from the eaves line
+  const depth = (x: number, y: number) =>
+    Math.min(
+      ...pts.map((a, i) => {
+        const b = pts[(i + 1) % pts.length];
+        const L2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1;
+        const t = Math.max(0, Math.min(1, ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / L2));
+        return Math.hypot(x - a.x - t * (b.x - a.x), y - a.y - t * (b.y - a.y));
+      }),
+    );
+  return { pts, inside: (x, y) => inPolygon(pts, x, y), depth };
 }
 
 function inPolygon(pts: Pt[], x: number, y: number) {
@@ -200,6 +222,57 @@ function acrossSpan(f: Field, on: Uint8Array) {
     }
   }
   return d.map((v) => v * CELL);
+}
+
+// A lean-to rises from its outer eave to the wall it leans on: the side most of it meets
+// that wall. Each separate piece of roof finds its own. Metres in from the outer eave.
+const DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+// the separate pieces of what's on, as lists of cells
+function pieces(f: Field, on: Uint8Array) {
+  const { W, H } = f;
+  const seen = new Uint8Array(on.length);
+  const out: number[][] = [];
+  for (let s = 0; s < on.length; s++) {
+    if (!on[s] || seen[s]) continue;
+    const cells = [s];
+    seen[s] = 1;
+    for (let k = 0; k < cells.length; k++) {
+      const x = cells[k] % W,
+        y = Math.floor(cells[k] / W);
+      for (const [dx, dy] of DIRS) {
+        const n = (y + dy) * W + x + dx;
+        if (x + dx < 0 || y + dy < 0 || x + dx >= W || y + dy >= H || !on[n] || seen[n]) continue;
+        seen[n] = 1;
+        cells.push(n);
+      }
+    }
+    out.push(cells);
+  }
+  return out;
+}
+
+function leanTo(f: Field, roof: Uint8Array, wall: Uint8Array) {
+  const { W, H } = f;
+  const d = new Float32Array(roof.length);
+  const dirs = DIRS;
+  const end = (c: number, dx: number, dy: number) => {
+    let x = c % W,
+      y = Math.floor(c / W),
+      n = 0;
+    while (x >= 0 && y >= 0 && x < W && y < H && roof[y * W + x]) {
+      x += dx;
+      y += dy;
+      n++;
+    }
+    return { n, wall: x >= 0 && y >= 0 && x < W && y < H && !!wall[y * W + x] };
+  };
+  for (const cells of pieces(f, roof)) {
+    const meets = dirs.map(([dx, dy]) => cells.filter((c) => end(c, dx, dy).wall).length);
+    const [dx, dy] = dirs[meets.indexOf(Math.max(...meets))];
+    for (const c of cells) d[c] = end(c, -dx, -dy).n * CELL;
+  }
+  return d;
 }
 
 // triangles over the cells that are on, each split along its ridge or hip: the higher diagonal
@@ -317,7 +390,9 @@ export function houseParts(model: DesignModel): { part: Part | MeshPart; level: 
     out.push({ part: { kind: "mesh", id: "", layer: "baseRoof", tone: "baseRoof", pos: surface(f, main, (i) => z0 + (d[i] - over) * tan) }, level: roofLevel ?? top });
   }
 
-  // Anything a floor has that the one above doesn't has its own roof, up against the upper wall.
+  // Anything a floor has that's out from under the roof above has its own: a lean-to
+  // against the upper wall. Under the top storey, that's the main roof as the sheet draws it.
+  const lowerEaves = base.eaves ?? LOWER_EAVES;
   for (let i = 0; i + 1 < floors.length; i++) {
     const low = prints.get(floors[i].id),
       up = prints.get(floors[i + 1].id);
@@ -326,11 +401,13 @@ export function houseParts(model: DesignModel): { part: Part | MeshPart; level: 
     const edge = bytes(grow(f, upper, 0.15));
     const bare = fill(f, low).map((v, n) => (v && !edge[n] ? 1 : 0));
     const kept = bytes(grow(f, bytes(shrink(f, bare, 0.4)), 0.4)).map((v, n) => (v && bare[n] ? 1 : 0));
+    // a piece mostly under the main roof, as the sheet draws it, is covered by that roof: a void, or a wall above that wasn't read
+    if (eaves && main && i + 2 === floors.length) for (const cells of pieces(f, kept)) if (cells.filter((c) => main[c]).length > cells.length / 2) for (const c of cells) kept[c] = 0;
     if (kept.reduce((n, v) => n + v, 0) * CELL * CELL < 1) continue;
-    const roof = bytes(grow(f, kept, LOWER_EAVES)).map((v, n) => (v && !upper[n] ? 1 : 0));
-    const d = chess(f, roof.map((v, n) => (v || upper[n] ? 1 : 0)));
+    const roof = bytes(grow(f, kept, lowerEaves)).map((v, n) => (v && !upper[n] ? 1 : 0));
+    const d = leanTo(f, roof, upper);
     const z = floors[i].elevation + floors[i].height;
-    out.push({ part: { kind: "mesh", id: "", layer: "baseRoof", tone: "baseRoof", pos: surface(f, roof, (n) => z + (d[n] - LOWER_EAVES) * tan) }, level: floors[i] });
+    out.push({ part: { kind: "mesh", id: "", layer: "baseRoof", tone: "baseRoof", pos: surface(f, roof, (n) => z + (d[n] - lowerEaves) * tan) }, level: floors[i] });
   }
   return out;
 }

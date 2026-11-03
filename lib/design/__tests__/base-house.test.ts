@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { houseParts, readHouse, type SheetData } from "../base-house";
-import { alignWalls, isHipped, readEaves, readPaths, readWalls, roofPitch, scaleFromDimensions, type BaseWall, type SheetPath, type SheetWord } from "../base-read";
+import { footprint, houseParts, readHouse, worldWalls, type SheetData } from "../base-house";
+import { alignWalls, eavesWidth, isHipped, readEaves, readPaths, readWalls, roofPitch, scaleFromDimensions, type BaseWall, type SheetPath, type SheetWord } from "../base-read";
 import { draftStructure, setHousePitch } from "../base-structure";
 import { runCalcs } from "../calc";
 import { completeness } from "../complete";
-import { emptyModel, normaliseModel, type DesignModel, type Pt } from "../model";
+import { partsFor } from "../geometry";
+import { defaultRoof, defaultZone, emptyModel, normaliseModel, type DesignModel, type Member, type Pt } from "../model";
 
 const M = (50 * 0.0254) / 72; // metres per point at 1:50
 const pt = (m: number) => m / M;
@@ -172,6 +173,71 @@ describe("the roof", () => {
     expect(roofPitch("22° ROOF ANGLE")).toBe(22);
     expect(roofPitch("45° ANGLE BRACKET")).toBeNull();
     expect(roofPitch("SITE SLOPE 12°")).toBeNull();
+  });
+});
+
+describe("the roof as the sheet draws it", () => {
+  const roofZones = (members: Member[]) => members.filter((z) => z.zone?.roof);
+
+  it("reads the eaves width from the notes", () => {
+    expect(eavesWidth("NEW LOT: ROOF ANGLE IS 22° EAVES : 150MM")).toBe(0.15);
+    expect(eavesWidth("eaves width 450 mm")).toBe(0.45);
+    expect(eavesWidth("EAVES GUTTER AS SPECIFIED")).toBeNull();
+  });
+
+  it("drafts a lean-to high against the floor above, and draws it that way", () => {
+    const { model, sheets } = twoStorey();
+    const m = placed(model, sheets).model;
+    const first = m.levels.find((l) => l.name === "First floor")!;
+    const upper = footprint(worldWalls(first, m.base!.sheets[first.id]))!;
+    const leans = roofZones(draftStructure(m).members).filter((z) => z.zone!.roof!.form === "mono");
+    expect(leans.length).toBeGreaterThan(0);
+    for (const z of leans) {
+      const [x0, x1, y0, y1] = [Math.min(z.a.x, z.b!.x), Math.max(z.a.x, z.b!.x), Math.min(z.a.y, z.b!.y), Math.max(z.a.y, z.b!.y)];
+      const start = z.zone!.roof!.high === "start";
+      const beyond = z.zone!.dir === "x" ? { x: start ? x0 - 0.3 : x1 + 0.3, y: (y0 + y1) / 2 } : { x: (x0 + x1) / 2, y: start ? y0 - 0.3 : y1 + 0.3 };
+      expect(upper(beyond.x, beyond.y)).toBe(true); // just past the high side is the floor above
+    }
+  });
+
+  it("puts nothing under the main roof but the main roof", () => {
+    const { model, sheets } = twoStorey();
+    const m = placed(model, sheets).model;
+    const roof = m.levels.find((l) => l.kind === "roof")!;
+    // the sheet's eaves around the whole ground floor
+    const toSheet = (x: number, y: number): Pt => ({ x: x / roof.plan!.scale! + roof.plan!.origin.x, y: y / roof.plan!.scale! + roof.plan!.origin.y });
+    const all = [toSheet(-1, -1), toSheet(16, -1), toSheet(16, 11), toSheet(-1, 11)];
+    const covered = { ...m, base: { ...m.base!, sheets: { ...m.base!.sheets, [roof.id]: { ...m.base!.sheets[roof.id], eaves: all } } } };
+    expect(roofZones(draftStructure(covered).members).filter((z) => z.zone!.roof!.form === "mono")).toEqual([]);
+    expect(houseParts(covered).filter((p) => p.part.kind === "mesh" && p.part.tone === "baseRoof")).toHaveLength(1);
+  });
+
+  it("keeps the trusses inside the roof's outline", () => {
+    const { model, sheets } = twoStorey();
+    const m = placed(model, sheets).model;
+    const roof = m.levels.find((l) => l.kind === "roof")!;
+    const eaves = m.base!.sheets[roof.id].eaves!.map((p) => ({ x: (p.x - roof.plan!.origin.x) * roof.plan!.scale!, y: (p.y - roof.plan!.origin.y) * roof.plan!.scale! }));
+    const [x0, x1, y0, y1] = [Math.min(...eaves.map((p) => p.x)), Math.max(...eaves.map((p) => p.x)), Math.min(...eaves.map((p) => p.y)), Math.max(...eaves.map((p) => p.y))];
+    for (const z of roofZones(draftStructure(m).members).filter((z) => z.zone!.roof!.framing === "trusses"))
+      for (const p of [z.a, z.b!]) {
+        expect(p.x).toBeGreaterThanOrEqual(x0);
+        expect(p.x).toBeLessThanOrEqual(x1);
+        expect(p.y).toBeGreaterThanOrEqual(y0);
+        expect(p.y).toBeLessThanOrEqual(y1);
+      }
+  });
+
+  it("builds a mono roof high on the side it's set to", () => {
+    const m0 = emptyModel(1);
+    const id = m0.levels.find((l) => l.name === "Ground floor")!.id;
+    const peak = (high?: "start") => {
+      const z: Member = { id: "z", type: "joistzone", label: "RZ1", levelId: id, a: { x: 0, y: 0 }, b: { x: 4, y: 6 }, material: "timber", section: "190x45", grade: "SG8", zone: { ...defaultZone(), dir: "x", spacing: 900, roof: { ...defaultRoof(), form: "mono", pitch: 20, ...(high ? { high } : {}) } } };
+      const m = { ...m0, members: [z] };
+      const ends = partsFor(m, runCalcs(m), z).flatMap((p) => (p.kind === "beam3" ? [p.a, p.b] : []));
+      return ends.reduce((a, b) => (b.z > a.z ? b : a)).x;
+    };
+    expect(peak()).toBeGreaterThan(3);
+    expect(peak("start")).toBeLessThan(1);
   });
 });
 

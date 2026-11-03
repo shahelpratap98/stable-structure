@@ -4,7 +4,7 @@
 // wherever a load has nothing under it. The calcs size it all. It's a draft to
 // edit: what's loadbearing is the engineer's call, so it says what it assumed.
 
-import { footprint, worldWalls } from "./base-house";
+import { footprint, mainRoof, worldWalls } from "./base-house";
 import type { BaseWall } from "./base-read";
 import { defaultRoof, defaultWall, defaultZone, newId, nextMark, type DesignModel, type Level, type Member, type Opening, type Pt } from "./model";
 
@@ -31,11 +31,13 @@ const MIN_AREA = 2; // m2
 const EAVES = 0.45; // m, on the lower roofs
 const JOISTS: [number, string][] = [[3.4, "190x45"], [4.2, "240x45"], [5, "290x45"]]; // m of span, SG8 at 400 centres
 const SLACK = 1.2; // pieces of a room join up if their box is no bigger than this over their area
-const ROOF_SLACK = 1.4; // the roof needs fewer zones than the floor does
+const ROOF_SPILL = 1; // m2, the most a roof zone may run out past the roof's outline, to save a zone
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 type Line = { h: boolean; c: number; s0: number; s1: number; member?: Member };
 type Seg = { a: Pt; b: Pt; t: number; w: BaseWall };
+
+const median = (v: number[]) => (v.length ? [...v].sort((a, b) => a - b)[v.length >> 1] : 0);
 
 const lineOf = (a: Pt, b: Pt): Line | null => {
   const dx = Math.abs(b.x - a.x),
@@ -129,6 +131,99 @@ function snapped(r: Rect, lines: Line[]): Rect {
   const near = (h: boolean, v: number) => lines.filter((l) => l.h === h && Math.abs(l.c - v) <= SNAP).sort((p, q) => Math.abs(p.c - v) - Math.abs(q.c - v))[0]?.c ?? v;
   return { x0: near(false, r.x0), x1: near(false, r.x1), y0: near(true, r.y0), y1: near(true, r.y1) };
 }
+
+// The side of a lean-to that meets the building above it: its rafters run up to that wall.
+function leansOn(r: Rect, above: (x: number, y: number) => boolean): { dir: "x" | "y"; start: boolean } | null {
+  const hits = (at: (k: number) => Pt) => Array.from({ length: 10 }, (_, i) => at((i + 0.5) / 10)).filter((p) => above(p.x, p.y)).length;
+  const across = (k: number) => r.y0 + k * (r.y1 - r.y0),
+    along = (k: number) => r.x0 + k * (r.x1 - r.x0);
+  const sides = [
+    { dir: "x" as const, start: true, n: hits((k) => ({ x: r.x0 - ON_WALL, y: across(k) })) },
+    { dir: "x" as const, start: false, n: hits((k) => ({ x: r.x1 + ON_WALL, y: across(k) })) },
+    { dir: "y" as const, start: true, n: hits((k) => ({ x: along(k), y: r.y0 - ON_WALL })) },
+    { dir: "y" as const, start: false, n: hits((k) => ({ x: along(k), y: r.y1 + ON_WALL })) },
+  ];
+  const best = sides.reduce((a, b) => (b.n > a.n ? b : a));
+  return best.n ? best : null;
+}
+
+// The biggest rectangles that fill an area, largest first. One may take in up to
+// `spill` m2 from outside the area where that saves a zone, never another's ground.
+function blocks(inside: (x: number, y: number) => boolean, box: Rect, spill: number): Rect[] {
+  const W = Math.max(1, Math.ceil((box.x1 - box.x0) / CELL)),
+    H = Math.max(1, Math.ceil((box.y1 - box.y0) / CELL));
+  const shape = new Uint8Array(W * H);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) shape[j * W + i] = inside(box.x0 + (i + 0.5) * CELL, box.y0 + (j + 0.5) * CELL) ? 1 : 0;
+  const free = shape.slice();
+  const taken = new Uint8Array(W * H);
+  const allow = spill / (CELL * CELL);
+  const out: Rect[] = [];
+  for (;;) {
+    // the largest free rectangle, from the free run above each cell
+    const h = new Int32Array(W);
+    let best = { a: 0, i0: 0, i1: 0, j0: 0, j1: 0 };
+    for (let j = 0; j < H; j++) {
+      for (let i = 0; i < W; i++) h[i] = free[j * W + i] ? h[i] + 1 : 0;
+      const st: number[] = [];
+      for (let i = 0; i <= W; i++) {
+        const v = i < W ? h[i] : 0;
+        while (st.length && h[st[st.length - 1]] >= v) {
+          const top = st.pop()!;
+          const left = st.length ? st[st.length - 1] + 1 : 0;
+          const a = h[top] * (i - left);
+          if (a > best.a) best = { a, i0: left, i1: i, j0: j - h[top] + 1, j1: j + 1 };
+        }
+        st.push(i);
+      }
+    }
+    if (best.a * CELL * CELL < MIN_AREA) break;
+    let { i0, i1, j0, j1 } = best;
+    let used = 0;
+    // a strip along one side: worth taking if it's mostly free and the rest is outside
+    const strip = (a0: number, a1: number, b0: number, b1: number) => {
+      let fr = 0,
+        outside = 0;
+      for (let j = b0; j < b1; j++)
+        for (let i = a0; i < a1; i++) {
+          if (i < 0 || j < 0 || i >= W || j >= H || taken[j * W + i]) return null;
+          if (free[j * W + i]) fr++;
+          else if (!shape[j * W + i]) outside++;
+          else return null;
+        }
+      return fr > outside && used + outside <= allow ? outside : null;
+    };
+    for (let grown = true; grown; ) {
+      grown = false;
+      const tries: [() => number | null, () => void][] = [
+        [() => strip(i0, i1, j0 - 1, j0), () => j0--],
+        [() => strip(i0, i1, j1, j1 + 1), () => j1++],
+        [() => strip(i0 - 1, i0, j0, j1), () => i0--],
+        [() => strip(i1, i1 + 1, j0, j1), () => i1++],
+      ];
+      for (const [test, take] of tries) {
+        const o = test();
+        if (o === null) continue;
+        used += o;
+        take();
+        grown = true;
+      }
+    }
+    for (let j = j0; j < j1; j++)
+      for (let i = i0; i < i1; i++) {
+        free[j * W + i] = 0;
+        taken[j * W + i] = 1;
+      }
+    out.push({ x0: box.x0 + i0 * CELL, x1: box.x0 + i1 * CELL, y0: box.y0 + j0 * CELL, y1: box.y0 + j1 * CELL });
+  }
+  return out;
+}
+
+// how much of a rectangle is in an area
+const share = (r: Rect, inside: (x: number, y: number) => boolean) => {
+  let n = 0;
+  for (let j = 0; j < 10; j++) for (let i = 0; i < 10; i++) if (inside(r.x0 + ((i + 0.5) * (r.x1 - r.x0)) / 10, r.y0 + ((j + 0.5) * (r.y1 - r.y0)) / 10)) n++;
+  return n / 100;
+};
 
 const round = (p: Pt): Pt => ({ x: Math.round(p.x * 1000) / 1000, y: Math.round(p.y * 1000) / 1000 });
 const bigEnough = (r: Rect) => r.x1 - r.x0 >= MIN_SIDE && r.y1 - r.y0 >= MIN_SIDE && (r.x1 - r.x0) * (r.y1 - r.y0) >= MIN_AREA;
@@ -249,19 +344,24 @@ export function draftStructure(model: DesignModel): { members: Member[]; notes: 
     }
   }
 
-  // ---- roofs: trusses on the top storey, a lean-to on whatever sticks out past it
+  // ---- roofs: trusses on the top storey, a lean-to on whatever sticks out from under the main roof
   const top = floors[floors.length - 1];
   const roofing = model.members.some((m) => m.type === "joistzone" && m.zone?.roof);
   if (top && !roofing) {
     const print = footprint(segs.get(top.id)!);
-    const pts = segs.get(top.id)!.flatMap((q) => [q.a, q.b]);
-    if (print) {
+    const plan = mainRoof(model);
+    // The trusses cover the roof as the roof sheet draws it, inside its outer walls. Without a
+    // roof sheet, they cover the top storey.
+    const inset = plan ? median(segs.get(top.id)!.filter((q) => q.w.ext).map((q) => plan.depth((q.a.x + q.b.x) / 2, (q.a.y + q.b.y) / 2))) : 0;
+    const area = plan ? (x: number, y: number) => plan.inside(x, y) && plan.depth(x, y) >= inset - 0.1 : print;
+    const pts = plan ? plan.pts : segs.get(top.id)!.flatMap((q) => [q.a, q.b]);
+    if (print && area) {
       const box = { x0: Math.min(...pts.map((p) => p.x)), y0: Math.min(...pts.map((p) => p.y)), x1: Math.max(...pts.map((p) => p.x)), y1: Math.max(...pts.map((p) => p.y)) };
       const hip = base.sheets[levels.find((v) => v.kind === "roof")?.id ?? ""]?.hip ?? true;
-      for (const r0 of joined(rooms(print, box, []), ROOF_SLACK)) {
+      for (const r0 of blocks(area, box, ROOF_SPILL)) {
         const r = snapped(r0, walls.get(top.id) ?? []);
         if (!bigEnough(r)) continue;
-        member("joistzone", top.id, "RZ", { x: r.x0, y: r.y0 }, { x: r.x1, y: r.y1 }, { grade: "SG8", section: "190x45", zone: { ...defaultZone(), dir: r.y1 - r.y0 <= r.x1 - r.x0 ? "y" : "x", spacing: 900, roof: { ...defaultRoof(), form: hip ? "hip" : "gable", pitch: base.pitch, framing: "trusses", overhang: 0.6 } } });
+        member("joistzone", top.id, "RZ", { x: r.x0, y: r.y0 }, { x: r.x1, y: r.y1 }, { grade: "SG8", section: "190x45", zone: { ...defaultZone(), dir: r.y1 - r.y0 <= r.x1 - r.x0 ? "y" : "x", spacing: 900, roof: { ...defaultRoof(), form: hip ? "hip" : "gable", pitch: base.pitch, framing: "trusses", overhang: base.eaves ?? 0.6 } } });
       }
       for (let i = 0; i + 1 < floors.length; i++) {
         const l = floors[i];
@@ -270,10 +370,15 @@ export function draftStructure(model: DesignModel): { members: Member[]; notes: 
         if (!low || !up) continue;
         const q = segs.get(l.id)!.flatMap((s) => [s.a, s.b]);
         const b2 = { x0: Math.min(...q.map((p) => p.x)), y0: Math.min(...q.map((p) => p.y)), x1: Math.max(...q.map((p) => p.x)), y1: Math.max(...q.map((p) => p.y)) };
-        for (const r0 of joined(rooms((x, y) => low(x, y) && !up(x, y), b2, []), ROOF_SLACK)) {
+        // a lean-to on what sticks out past the floor above; a piece mostly under the main
+        // roof is covered by it (a void, or a wall above that wasn't read)
+        const over = i + 2 === floors.length ? plan : null;
+        for (const r0 of blocks((x, y) => low(x, y) && !up(x, y), b2, ROOF_SPILL)) {
           const r = snapped(r0, walls.get(l.id) ?? []);
-          if (!bigEnough(r)) continue;
-          member("joistzone", l.id, "RZ", { x: r.x0, y: r.y0 }, { x: r.x1, y: r.y1 }, { grade: "SG8", section: "190x45", zone: { ...defaultZone(), dir: r.y1 - r.y0 <= r.x1 - r.x0 ? "y" : "x", spacing: 900, roof: { ...defaultRoof(), form: "mono", pitch: base.pitch, framing: "rafters", overhang: EAVES } } });
+          if (!bigEnough(r) || (over && share(r, over.inside) > 0.5)) continue;
+          const lean = leansOn(r, up);
+          const dir = lean?.dir ?? (r.y1 - r.y0 <= r.x1 - r.x0 ? "y" : "x");
+          member("joistzone", l.id, "RZ", { x: r.x0, y: r.y0 }, { x: r.x1, y: r.y1 }, { grade: "SG8", section: "190x45", zone: { ...defaultZone(), dir, spacing: 900, roof: { ...defaultRoof(), form: "mono", pitch: base.pitch, framing: "rafters", overhang: base.eaves ?? EAVES, ...(lean?.start ? { high: "start" as const } : {}) } } });
         }
       }
     }

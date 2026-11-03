@@ -710,6 +710,14 @@ function ZoneEditor({
             ]}
             onChange={(v) => updR({ framing: v }, v)}
           />
+          {r.form === "mono" ? (
+            <Select<"start" | "end">
+              label="High side"
+              value={r.high ?? "end"}
+              options={z.dir === "y" ? [{ value: "start", label: "North" }, { value: "end", label: "South" }] : [{ value: "start", label: "West" }, { value: "end", label: "East" }]}
+              onChange={(v) => updR({ high: v === "start" ? "start" : undefined }, "mono roof high side")}
+            />
+          ) : null}
           <NumberField label="Spacing" unit="mm" value={z.spacing} min={300} onCommit={(v) => v && upd({ spacing: v }, `spacing ${v}`)} />
           {r.framing === "rafters" ? materialFields : null}
           {r.framing === "rafters" ? sectionField : null}

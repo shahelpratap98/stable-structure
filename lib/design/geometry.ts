@@ -490,7 +490,11 @@ function roofParts(m: Member, rs: RoofSpec, zE: number, s: Sec): Part[] {
   const tp = Math.tan((Math.max(0, Math.min(60, rs.pitch)) * Math.PI) / 180);
   const ov = Math.max(0, rs.overhang);
   const sp = Math.max(0.3, m.zone!.spacing / 1000);
-  const P = (u: number, v: number, z: number): P3 => (ns ? { x: v, y: u, z } : { x: u, y: v, z });
+  const flip = rs.form === "mono" && rs.high === "start"; // built high at the far edge, then turned round
+  const P = (u: number, v: number, z: number): P3 => {
+    const w = flip ? u0 + u1 - u : u;
+    return ns ? { x: v, y: w, z } : { x: w, y: v, z };
+  };
   const ridged = rs.form === "gable" || rs.form === "hip";
   const hipped = rs.form === "hip";
   const half = Math.min(W, hipped ? Lv : W) / 2; // a hip roof shorter than it is wide ends in a point

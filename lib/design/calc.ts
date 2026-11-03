@@ -893,8 +893,9 @@ function rafterSupports(model: DesignModel, z: Member, rs: RoofSpec): { ua: numb
     ? [Math.min(z.a.y, z.b.y), Math.max(z.a.y, z.b.y), Math.min(z.a.x, z.b.x), Math.max(z.a.x, z.b.x)]
     : [Math.min(z.a.x, z.b.x), Math.max(z.a.x, z.b.x), Math.min(z.a.y, z.b.y), Math.max(z.a.y, z.b.y)];
   const ov = Math.max(0, rs.overhang);
-  const ua = u0 - ov,
-    ub = u1 + (rs.form === "mono" ? 0 : ov);
+  const startHigh = rs.form === "mono" && rs.high === "start"; // a mono roof has eaves only on its low side
+  const ua = u0 - (startHigh ? 0 : ov),
+    ub = u1 + (rs.form === "mono" && !startHigh ? 0 : ov);
   const width = v1 - v0;
   const found: { u: number; mark: string }[] = [];
   for (const s of model.members) {

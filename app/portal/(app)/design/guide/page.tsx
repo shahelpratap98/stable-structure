@@ -130,7 +130,7 @@ export default async function DesignGuidePage() {
             <T>Bracing elements</T> (G), <T>pad footings</T> (F), <T>timber piles</T> (I) and <T>retaining walls</T> (T) work the same way. A{" "}
             <T>deck</T> (D) is drawn corner to corner and designs its joists, bearers and piles (or, set to sit on beams at both edges, just its joists); a <T>stair</T> (E) is drawn from its foot to its head. A{" "}
             <T>rib raft slab</T> (K) is drawn like a joist zone, corner to corner, and carries the walls and posts standing on it. A{" "}
-            <T>joist zone</T> drawn on the top storey is roof framing: choose gable, hip, mono, flat or low slope on firrings (level rafters, firrings falling to a box gutter you place, purlins on top), the pitch, eaves and purlins, and rafters (designed) or trusses (by the supplier).
+            <T>joist zone</T> drawn on the top storey is roof framing: choose gable, hip, mono, flat or low slope on firrings (level rafters, firrings falling to a box gutter you place, purlins on top), the pitch, eaves and purlins, and rafters (designed) or trusses (by the supplier). A mono roof also takes its high side: put it against the wall a lean-to leans on.
             The beams and walls along its eaves and ridge pick up the roof load.
           </li>
           <li>
@@ -228,8 +228,8 @@ export default async function DesignGuidePage() {
           reading the sheets again keeps it. A zone you&apos;ve given its own pitch stays as it is. A mix of pitches needs setting zone by zone.
         </p>
         <p className="mt-2">
-          <T>Add structural elements</T> turns the house into a first structure for the calcs to size: walls with their openings and lintels, trusses over the top storey and rafters on
-          any lower roof, joists room by room spanning the short way, and a beam or post wherever a load has nothing under it. Inside walls that joists land on become loadbearing. It is
+          <T>Add structural elements</T> turns the house into a first structure for the calcs to size: walls with their openings and lintels, trusses over the main roof as the roof sheet
+          draws it, a lean-to of rafters on anything that sticks out from under it, high against the wall it meets, the eaves printed in the sheet&apos;s notes, joists room by room spanning the short way, and a beam or post wherever a load has nothing under it. Inside walls that joists land on become loadbearing. It is
           a draft, worked out from the walls alone, so check every assumption, above all what&apos;s loadbearing and where the beams go. One Undo takes it all back. It doesn&apos;t add
           foundations or bracing, and it can&apos;t see wet areas or stair voids, so mark those on the joist zones.
         </p>

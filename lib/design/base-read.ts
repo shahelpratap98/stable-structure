@@ -16,7 +16,7 @@ export type BaseOpening = { s0: number; s1: number; kind: "window" | "door" }; /
 export type BaseWall = { id: string; a: Pt; b: Pt; t: number; ext: boolean; openings: BaseOpening[]; inferred?: boolean; core?: number };
 export type WallRead = { walls: BaseWall[]; bands: number }; // bands: m of filled or hatched wall found
 export type BaseSheet = { walls: BaseWall[]; eaves?: Pt[]; hip?: boolean }; // PDF points on the level's own sheet, so it moves with the sheet's scale and origin
-export type BaseHouse = { sheets: Record<string, BaseSheet>; pitch: number; pitchFrom?: "sheet" | "engineer" }; // sheets by level id; pitch in degrees, pitchFrom unset while it's only the default
+export type BaseHouse = { sheets: Record<string, BaseSheet>; pitch: number; pitchFrom?: "sheet" | "engineer"; eaves?: number }; // sheets by level id; pitch in degrees, pitchFrom unset while it's only the default; eaves in m, as printed
 
 type OpsList = { fnArray: number[] | Uint32Array; argsArray: unknown[] };
 type Matrix = number[];
@@ -800,6 +800,13 @@ export function isHipped(paths: SheetPath[], eaves: Pt[]) {
     if (near) hits++;
   }
   return hits >= 2;
+}
+
+// the eaves width printed in the notes: "EAVES : 150MM"
+export function eavesWidth(text: string): number | null {
+  const m = text.match(/eaves\W{0,6}(?:width\W{0,4})?(\d{2,4})\s*mm/i);
+  const v = m ? Number(m[1]) / 1000 : NaN;
+  return v >= 0.05 && v <= 1.5 ? v : null;
 }
 
 export function roofPitch(text: string): number | null {
