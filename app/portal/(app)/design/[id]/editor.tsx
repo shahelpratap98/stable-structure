@@ -39,7 +39,7 @@ import { draftStructure, setHousePitch } from "@/lib/design/base-structure";
 import { GRID_FRAME, PlanView, toPdf, toWorld, type Tool } from "./plan-view";
 import { Sheets } from "./sheets";
 import { SignoffPanel, type Signoff } from "./signoff";
-import type { ColourBy } from "./view-3d";
+import type { ColourBy, Edit } from "./view-3d";
 
 // three.js only loads when the 3D view is first shown.
 const View3D = dynamic(() => import("./view-3d").then((m) => m.View3D), {
@@ -132,6 +132,7 @@ export function DesignEditor({
   const [activeLevelId, setActiveLevelId] = useState(() => (initialModel.levels.find((l) => l.kind === "floor") ?? initialModel.levels[0]).id);
   const [tool, setTool] = useState<Tool>("select");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Edit | null>(null); // a 3D drag in progress, shown on the plan
   const [multi, setMulti] = useState<string[]>([]); // several members selected for a bulk change
   const [focus, setFocus] = useState<{ id: string; n: number } | null>(null);
   const [tab, setTab] = useState<Tab>("member");
@@ -1015,7 +1016,7 @@ export function DesignEditor({
               <div className="min-h-0 flex-1">
                 <PlanView
                   level={level}
-                  members={model.members.filter((m) => m.levelId === level.id)}
+                  members={previewed(model.members, preview).filter((m) => m.levelId === level.id)}
                   grids={model.grids}
                   ghosts={below ? model.members.filter((m) => m.levelId === below.id) : []}
                   above={postsAbove}
@@ -1071,7 +1072,7 @@ export function DesignEditor({
           ) : null}
           {mode === "3d" || mode === "split" ? (
             <div className={`relative min-h-0 min-w-0 flex-1 ${mode === "split" ? "border-t border-line lg:border-t-0 lg:border-l" : ""}`}>
-              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} onSelect={(id) => pick(id, true)} locked={locked} onEdit={(id, patch, summary) => (id.includes("#") ? updateOpening(id, { dz: patch.dz }, summary) : updateMember(id, patch, summary))} />
+              <View3D model={model} calcs={calcs} selectedId={selectedId} colourBy={colourBy} onSelect={(id) => pick(id, true)} locked={locked} onEdit={(id, patch, summary) => (id.includes("#") ? updateOpening(id, { dz: patch.dz }, summary) : updateMember(id, patch, summary))} onEditOpening={updateOpening} onPreview={setPreview} />
               {colourBy === "material" ? (
                 <div className="absolute bottom-2 left-2 grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-surface/90 px-2.5 py-1.5 text-xs shadow">
                   {(Object.keys(FAMILY_COLOUR) as (keyof typeof FAMILY_COLOUR)[]).map((f) => (
@@ -1351,4 +1352,15 @@ function ScaleDialog({ pdfDistance, onApply, onCancel }: { pdfDistance: number; 
       </form>
     </div>
   );
+}
+
+// The members with a 3D drag applied, for the plan to show while it's going on.
+function previewed(members: Member[], edit: Edit | null): Member[] {
+  if (!edit) return members;
+  const [wallId, opId] = edit.id.split("#");
+  return members.map((x) => {
+    if (edit.patch && x.id === edit.id) return { ...x, ...edit.patch };
+    if (edit.opening && opId && x.id === wallId && x.wall) return { ...x, wall: { ...x.wall, openings: x.wall.openings.map((o) => (o.id === opId ? { ...o, ...edit.opening } : o)) } };
+    return x;
+  });
 }

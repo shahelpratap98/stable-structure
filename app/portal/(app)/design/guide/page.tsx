@@ -238,9 +238,14 @@ export default async function DesignGuidePage() {
       <Card>
         <H id="edit3d">Editing in 3D</H>
         <p className="mt-2">
-          Select a member in 3D. Drag the orange ends to stretch it along its line (hold Shift to move an end anywhere), the blue square to slide it, and the green arrow to raise or
-          lower it. A post has a handle at its top and base for its height. Ends snap onto other members. You can also type <T>Raise / lower</T>, <T>Length</T> and <T>Height</T> in
-          millimetres on the card. The plans and calcs follow, and Undo works.
+          Drawing is done on the plans; 3D is for adjusting what&apos;s there, and both change the same model. Select a member in 3D and its handles show: hover one to see what it
+          does. Drag the orange ends to stretch it along its line (hold Shift to move an end anywhere), the blue square to slide it, and the green arrow to raise or lower it. A post
+          has a handle at its top and base for its height, and a joist or roof zone one on each corner. On an opening&apos;s lintel the ends change the opening&apos;s width and the
+          square slides the opening along its wall. Drags move in 10 mm steps; hold Alt for slower, 1 mm steps. Ends snap onto other members, and a zone&apos;s sides onto walls.
+        </p>
+        <p className="mt-2">
+          The plan follows the drag as it goes, and the calcs run when you let go. On the card you can also type <T>Raise / lower</T>, <T>Length</T>, <T>Height</T>, an
+          opening&apos;s width or a zone&apos;s size in millimetres, and pick the <T>Section</T>: <T>Auto</T> lets the app choose, or pick one to fix it. Undo works on all of it.
         </p>
       </Card>
 

@@ -13,13 +13,16 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RATINGS } from "@/lib/design/bracing";
 import { loadKind, STATUS_COLOUR, type Calcs } from "@/lib/design/calc";
-import { editable, handlesFor, lengthTo, lift, moveBy, raiseBase, raiseTop, snapPoints, stretch, zRange, type Handle } from "@/lib/design/edit3d";
+import { editable, handlesFor, lengthTo, lift, lintelEnds, moveBy, openingWidth, raiseBase, raiseTop, resizeZone, slideOpening, snapPoints, STEP, stretch, stretchOpening, zoneSize, zRange, type Handle } from "@/lib/design/edit3d";
 import { allParts, tagPoint, type Layer, type MeshPart, type Part, type Tone } from "@/lib/design/geometry";
 import { houseParts } from "@/lib/design/base-house";
-import { FAMILY_COLOUR } from "@/lib/design/materials";
-import { memberLength, type BraceSystem, type DesignModel, type Member, type MemberType, type Pt } from "@/lib/design/model";
+import { FAMILY_COLOUR, SG8_DEPTHS, STEEL } from "@/lib/design/materials";
+import { memberLength, type BraceSystem, type DesignModel, type Member, type MemberType, type Opening, type Pt } from "@/lib/design/model";
 
 export type ColourBy = "type" | "result" | "material";
+
+// A change on its way: a member, or the opening an opening's lintel belongs to.
+export type Edit = { id: string; patch?: Partial<Member>; opening?: Partial<Opening> };
 
 // The framing models were drawn with three.js r147, which applied hex colours as
 // they are and wrote the result without colour conversion. Match that, so the
@@ -35,6 +38,23 @@ type Props = {
   onSelect: (id: string | null) => void;
   locked?: boolean;
   onEdit?: (id: string, patch: Partial<Member>, summary: string) => void;
+  onEditOpening?: (lintelId: string, patch: Partial<Opening>, summary: string) => void;
+  onPreview?: (edit: Edit | null) => void; // while a handle is dragged, so the plan can follow
+};
+
+// Sections offered on the 3D card: sawn timber, then steel.
+const TIMBER_SECTIONS = SG8_DEPTHS.flatMap((d) => [`${d}x45`, `2/${d}x45`, `3/${d}x45`]);
+const POST_SECTIONS = ["90x90", "125x125", "2/90x45", "3/90x45"];
+const SECTIONED: MemberType[] = ["beam", "lintel", "joist", "rafter", "post", "joistzone"];
+const AUTO_SIZED: MemberType[] = ["beam", "lintel", "post"];
+
+const HINT: Record<Handle["kind"], string> = {
+  end: "Drag to change the length",
+  corner: "Drag to resize the zone",
+  move: "Drag to move",
+  lift: "Drag to raise or lower",
+  top: "Drag to set the height",
+  base: "Drag to move the base",
 };
 
 // One number on the selected member, in millimetres: Enter or leaving the box applies it.
@@ -59,6 +79,47 @@ function MmField({ label, value, onCommit }: { label: string; value: number; onC
           if (e.key === "Enter") e.currentTarget.blur();
         }}
       />
+    </label>
+  );
+}
+
+// The section on the 3D card: the app's pick, or one the engineer fixes. Sections
+// come in set sizes, so it's a list rather than a handle.
+function SectionPick({ member: m, opening, chosen, onEdit }: { member: Member; opening: boolean; chosen?: string; onEdit: (patch: Partial<Member>, what: string) => void }) {
+  if (opening || !SECTIONED.includes(m.type) || (m.type === "joistzone" && m.zone?.roof?.framing === "trusses")) return null;
+  const auto = AUTO_SIZED.includes(m.type) && (m.sizing?.mode ?? "auto") === "auto";
+  const timber = m.type === "post" ? POST_SECTIONS : TIMBER_SECTIONS;
+  const steel = m.type === "beam" || m.type === "lintel" ? STEEL.map((s) => s.name) : [];
+  const known = [...timber, ...steel];
+  const value = auto ? "" : m.section;
+  const pick = (v: string) => {
+    if (!v) return onEdit({ sizing: { ...m.sizing, mode: "auto" } }, "automatic sizing");
+    const isSteel = steel.includes(v);
+    onEdit({ section: v, material: isSteel ? "steel" : "timber", ...(isSteel ? {} : { grade: m.grade ?? "SG8" }), ...(AUTO_SIZED.includes(m.type) ? { sizing: { ...m.sizing, mode: "fixed" as const } } : {}) }, `section ${v}`);
+  };
+  return (
+    <label className="flex items-center justify-between gap-2 text-xs">
+      <span className="text-[#4b575c]">Section</span>
+      <select className="w-36 rounded-sm border border-[#c9cfca] bg-white px-1 py-0.5 text-right" value={value} onChange={(e) => pick(e.target.value)}>
+        {AUTO_SIZED.includes(m.type) ? <option value="">{`Auto${chosen ? ` (${chosen})` : ""}`}</option> : null}
+        {value && !known.includes(value) ? <option value={value}>{value}</option> : null}
+        <optgroup label="Timber">
+          {timber.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </optgroup>
+        {steel.length ? (
+          <optgroup label="Steel">
+            {steel.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+      </select>
     </label>
   );
 }
@@ -472,7 +533,7 @@ function gridObjects(model: DesignModel): THREE.Object3D[] {
   return out;
 }
 
-export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect, locked = false, onEdit }: Props) {
+export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect, locked = false, onEdit, onEditOpening, onPreview }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const stage = useRef<Stage | null>(null);
   const select = useRef(onSelect);
@@ -486,11 +547,11 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   const [view, setViewName] = useState<"iso" | "top" | "north" | "south" | "east" | "west" | null>("iso"); // null once orbited
   const [built, setBuilt] = useState(0); // bumps after each rebuild, so the selection is reapplied
   const [dragText, setDragText] = useState<{ text: string; x: number; y: number } | null>(null);
-  const live = useRef({ model, calcs, onEdit });
+  const live = useRef({ model, calcs, onEdit, onEditOpening, onPreview });
   useEffect(() => {
     select.current = onSelect;
-    live.current = { model, calcs, onEdit };
-  }, [onSelect, model, calcs, onEdit]);
+    live.current = { model, calcs, onEdit, onEditOpening, onPreview };
+  }, [onSelect, model, calcs, onEdit, onEditOpening, onPreview]);
 
   // Renderer, camera, lights and controls: once.
   useEffect(() => {
@@ -524,7 +585,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     const loop = () => {
       controls.update();
       // handles keep their size on screen, however far out the model is
-      for (const o of handles.children) o.scale.setScalar(camera.position.distanceTo(o.position) * 0.08);
+      for (const o of handles.children) o.scale.setScalar(camera.position.distanceTo(o.position) * (o.userData.hot ? 0.11 : 0.08));
       renderer.render(scene, camera);
       // the axes gizmo, bottom right above the hint, looking the same way as the camera
       const size = 96,
@@ -562,47 +623,94 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       const r = renderer.domElement.getBoundingClientRect();
       ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
     };
-    // Dragging a handle: the member follows on release, so the calcs run once.
-    let drag: { h: Handle; mesh: THREE.Object3D; m: Member; height: number; snaps: Pt[]; from: THREE.Vector3; apply?: { patch: Partial<Member>; what: string } } | null = null;
+    // Dragging a handle: an outline shows where it's going and the plan follows as it
+    // goes, but the member itself changes on release, so the calcs run once.
+    type Drag = { h: Handle; mesh: THREE.Object3D; m: Member; op?: { wall: Member; opening: Opening }; height: number; snaps: Pt[]; from: THREE.Vector3; ghost: THREE.Line; apply?: Edit & { what: string } };
+    let drag: Drag | null = null;
+    let previewing = 0;
+    const preview = (edit: Edit | null) => {
+      cancelAnimationFrame(previewing);
+      previewing = requestAnimationFrame(() => live.current.onPreview?.(edit)); // once a frame, however fast the mouse
+    };
+    // the outline of the member as it would be, at the height of the handle
+    const outline = (d: Drag, edit: Edit, y: number) => {
+      let pts: Pt[] = [];
+      if (d.op && edit.opening) pts = lintelEnds(d.op.wall, { ...d.op.opening, ...edit.opening });
+      else if (edit.patch) {
+        const n = { ...d.m, ...edit.patch };
+        if (n.type === "joistzone" && n.b) pts = [n.a, { x: n.b.x, y: n.a.y }, n.b, { x: n.a.x, y: n.b.y }, n.a];
+        else if (n.b) pts = [n.a, n.b];
+      }
+      d.ghost.geometry.setFromPoints(pts.map((q) => new THREE.Vector3(q.x, y, q.y)));
+      d.ghost.visible = pts.length > 1;
+    };
     const handleUnder = () => ray.intersectObjects(handles.children, true).find((x) => x.object.userData.handle)?.object;
     const up = new THREE.Vector3(0, 1, 0);
     const sign = (v: number) => (v > 0 ? "+" : "");
     const onDrag = (e: PointerEvent) => {
       if (!drag) return;
       aim(e);
-      const { h, m, mesh, height, snaps, from } = drag;
+      const { h, m, op, mesh, height, snaps, from } = drag;
       const r = renderer.domElement.getBoundingClientRect();
-      const show = (text: string, patch: Partial<Member> | null, what: string, at: THREE.Vector3) => {
-        if (!patch) return;
+      // Alt: a quarter of the movement, in 1 mm steps
+      const fine = e.altKey ? 0.25 : 1;
+      const step = e.altKey ? 0.001 : STEP;
+      const show = (text: string, edit: Edit | null, what: string, at: THREE.Vector3) => {
+        if (!edit || (!edit.patch && !edit.opening)) return;
         mesh.position.copy(at);
-        drag!.apply = { patch, what };
+        drag!.apply = { ...edit, what };
+        outline(drag!, edit, from.y);
+        preview(edit);
         setDragText({ text, x: e.clientX - r.left, y: e.clientY - r.top });
       };
-      const onPlane = () => ray.ray.intersectPlane(new THREE.Plane(up, -from.y), new THREE.Vector3());
+      const mm = (v: number) => `${Math.round(v * 1000)} mm`;
+      const onPlane = () => {
+        const q = ray.ray.intersectPlane(new THREE.Plane(up, -from.y), new THREE.Vector3());
+        return q ? from.clone().addScaledVector(q.sub(from), fine) : null;
+      };
       if (h.kind === "end") {
         const fixed = h.end === "a" ? m.b! : m.a;
         const dir = new THREE.Vector3(h.at.x - fixed.x, 0, h.at.y - fixed.y).normalize();
         const t = alongLine(ray.ray, from, dir);
-        const free = e.shiftKey ? onPlane() : null;
+        const free = e.shiftKey && !op ? onPlane() : null;
         if (t === null && !free) return;
-        const to = free ?? from.clone().addScaledVector(dir, t!);
-        const patch = stretch(m, h.end, { x: to.x, y: to.z }, snaps, e.shiftKey);
+        const to = free ?? from.clone().addScaledVector(dir, t! * fine);
+        if (op) {
+          const o = stretchOpening(op.wall, op.opening, h.end, { x: to.x, y: to.z }, step);
+          const [a, b] = o ? lintelEnds(op.wall, { ...op.opening, ...o }) : [];
+          const p = h.end === "a" ? a : b;
+          if (o && p) show(`${mm(o.width ?? op.opening.width)} opening`, { id: m.id, opening: o }, `opening width ${mm(o.width ?? op.opening.width)}`, new THREE.Vector3(p.x, from.y, p.y));
+          return;
+        }
+        const patch = stretch(m, h.end, { x: to.x, y: to.z }, snaps, e.shiftKey, step);
         const p = patch?.[h.end];
-        if (patch && p) show(`${Math.round(Math.hypot(p.x - fixed.x, p.y - fixed.y) * 1000)} mm`, patch, "stretched in 3D", new THREE.Vector3(p.x, from.y, p.y));
+        if (patch && p) show(mm(Math.hypot(p.x - fixed.x, p.y - fixed.y)), { id: m.id, patch }, "stretched in 3D", new THREE.Vector3(p.x, from.y, p.y));
+      } else if (h.kind === "corner") {
+        const to = onPlane();
+        if (!to) return;
+        const patch = resizeZone(m, h.cx, h.cy, { x: to.x, y: to.z }, snaps, step);
+        if (patch?.a && patch.b) show(`${mm(Math.abs(patch.b.x - patch.a.x))} × ${mm(Math.abs(patch.b.y - patch.a.y))}`, { id: m.id, patch }, "resized in 3D", new THREE.Vector3(patch[h.cx]!.x, from.y, patch[h.cy]!.y));
       } else if (h.kind === "move") {
         const to = onPlane();
         if (!to) return;
-        const patch = moveBy(m, to.x - from.x, to.z - from.z, snaps);
+        if (op) {
+          const o = slideOpening(op.wall, op.opening, { x: from.x, y: from.z }, { x: to.x, y: to.z }, step);
+          if (!o) return;
+          const [a, b] = lintelEnds(op.wall, { ...op.opening, ...o });
+          show(`${mm(o.offset ?? 0)} from the wall's start`, { id: m.id, opening: o }, "opening moved along the wall", new THREE.Vector3((a.x + b.x) / 2, from.y, (a.y + b.y) / 2));
+          return;
+        }
+        const patch = moveBy(m, to.x - from.x, to.z - from.z, snaps, step);
         const q = patch.a!;
-        show(`${Math.round(Math.hypot(q.x - m.a.x, q.y - m.a.y) * 1000)} mm`, patch, "moved in 3D", new THREE.Vector3(q.x + from.x - m.a.x, from.y, q.y + from.z - m.a.y));
+        show(mm(Math.hypot(q.x - m.a.x, q.y - m.a.y)), { id: m.id, patch }, "moved in 3D", new THREE.Vector3(q.x + from.x - m.a.x, from.y, q.y + from.z - m.a.y));
       } else {
         const t = alongLine(ray.ray, from, up);
         if (t === null) return;
-        const by = Math.round(t * 200) / 200; // 5 mm steps
+        const by = Math.round((t * fine) / step) * step;
         const at = from.clone().addScaledVector(up, by);
-        if (h.kind === "lift") show(`${sign(by)}${Math.round(by * 1000)} mm`, lift(m, by), "raised or lowered in 3D", at);
-        else if (h.kind === "top") show(`${Math.round((height + by) * 1000)} mm`, raiseTop(m, height, by), "height set in 3D", at);
-        else show(`${Math.round((height - by) * 1000)} mm`, raiseBase(m, height, by), "base moved in 3D", at);
+        if (h.kind === "lift") show(`${sign(by)}${Math.round(by * 1000)} mm`, op ? { id: m.id, opening: { dz: Math.round(((op.opening.dz ?? 0) + by) * 1000) / 1000 || undefined } } : { id: m.id, patch: lift(m, by) }, "raised or lowered in 3D", at);
+        else if (h.kind === "top") show(mm(height + by), { id: m.id, patch: raiseTop(m, height, by) }, "height set in 3D", at);
+        else show(mm(height - by), { id: m.id, patch: raiseBase(m, height, by) }, "base moved in 3D", at);
       }
     };
     const endDrag = () => {
@@ -612,7 +720,15 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       drag = null;
       controls.enabled = true;
       setDragText(null);
-      if (d?.apply) live.current.onEdit?.(d.m.id, d.apply.patch, `${d.m.label}: ${d.apply.what}`);
+      if (!d) return;
+      scene.remove(d.ghost);
+      d.ghost.geometry.dispose();
+      (d.ghost.material as THREE.Material).dispose();
+      cancelAnimationFrame(previewing);
+      live.current.onPreview?.(null);
+      const summary = `${d.m.label}: ${d.apply?.what}`;
+      if (d.apply?.opening) live.current.onEditOpening?.(d.m.id, d.apply.opening, summary);
+      else if (d.apply?.patch) live.current.onEdit?.(d.m.id, d.apply.patch, summary);
     };
     const onDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY };
@@ -621,18 +737,43 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       if (!mesh) return;
       const { model, calcs } = live.current;
       const { h, id, height } = mesh.userData as { h: Handle; id: string; height: number };
-      const m = model.members.find((x) => x.id === id) ?? calcs.lintels.find((l) => l.id === id)?.member;
+      const vl = calcs.lintels.find((l) => l.id === id);
+      const m = model.members.find((x) => x.id === id) ?? vl?.member;
       if (!m) return;
       controls.enabled = false; // this listener runs first, so the drag doesn't also orbit
       down = null;
-      drag = { h, mesh, m, height, snaps: snapPoints(model, m), from: mesh.position.clone() };
+      const ghost = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: "#ff7a1a", depthTest: false, dashSize: 0.15, gapSize: 0.08 }));
+      ghost.renderOrder = 11;
+      ghost.visible = false;
+      ghost.onBeforeRender = () => ghost.computeLineDistances();
+      scene.add(ghost);
+      drag = { h, mesh, m, op: vl ? { wall: vl.wall, opening: vl.opening } : undefined, height, snaps: snapPoints(model, m), from: mesh.position.clone(), ghost };
       window.addEventListener("pointermove", onDrag);
       window.addEventListener("pointerup", endDrag);
     };
+    // A handle under the mouse grows and says what dragging it does.
+    let hot: THREE.Object3D | null = null;
+    const onLeave = () => {
+      if (!hot || drag) return;
+      hot.userData.hot = false;
+      hot = null;
+      setDragText(null);
+    };
     const onHover = (e: PointerEvent) => {
-      if (drag || !handles.children.length) return;
+      if (drag || !handles.children.length) return onLeave();
       aim(e);
-      renderer.domElement.style.cursor = handleUnder() ? "grab" : "";
+      const under = handleUnder() ?? null;
+      renderer.domElement.style.cursor = under ? "grab" : "";
+      if (under === hot) return;
+      if (hot) hot.userData.hot = false;
+      hot = under;
+      if (!under) return setDragText(null);
+      under.userData.hot = true;
+      const { h, id } = under.userData as { h: Handle; id: string };
+      const opening = id.includes("#");
+      const text = opening && h.kind === "end" ? "Drag to change the opening's width" : opening && h.kind === "move" ? "Drag to slide the opening along the wall" : HINT[h.kind];
+      const r = renderer.domElement.getBoundingClientRect();
+      setDragText({ text: `${text} · Alt for fine control`, x: e.clientX - r.left, y: e.clientY - r.top });
     };
     const onUp = (e: PointerEvent) => {
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
@@ -649,6 +790,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     renderer.domElement.addEventListener("pointerdown", onDown, { capture: true });
     renderer.domElement.addEventListener("pointerup", onUp);
     renderer.domElement.addEventListener("pointermove", onHover);
+    renderer.domElement.addEventListener("pointerleave", onLeave);
 
     return () => {
       cancelAnimationFrame(frame);
@@ -656,6 +798,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
       renderer.domElement.removeEventListener("pointerdown", onDown, { capture: true });
       renderer.domElement.removeEventListener("pointerup", onUp);
       renderer.domElement.removeEventListener("pointermove", onHover);
+      renderer.domElement.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("pointermove", onDrag);
       window.removeEventListener("pointerup", endDrag);
       controls.dispose();
@@ -816,6 +959,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
   // Drag handles on the selected member. Not with the storeys pulled apart: the
   // handles would sit away from what they move.
   const selected = selectedId ? (model.members.find((m) => m.id === selectedId) ?? calcs.lintels.find((l) => l.id === selectedId)?.member) : undefined;
+  const opening = selectedId ? calcs.lintels.find((l) => l.id === selectedId) : undefined;
   const canEdit = !locked && !!onEdit && editable(selected);
   useEffect(() => {
     const s = stage.current;
@@ -832,7 +976,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
     const range = zRange(parts);
     const height = range ? range.z1 - range.z0 : 0;
     const mat = (c: string) => new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true });
-    const COLOUR = { end: "#ff7a1a", move: "#2c5e7d", lift: "#16803c", top: "#16803c", base: "#16803c" };
+    const COLOUR = { end: "#ff7a1a", corner: "#ff7a1a", move: "#2c5e7d", lift: "#16803c", top: "#16803c", base: "#16803c" };
     for (const h of handlesFor(selected, parts)) {
       const g = h.kind === "lift" ? new THREE.ConeGeometry(0.09, 0.26, 16) : h.kind === "move" ? new THREE.BoxGeometry(0.22, 0.05, 0.22) : new THREE.SphereGeometry(0.1, 16, 12);
       const mesh = new THREE.Mesh(g, mat(COLOUR[h.kind]));
@@ -935,8 +1079,32 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
           </dl>
           {canEdit && selected ? (
             <div className="mt-2 flex flex-col gap-1 border-t border-[#c9cfca] pt-2">
-              {selected.type !== "wall" ? <MmField key={`${selected.id}:dz:${selected.dz ?? 0}`} label="Raise / lower (mm)" value={Math.round((selected.dz ?? 0) * 1000)} onCommit={(v) => onEdit!(selected.id, { dz: v / 1000 || undefined }, `${selected.label}: raised or lowered to ${v} mm`)} /> : null}
-              {selected.b && !selected.id.includes("#") ? (
+              <SectionPick member={selected} opening={!!opening} chosen={calcs.results.get(selected.id)?.sec?.name} onEdit={(patch, what) => onEdit!(selected.id, patch, `${selected.label}: ${what}`)} />
+              {opening ? (
+                <MmField
+                  key={`${selected.id}:w:${opening.opening.width}`}
+                  label="Opening width (mm)"
+                  value={Math.round(opening.opening.width * 1000)}
+                  onCommit={(v) => {
+                    const patch = openingWidth(opening.wall, opening.opening, v / 1000);
+                    if (patch) onEditOpening?.(selected.id, patch, `${selected.label}: opening width ${v} mm`);
+                  }}
+                />
+              ) : null}
+              {selected.type === "joistzone" && selected.b ? (
+                <>
+                  <MmField key={`${selected.id}:ew:${selected.a.x}:${selected.b.x}`} label="East–west (mm)" value={Math.round(Math.abs(selected.b.x - selected.a.x) * 1000)} onCommit={(v) => {
+                    const patch = zoneSize(selected, v / 1000, Math.abs(selected.b!.y - selected.a.y));
+                    if (patch) onEdit!(selected.id, patch, `${selected.label}: ${v} mm east–west`);
+                  }} />
+                  <MmField key={`${selected.id}:ns:${selected.a.y}:${selected.b.y}`} label="North–south (mm)" value={Math.round(Math.abs(selected.b.y - selected.a.y) * 1000)} onCommit={(v) => {
+                    const patch = zoneSize(selected, Math.abs(selected.b!.x - selected.a.x), v / 1000);
+                    if (patch) onEdit!(selected.id, patch, `${selected.label}: ${v} mm north–south`);
+                  }} />
+                </>
+              ) : null}
+              {selected.type !== "wall" && selected.type !== "joistzone" && selected.type !== "bracing" && selected.type !== "retaining" ? <MmField key={`${selected.id}:dz:${selected.dz ?? 0}`} label="Raise / lower (mm)" value={Math.round((selected.dz ?? 0) * 1000)} onCommit={(v) => onEdit!(selected.id, { dz: v / 1000 || undefined }, `${selected.label}: raised or lowered to ${v} mm`)} /> : null}
+              {selected.b && !opening && selected.type !== "joistzone" ? (
                 <MmField
                   key={`${selected.id}:len:${memberLength(selected)}`}
                   label="Length (mm)"
@@ -985,7 +1153,7 @@ export function View3D({ model, calcs, selectedId, colourBy, upToLevel, onSelect
           </label>
         </div>
       ) : null}
-      <p className="pointer-events-none absolute right-2 bottom-2 rounded-sm bg-[#f8f9f6]/90 px-2 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-[#4b575c] @max-2xl:hidden">drag orbit · right-drag pan · scroll zoom · click member, then drag its handles (Shift: free end)</p>
+      <p className="pointer-events-none absolute right-2 bottom-2 rounded-sm bg-[#f8f9f6]/90 px-2 py-0.5 font-mono text-[10.5px] whitespace-nowrap text-[#4b575c] @max-2xl:hidden">drag orbit · right-drag pan · scroll zoom · click member, then drag its handles (Shift: free end · Alt: fine)</p>
     </div>
   );
 }
