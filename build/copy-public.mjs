@@ -12,7 +12,7 @@ const out = join(root, "public");
 
 // Everything a visitor can request. Anything not listed here (build/, reports/,
 // supabase/, source code, config) is never published.
-const ROOT_FILES = /^(.+\.html|styles\.css|main\.js|favicon\.ico|robots\.txt|sitemap\.xml)$/;
+const ROOT_FILES = /^(.+\.html|styles\.css|main\.js|favicon\.ico|robots\.txt|sitemap\.xml|llms\.txt)$/;
 const DIRS = ["assets", "services", "guides"];
 
 rmSync(out, { recursive: true, force: true });
