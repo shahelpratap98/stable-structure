@@ -63,6 +63,21 @@
     revealEls.forEach(function (el) { el.classList.add('in'); });
   }
 
+  // Project video: the Facebook player loads only when someone presses play.
+  document.querySelectorAll('.video-facade').forEach(function (box) {
+    var btn = box.querySelector('.vf-play');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var f = document.createElement('iframe');
+      f.title = 'Stable Structure project video';
+      f.src = box.getAttribute('data-src');
+      f.setAttribute('allow', 'autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share');
+      f.setAttribute('allowfullscreen', 'true');
+      f.setAttribute('scrolling', 'no');
+      box.replaceChild(f, btn);
+    });
+  });
+
   // Projects lightbox — click a card photo to view the full image and caption.
   // Multi-photo posts are browsable with the arrows or left/right keys.
   var lb = document.getElementById('lightbox');

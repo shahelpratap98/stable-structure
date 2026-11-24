@@ -10,7 +10,7 @@ import { hitMemory, ipFrom } from "@/lib/rate-limit-memory";
 // still posts here as a normal form and is redirected back to the contact page.
 
 const TO = process.env.ENQUIRY_TO || "gajan@stablestructure.co.nz";
-const LIMITS = { name: 120, phone: 40, email: 200, service: 120, message: 5000 };
+const LIMITS = { name: 120, phone: 40, email: 200, role: 60, service: 120, message: 5000 };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type Fields = Record<keyof typeof LIMITS | "website", string>;
@@ -30,6 +30,7 @@ async function readFields(request: NextRequest): Promise<{ fields: Fields; json:
       name: get("name"),
       phone: get("phone"),
       email: get("email"),
+      role: get("role"), // homeowner, builder, architect...
       service: get("service"),
       message: get("message"),
       website: get("website"), // honeypot: hidden from people, filled in by bots
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
       `Name: ${f.name}`,
       `Phone: ${f.phone}`,
       `Email: ${f.email}`,
+      `I am a: ${f.role || "Not specified"}`,
       `Service: ${f.service || "Not specified"}`,
       `Project details: ${f.message || "(none given)"}`,
       `Reply to this email to answer ${f.name} directly.`,

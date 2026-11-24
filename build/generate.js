@@ -50,13 +50,22 @@ const waHref = (msg) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(ms
    Drives the direct write-review and listing URLs for every review CTA. */
 const GOOGLE_PLACE_ID = 'ChIJxZLAskitcm0RtVe_xgOAW3A';
 
+/* Legal entity, from the Companies Office (company 7491516). Shown in the
+   footer and the organisation markup; the registered street address stays off
+   the site on purpose. */
+const LEGAL_NAME = 'Stable Structure Limited';
+const NZBN = '9429047474703';
+
 /* Per-page lastmod discipline for sitemap.xml: every entry in `pages` carries a
    `lastmod` — update it ONLY when that page's content meaningfully changes.
    (2026-08-13 = the schema/font/perf sprint touched every page's head.) */
 const SPRINT_DATE = '2026-08-13';
+/* lastmod for pages whose content changed in the November 2026 SEO pass. */
+const CONTENT_DATE = '2026-11-24';
+const CONTENT_DISPLAY = 'Updated 24 November 2026';
 /* Cache-buster for styles.css / main.js. Kept separate from SPRINT_DATE so a
    styling tweak does not also rewrite every page's sitemap <lastmod>. */
-const ASSET_VERSION = '2026-09-30.4';
+const ASSET_VERSION = '2026-11-24.3';
 
 /* ---------- Icons (24x24) ---------- */
 const I = {
@@ -209,6 +218,15 @@ const projectDate = (d) => {
    NOTE: address stays at suburb level and there is no `geo` — street address and
    coordinates must come from Gajan/GBP, never guessed. */
 const ORG_ID = `${SITE_URL}#organization`;
+const PERSON_ID = `${SITE_URL}#gajanthan`;
+const AREA_SERVED = [
+  { '@type': 'City', name: 'Auckland' },
+  { '@type': 'Place', name: 'Botany, Auckland' },
+  { '@type': 'Place', name: 'Howick, Auckland' },
+  { '@type': 'Place', name: 'Pakuranga, Auckland' },
+  { '@type': 'Place', name: 'Flat Bush, Auckland' },
+  { '@type': 'Country', name: 'New Zealand' },
+];
 
 const SERVICE_TYPE = {
   'structural-design': 'Structural Engineering Design',
@@ -230,28 +248,42 @@ function orgNode() {
     url: SITE_URL,
     logo: `${SITE_URL}assets/logo.png`,
     image: `${SITE_URL}assets/og-image.jpg`,
+    legalName: LEGAL_NAME,
+    identifier: { '@type': 'PropertyValue', propertyID: 'NZBN', value: NZBN },
     description: 'Structural and civil engineering consultancy in Botany, Auckland, serving all of New Zealand.',
     telephone: PHONE_TEL,
     email: EMAIL,
-    address: { '@type': 'PostalAddress', addressLocality: 'Botany', addressRegion: 'Auckland', addressCountry: 'NZ' },
-    areaServed: 'New Zealand',
+    address: { '@type': 'PostalAddress', addressLocality: 'Botany', addressRegion: 'Auckland', postalCode: '2010', addressCountry: 'NZ' },
+    areaServed: AREA_SERVED,
+    hasMap: GOOGLE_REVIEWS_URL,
+    contactPoint: { '@type': 'ContactPoint', telephone: PHONE_TEL, email: EMAIL, contactType: 'customer service', areaServed: 'NZ', availableLanguage: 'English' },
+    knowsAbout: ['Structural engineering', 'Civil engineering', 'Producer statements (PS1 and PS4)', 'Building consent documentation', 'Retaining wall design', 'Construction monitoring'],
     sameAs: [LINKEDIN_URL, FACEBOOK_URL],
-    founder: {
-      '@type': 'Person',
-      name: OWNER,
-      jobTitle: 'Director',
-      hasCredential: [
-        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Professional Engineer (CPEng), Engineering New Zealand', identifier: '1030007', url: 'https://members.engineeringnz.org/s/cpeng-register' },
-        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Engineer (CEng), United Kingdom' },
-        { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Member of the Institution of Structural Engineers (MIStructE)' },
-      ],
-    },
+    founder: { '@id': PERSON_ID },
     openingHoursSpecification: [{
       '@type': 'OpeningHoursSpecification',
       dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
       opens: '08:30', closes: '17:00',
     }],
     slogan: 'Strong solutions for your vision',
+  };
+}
+
+/* The director, referenced by @id from the organisation, articles and bylines. */
+function personNode() {
+  return {
+    '@type': 'Person',
+    '@id': PERSON_ID,
+    name: OWNER,
+    jobTitle: 'Director',
+    url: `${SITE_URL}about.html`,
+    image: `${SITE_URL}assets/team/gajanthan.jpg`,
+    worksFor: { '@id': ORG_ID },
+    hasCredential: [
+      { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Professional Engineer (CPEng), Engineering New Zealand', identifier: '1030007', url: 'https://members.engineeringnz.org/s/cpeng-register' },
+      { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Chartered Engineer (CEng), United Kingdom' },
+      { '@type': 'EducationalOccupationalCredential', credentialCategory: 'Member of the Institution of Structural Engineers (MIStructE)' },
+    ],
   };
 }
 
@@ -263,6 +295,7 @@ const TOP_LABELS = {
   'about.html': 'About', 'process.html': 'Process', 'testimonials.html': 'Reviews',
   'faq.html': 'FAQ', 'contact.html': 'Contact', 'privacy.html': 'Privacy Policy',
   'granny-flats.html': 'Granny Flats', 'guides.html': 'Guides',
+  'builders-architects.html': 'For Builders & Architects',
 };
 function crumbTrail(file, pageTitle) {
   if (!file || file === 'index.html' || file === '404.html') return null;
@@ -289,7 +322,7 @@ function breadcrumbNode(trail) {
 }
 
 function ldFor(o, file, pageUrl) {
-  const graph = [orgNode()];
+  const graph = [orgNode(), personNode()];
   if (file === 'index.html') {
     graph.push({ '@type': 'WebSite', '@id': `${SITE_URL}#website`, url: SITE_URL, name: 'Stable Structure Limited', publisher: { '@id': ORG_ID } });
   }
@@ -299,12 +332,29 @@ function ldFor(o, file, pageUrl) {
   if (o.serviceType) {
     graph.push({
       '@type': 'Service',
+      '@id': `${pageUrl}#service`,
       name: o.serviceName || o.title,
       serviceType: o.serviceType,
       provider: { '@id': ORG_ID },
-      areaServed: 'New Zealand',
+      areaServed: AREA_SERVED,
       url: pageUrl,
+      mainEntityOfPage: pageUrl,
       description: o.desc,
+    });
+  }
+  if (o.article) {
+    graph.push({
+      '@type': 'Article',
+      '@id': `${pageUrl}#article`,
+      headline: o.article.headline,
+      description: o.desc,
+      author: { '@id': PERSON_ID },
+      publisher: { '@id': ORG_ID },
+      datePublished: o.article.published,
+      dateModified: o.article.modified,
+      mainEntityOfPage: pageUrl,
+      image: `${SITE_URL}${o.ogImage || 'assets/og-image.jpg'}`,
+      inLanguage: 'en-NZ',
     });
   }
   return JSON.stringify({ '@context': 'https://schema.org', '@graph': graph });
@@ -346,17 +396,17 @@ ${canonical}${robots}<meta property="og:title" content="${o.title}" />
 <link rel="icon" href="${base}assets/favicon-48.png" sizes="48x48" type="image/png" />
 <link rel="apple-touch-icon" href="${base}assets/apple-touch-icon.png" />
 <link rel="stylesheet" href="${base}styles.css?v=${ASSET_VERSION}" />
-<script type="application/ld+json">
+${o.noindex ? '' : `<script type="application/ld+json">
 ${ldFor(o, file, pageUrl)}
 </script>
-</head>
+`}</head>
 <body>`;
 }
 
 /* Brand links to the site root (works at any depth on Vercel); the logo is a
    9KB 3x-density WebP (was a 207KB PNG) with explicit dimensions to avoid CLS. */
 const brand = (base, footer) => `<a class="brand" href="${BASE_PATH}" aria-label="Stable Structure Limited home">
-  <img class="logo" src="${base}assets/logo.webp" width="303" height="186" alt="Stable Structure Limited — Structural & Civil Engineering"${footer ? '' : ' fetchpriority="high"'} />
+  <img class="logo" src="${base}assets/logo.webp" srcset="${base}assets/logo-208.webp 208w, ${base}assets/logo.webp 303w" sizes="104px" width="303" height="186" alt="Stable Structure Limited — Structural & Civil Engineering" />
 </a>`;
 
 const NAV = [
@@ -371,6 +421,7 @@ const NAV = [
   { key: 'about', label: 'About', href: 'about.html' },
   { key: 'process', label: 'Process', href: 'process.html' },
   { key: 'reviews', label: 'Reviews', href: 'testimonials.html' },
+  { key: 'guides', label: 'Guides', href: 'guides.html' },
   { key: 'faq', label: 'FAQ', href: 'faq.html' },
   { key: 'contact', label: 'Contact', href: 'contact.html' },
 ];
@@ -435,6 +486,7 @@ function header(base, active) {
   <a class="m-link" href="${base}about.html">About</a>
   <a class="m-link" href="${base}process.html">Process</a>
   <a class="m-link" href="${base}testimonials.html">Reviews</a>
+  <a class="m-link" href="${base}guides.html">Guides</a>
   <a class="m-link" href="${base}faq.html">FAQ</a>
   <a class="m-link" href="${base}contact.html">Contact</a>
   <a class="m-link m-staff" href="/portal/login" rel="nofollow">Staff login</a>
@@ -468,6 +520,8 @@ function footer(base) {
         <a href="${base}about.html">About us</a>
         <a href="${base}process.html">Our process</a>
         <a href="${base}testimonials.html">Reviews</a>
+        <a href="${base}guides.html">Engineering guides</a>
+        <a href="${base}builders-architects.html">For builders &amp; architects</a>
         <a href="${base}faq.html">FAQ</a>
         <a href="${base}contact.html">Contact</a>
       </div>
@@ -487,7 +541,7 @@ function footer(base) {
       </div>
     </div>
     <div class="foot-bottom">
-      <span>© <span id="year">2026</span> Stable Structure Limited. All rights reserved.</span>
+      <span>© <span id="year">2026</span> ${LEGAL_NAME} · NZBN ${NZBN}. All rights reserved.</span>
       <span><a href="${base}privacy.html">Privacy Policy</a> · <a href="/portal/login" rel="nofollow">Staff login</a> · Structural &amp; Civil Engineering · Auckland, New Zealand</span>
     </div>
   </div>
@@ -496,9 +550,8 @@ function footer(base) {
 
 function callbar(base) {
   return `<div class="callbar" role="complementary" aria-label="Quick contact">
-  <div class="cb-txt"><b>Ready to start?</b><span>Free quote · Mon–Fri 8:30–5</span></div>
+  <a class="btn btn-primary cb-call" href="tel:${PHONE_TEL}">${si('phone', 2)} Call ${PHONE_DISPLAY}</a>
   <a class="btn btn-wa" href="${waHref()}" target="_blank" rel="noopener" aria-label="Message us on WhatsApp">${wa()} WhatsApp</a>
-  <a class="btn btn-primary icononly" href="tel:${PHONE_TEL}" aria-label="Call ${PHONE_DISPLAY}">${si('phone', 2)}</a>
 </div>`;
 }
 
@@ -531,7 +584,8 @@ const scripts = (base, extra) => `${extra ? extra + '\n' : ''}<script src="${bas
 function pageHero(base, o) {
   const crumbs = (o.crumbs || []).map((c, i, arr) => {
     const last = i === arr.length - 1;
-    const link = last ? `<span>${c.label}</span>` : `<a href="${base}${c.href}">${c.label}</a>`;
+    const href = c.href === 'index.html' ? BASE_PATH : base + c.href;
+    const link = last ? `<span>${c.label}</span>` : `<a href="${href}">${c.label}</a>`;
     return link + (last ? '' : ` <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I.chevr}</svg> `);
   }).join('');
   const cta = o.cta === false ? '' : `<div class="ph-cta">
@@ -591,8 +645,9 @@ const GOOGLE_WRITE_URL = GOOGLE_PLACE_ID
   : GOOGLE_REVIEWS_URL;
 const REVIEWS = {
   rating: '5.0',
+  checked: 'October 2026', // when the rating and reviews were last copied from Google
   featured: {
-    initial: 'H', name: 'Haran / Kash', meta: 'A-Frame Builders Ltd', when: '2 months ago',
+    initial: 'H', name: 'Haran / Kash', meta: 'A-Frame Builders Ltd', when: 'August 2026',
     paras: [
       'We have worked with Gajanthan Vethanathan and Stable Structure on multiple residential development projects, and the level of service has been exceptional every time.',
       'Gajanthan is an outstanding Structural and Civil Engineer with exceptional technical knowledge, professionalism, and attention to detail. He is always responsive, provides practical engineering solutions, and works closely with the entire project team to ensure everything runs smoothly. His advice has been invaluable throughout our developments, from the design stage through to construction.',
@@ -601,19 +656,19 @@ const REVIEWS = {
   },
   /* Written Google reviews, verbatim. */
   written: [
-    { initial: 'P', name: 'Prutvi Kumar', meta: '', when: '2 months ago',
+    { initial: 'P', name: 'Prutvi Kumar', meta: '', when: 'August 2026',
       text: 'Gajan and team are very efficient the designs are very thorough. They provide the details which are clear and easy to understand. They respond to site clarifications and council queries efficiently and resolve issues. I highly recommend them.' },
-    { initial: 'A', name: 'Aleki Bon', meta: 'Local Guide', when: '2 months ago',
+    { initial: 'A', name: 'Aleki Bon', meta: 'Local Guide', when: 'August 2026',
       text: 'The team at Stable Structure as &lsquo;solid&rsquo; to deal with. They are efficient and have superior knowledge in their field. We send lot of work their way as they get the jobs done fast and at a fair price point.' },
-    { initial: 'J', name: 'Jedd Forbes', meta: '', when: '2 months ago',
+    { initial: 'J', name: 'Jedd Forbes', meta: '', when: 'August 2026',
       text: 'Gajan is a pleasure to work with. Professional, calm and considered. Looking forward to the next project.' },
-    { initial: 'S', name: 'Sonia Singh', meta: 'Proconcept Design Ltd', when: '4 months ago',
+    { initial: 'S', name: 'Sonia Singh', meta: 'Proconcept Design Ltd', when: 'June 2026',
       text: 'Gajan &amp; Team are very Professional, reliable, and incredibly thorough. Highly recommend their structural engineering services.' },
   ],
   others: [
-    { initial: 'A', name: 'Ananayan', when: '6 months ago' },
-    { initial: 'N', name: 'Niranjan Tharma', when: '2 years ago' },
-    { initial: 'A', name: 'arunthamil 2004', when: '4 years ago' },
+    { initial: 'A', name: 'Ananayan', when: 'January 2026' },
+    { initial: 'N', name: 'Niranjan Tharma', when: '2024' },
+    { initial: 'A', name: 'arunthamil 2004', when: '2022' },
   ],
 };
 const googleGlyph = () => `<svg class="gg" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.2a5.3 5.3 0 0 1-2.3 3.5v2.9h3.7c2.2-2 3.4-5 3.4-8.6z"/><path fill="#34A853" d="M12 24c3.1 0 5.7-1 7.6-2.8l-3.7-2.9c-1 .7-2.3 1.1-3.9 1.1-3 0-5.6-2-6.5-4.8H1.7v3A11.9 11.9 0 0 0 12 24z"/><path fill="#FBBC05" d="M5.5 14.6a7.1 7.1 0 0 1 0-4.6v-3H1.7a12 12 0 0 0 0 10.6z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.2.6 4.4 1.7l3.3-3.3A11.7 11.7 0 0 0 12 0 11.9 11.9 0 0 0 1.7 6l3.8 3c.9-2.8 3.5-4.8 6.5-4.8z"/></svg>`;
@@ -622,7 +677,7 @@ function reviewsSummary() {
   return `<div class="reviews-summary reveal">
       <div class="rs-score">
         <div class="rs-num">${REVIEWS.rating}</div>
-        <div>${stars5()}<span class="rs-meta">${googleGlyph()} From our Google reviews</span></div>
+        <div>${stars5()}<span class="rs-meta">${googleGlyph()} Google rating, checked ${REVIEWS.checked}</span></div>
       </div>
       <div class="rs-actions">
         <a class="btn btn-primary" href="${GOOGLE_REVIEWS_URL}" target="_blank" rel="noopener">Read our Google reviews ${si('arrow', 2.2)}</a>
@@ -658,9 +713,12 @@ const FAQS = [
   ['Do you provide PS1 documentation for building consent?', 'Yes. We prepare detailed structural and civil drawings, calculations and Producer Statements (PS1) so your building consent application is complete and consent-ready.'],
   ['Which areas of New Zealand do you cover?', 'We are based in Botany, Auckland and provide structural and civil engineering services for residential, commercial and industrial projects throughout New Zealand.'],
   ['Do I need a structural engineer for a deck or retaining wall?', 'Often, yes. A retaining wall needs engineering design and building consent once it retains more than 1.5 metres of ground, or at any height if it carries a surcharge such as a driveway, building or sloping ground above it. Decks generally need engineering once they are more than 1.5 metres off the ground, or where they are cantilevered. Our <a href="guides/retaining-wall-consent-nz.html">guide to retaining wall consent</a> covers the rules in full, and our <a href="services/retaining-walls.html">retaining wall engineering</a> page explains how we design them. If you are unsure, give us a call and we will tell you straight.'],
-  ['How much does structural engineering cost?', 'It depends on the size and complexity of your project. We provide a clear, upfront quote before any work begins — get in touch with your plans or a description and we will give you a free, no-obligation estimate.'],
-  ['How soon can you start?', 'We pride ourselves on responsive turnaround. Timeframes vary with workload and project scope, so call or send an enquiry and we will confirm our current availability for you.'],
-  ['Can you work from my architect or designer’s plans?', 'Absolutely. We regularly collaborate with architects, designers and builders, providing the structural and civil engineering to bring their plans to life and through consent.'],
+  ['How much does structural engineering cost?', 'It depends on what sits behind the job: a single beam, deck or standard retaining wall is a much smaller piece of work than full structural design for a new build. The cost drivers are the number of engineered elements, the ground, how complete your drawings are, and whether a geotechnical report is needed. We quote every job as a <b>fixed fee in writing before we start</b>, usually within one business day of receiving your plans, so the number never moves mid-project.'],
+  ['How long does engineering take?', 'For straightforward residential elements, allow <b>one to two weeks</b> from receiving your plans to consent-ready drawings, calculations and PS1. Full new-build packages typically take <b>three to six weeks</b>. Once lodged, council has 20 working days to process a building consent; our guide to <a href="guides/building-consent-timeframes-auckland.html">consent timeframes and RFIs</a> explains what pauses that clock.'],
+  ['How soon can you start?', 'We confirm availability and a fixed quote, usually within one business day of receiving your plans. Bringing us in while your drawings are still being finished is the easiest way to keep engineering off your critical path.'],
+  ['Can you work from my architect or designer’s plans?', 'Absolutely. Most of our work comes that way: architects, designers and draughtspeople send their plans and we provide the structural engineering and PS1 behind them. See <a href="builders-architects.html">working with builders and architects</a> for how we fit into your team.'],
+  ['Do I need an engineer to remove a wall?', 'If the wall is load-bearing or part of the house’s bracing, yes, and the work needs building consent. Our guide on <a href="guides/removing-load-bearing-wall-nz.html">removing a load-bearing wall</a> explains how to tell, what the engineer designs and what it involves.'],
+  ['Who signs your producer statements?', 'Every PS1 and PS4 we issue is signed by our director, Gajanthan Vethanathan, a Chartered Professional Engineer (CPEng #1030007) you can check on Engineering New Zealand’s public register.'],
 ];
 function faqBlock(list) {
   return `<div class="faq">
@@ -684,7 +742,7 @@ function contactBlock(base) {
         <div class="infoitem"><div class="ii wa">${wa()}</div><div><b>WhatsApp</b><a href="${waHref()}" target="_blank" rel="noopener">Message ${PHONE_DISPLAY}</a></div></div>
         <div class="infoitem"><div class="ii">${si('mail', 2)}</div><div><b>Email</b><a href="mailto:${EMAIL}">${EMAIL}</a></div></div>
         <div class="infoitem"><div class="ii">${si('pin', 2)}</div><div><b>Location</b><span>Botany, Auckland — serving all of New Zealand</span></div></div>
-        <div class="infoitem"><div class="ii">${si('clock', 2)}</div><div><b>Office hours</b><span>Monday – Friday, 8:30am – 5:00pm</span></div></div>
+        <div class="infoitem"><div class="ii">${si('clock', 2)}</div><div><b>Office hours</b><span>Monday – Friday, 8:30am – 5:00pm · site visits by appointment</span></div></div>
       </div>
       <div class="map-embed reveal">
         <iframe src="https://maps.google.com/maps?q=Stable%20Structure%20Limited%2C%20Botany%2C%20Auckland&z=13&output=embed" loading="lazy" title="Map showing Stable Structure Limited in Botany, Auckland" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
@@ -706,6 +764,15 @@ function contactBlock(base) {
         <div class="field"><label for="phone">Phone <span class="req">*</span></label><input id="phone" name="phone" type="tel" autocomplete="tel" required placeholder="021 000 0000" /></div>
       </div>
       <div class="field"><label for="email">Email <span class="req">*</span></label><input id="email" name="email" type="email" autocomplete="email" required placeholder="you@email.co.nz" /></div>
+      <div class="field"><label for="role">I am a…</label>
+        <select id="role" name="role"><option value="">Select…</option>
+          <option>Homeowner</option>
+          <option>Builder</option>
+          <option>Architect or designer</option>
+          <option>Developer</option>
+          <option>Other</option>
+        </select>
+      </div>
       <div class="field"><label for="service">What do you need help with?</label>
         <select id="service" name="service"><option value="">Select a service…</option>
           ${opts}
@@ -714,7 +781,7 @@ function contactBlock(base) {
       </div>
       <div class="field"><label for="message">Project details</label>
         <textarea id="message" name="message" placeholder="Tell us about your project, location and timeframe…"></textarea>
-        <p class="hint">Adding your suburb and a rough timeframe helps us reply with a useful quote.</p>
+        <p class="hint">Adding your suburb and a rough timeframe helps us reply with a useful quote. Have plans or photos? Email them to <a href="mailto:${EMAIL}">${EMAIL}</a> or send them on <a href="${waHref()}" target="_blank" rel="noopener">WhatsApp</a>.</p>
       </div>
       <div class="hp" aria-hidden="true"><label for="website">Leave this empty</label><input id="website" name="website" type="text" tabindex="-1" autocomplete="off" /></div>
       <button type="submit" class="btn btn-primary btn-lg">Send enquiry ${si('arrow', 2.2)}</button>
@@ -745,21 +812,22 @@ function layout({ base, active, headO, body, file, extraScripts }) {
 function homeHero(base) {
   return `<section class="hero">
   <div class="container hero-grid">
-    <div class="reveal">
+    <div>
       <span class="hero-badge"><span class="dot"></span>Kiwi-owned · Botany, Auckland</span>
       <h1 style="margin-top:18px">Strong solutions for <span class="hl">your vision.</span></h1>
-      <p class="sub">Stable Structure Limited is a premier structural &amp; civil engineering consultancy. From your first sketch to final sign-off, we turn complex engineering challenges into practical, cost-effective, fully compliant designs — right across New Zealand.</p>
+      <p class="sub">Stable Structure Limited is a structural and civil engineering consultancy in Botany, Auckland, led by a Chartered Professional Engineer (CPEng). From your first sketch to final sign-off, we turn complex engineering challenges into practical, cost-effective, fully compliant designs, right across New Zealand.</p>
       <div class="hero-cta">
         <a class="btn btn-primary btn-lg" href="${base}contact.html">Request a Free Quote ${si('arrow', 2.2)}</a>
         <a class="btn btn-wa btn-lg" href="${waHref()}" target="_blank" rel="noopener">${wa()} WhatsApp us</a>
       </div>
+      <p class="hero-call">Or call <a href="tel:${PHONE_TEL}">${PHONE_DISPLAY}</a> · Mon–Fri, 8:30am–5pm</p>
       <div class="hero-trust">
         <div class="ht">${si('shield', 2)}NZ Building Code compliant</div>
         <div class="ht">${si('check', 2)}Consent-ready documentation</div>
         <div class="ht">${si('clock', 2)}Fast, responsive turnaround</div>
       </div>
     </div>
-    <div class="hero-visual reveal">
+    <div class="hero-visual">
       <svg class="frame" viewBox="0 0 480 420" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Structural steel portal frame diagram">
         <defs><linearGradient id="beam" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3FC0F0"/><stop offset="1" stop-color="#1580B0"/></linearGradient></defs>
         <line x1="30" y1="380" x2="450" y2="380" stroke="#3E6188" stroke-width="2" stroke-dasharray="2 8" stroke-linecap="round"/>
@@ -791,9 +859,9 @@ function trustbar() {
 
 function statsBlock() {
   return `<section class="pad-sm"><div class="container"><div class="stats reveal">
-    <div class="stat"><div class="num">100<span class="u">%</span></div><div class="lbl">Compliance-focused design</div></div>
-    <div class="stat"><div class="num">5.0<span class="u">★</span></div><div class="lbl">Average client rating</div></div>
-    <div class="stat"><div class="num">12<span class="u">+</span></div><div class="lbl">Engineering service lines</div></div>
+    <div class="stat"><div class="num">20<span class="u">+</span></div><div class="lbl">Years of structural engineering experience</div></div>
+    <div class="stat"><div class="num">5.0<span class="u">★</span></div><div class="lbl">Google rating</div></div>
+    <div class="stat"><div class="num">CPEng</div><div class="lbl">Chartered engineer signs every PS1</div></div>
     <div class="stat"><div class="num">NZ</div><div class="lbl">Wide project coverage</div></div>
   </div></div></section>`;
 }
@@ -847,10 +915,21 @@ function projectsSection(base) {
       while (DANGLING.test(out)) out = out.replace(DANGLING, '');
       return out;
     };
-    const alt = caption.trim() ? altFrom(caption) : `Stable Structure engineering project${p.date ? `, ${projectDate(p.date)}` : ''}`;
-    return `<article class="proj-card reveal" data-images="${esc(JSON.stringify(imgs))}" data-caption="${esc(caption)}"${p.permalink ? ` data-permalink="${esc(p.permalink)}"` : ''}>
+    const alt = p.alt || (caption.trim() ? altFrom(caption) : `Stable Structure engineering project${p.date ? `, ${projectDate(p.date)}` : ''}`);
+    /* WebP copies (1200, 900 and 600 wide) sit beside each JPEG when they have been
+       made; Facebook-synced photos without them fall back to the JPEG. */
+    const webp = (i) => i.replace(/\.jpe?g$/i, '.webp');
+    const small = (i) => i.replace(/\.jpe?g$/i, '-600.webp');
+    const mid = (i) => i.replace(/\.jpe?g$/i, '-900.webp');
+    const hasWebp = (i) => /\.jpe?g$/i.test(i) && [webp(i), small(i), mid(i)].every((f) => fs.existsSync(path.join(ROOT, f)));
+    const first = p.images[0];
+    const media = hasWebp(first)
+      ? `<img src="${base}${webp(first)}" srcset="${base}${small(first)} 600w, ${base}${mid(first)} 900w, ${base}${webp(first)} 1200w" sizes="(max-width: 700px) 100vw, 380px"`
+      : `<img src="${imgs[0]}"`;
+    const full = p.images.map((i) => `${base}${hasWebp(i) ? webp(i) : i}`);
+    return `<article class="proj-card${cardIdx === 0 ? '' : ' reveal'}" data-images="${esc(JSON.stringify(full))}" data-caption="${esc(caption)}"${p.permalink ? ` data-permalink="${esc(p.permalink)}"` : ''}>
         <button class="proj-media" type="button" aria-label="View photos for this project">
-          <img src="${imgs[0]}" width="1200" height="900" ${cardIdx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} alt="${esc(alt)}" />
+          ${media} width="1200" height="900" ${cardIdx === 0 ? 'fetchpriority="high"' : 'loading="lazy"'} alt="${esc(alt)}" />
           ${extra > 0 ? `<span class="proj-count">${si('camera', 2)}+${extra}</span>` : ''}
         </button>
         <div class="proj-body">
@@ -874,8 +953,13 @@ function projectsVideo() {
   if (!PROJECT_VIDEO_EMBED) return '';
   return `<section class="pad-sm"><div class="container">
       <div class="section-head center reveal"><span class="eyebrow">In motion</span><h2 class="section-title">See our work in action</h2><p class="lead">A closer look at one of our recent builds, straight from our Facebook.</p></div>
-      <div class="video-embed reveal">
-        <iframe title="Stable Structure project video" src="${PROJECT_VIDEO_EMBED}" loading="lazy" style="border:none;overflow:hidden" scrolling="no" frameborder="0" allowfullscreen="true" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>
+      <!-- Click to load: the Facebook player (about 2 MB) only loads when asked for.
+           main.js swaps the button for the iframe. -->
+      <div class="video-embed video-facade reveal" data-src="${esc(PROJECT_VIDEO_EMBED)}">
+        <button class="vf-play" type="button" aria-label="Play the project video (loads from Facebook)">
+          <span class="vf-ic"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>
+          <span class="vf-txt"><b>Play the video</b><span>Loads from Facebook</span></span>
+        </button>
       </div>
     </div></section>`;
 }
@@ -937,7 +1021,7 @@ function teamSection(base) {
     },
   ];
   const members = team.map((m, i) => `<div class="team-member${i % 2 ? ' rev' : ''} reveal">
-        <div class="tm-photo"><img src="${base}assets/team/${m.photo}" width="720" height="900" loading="lazy" alt="${m.name}, ${m.role} at Stable Structure Limited" /></div>
+        <div class="tm-photo"><img src="${base}assets/team/${fs.existsSync(path.join(ROOT, 'assets/team', m.photo.replace(/\.jpg$/, '.webp'))) ? m.photo.replace(/\.jpg$/, '.webp') : m.photo}" width="720" height="900" loading="lazy" alt="${m.name}, ${m.role} at Stable Structure Limited" /></div>
         <div class="tm-body">
           <div class="tm-role">${m.role}</div>
           <h3 class="tm-name">${m.name}</h3>
@@ -948,7 +1032,7 @@ function teamSection(base) {
         </div>
       </div>`).join('\n      ');
   return `<section class="pad" style="background:var(--surface-2)"><div class="container">
-      <div class="section-head center reveal"><span class="eyebrow">Our team</span><h2 class="section-title">Meet the engineers behind your project</h2><p class="lead">You work directly with experienced, chartered engineers who take personal ownership of your project — from first concept through to final sign-off.</p></div>
+      <div class="section-head center reveal"><span class="eyebrow">Our team</span><h2 class="section-title">Meet the engineers behind your project</h2><p class="lead">You work directly with experienced engineers who take personal ownership of your project, from first concept through to final sign-off. Every producer statement (PS1 and PS4) we issue is signed by our director, a Chartered Professional Engineer you can <a href="${CPENG_REGISTER_URL}" target="_blank" rel="noopener">check on the CPEng register</a> (#1030007).</p></div>
       <div class="team" style="margin-top:56px">
       ${members}
       </div>
@@ -1297,19 +1381,231 @@ const ARTICLES = {
     <p>Inspections are not only for construction. We assess existing houses and structures for buyers before purchase, for owners worried about cracking or movement, and for insurers and lawyers who need an engineer's written opinion. The output is the same discipline applied to an existing building: a clear report stating what we observed, what it means structurally, and what to do about it, with costs and urgency ranked honestly.</p>
     <h2>Independent eyes at the moments that matter</h2>
     <p>Structural problems are cheap to fix at inspection and expensive to fix at discovery. An hour of engineering eyes at the right stage is the best money on the whole build programme.</p>`,
+
+  /* ---- Structural Design (expanded Nov 2026 from a 280-word template page) ---- */
+  'structural-design': (base) => `
+    <p style="font-size:17px">Structural design is the engineering that holds a building up: the foundations, framing, beams, columns, bracing and connections that carry every load safely to the ground. We are chartered structural engineers in Botany, Auckland, designing new homes, additions, alterations and commercial buildings, and preparing the drawings, calculations and PS1 your building consent needs.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <h2>When do you need a structural engineer?</h2>
+    <p>Most New Zealand houses are framed to NZS 3604, the standard for light timber-framed buildings, which lets a designer size many members straight from tables. A structural engineer is needed wherever a design goes beyond what that standard covers. The common triggers:</p>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Removing or opening up a load-bearing wall</span></li>
+      <li>${si('check', 2.2)}<span>Steel beams, portal frames and long or open-plan spans</span></li>
+      <li>${si('check', 2.2)}<span>Sloping, soft or filled ground, and foundations near retaining walls or boundaries</span></li>
+      <li>${si('check', 2.2)}<span>Concrete and masonry walls, suspended slabs and basements</span></li>
+      <li>${si('check', 2.2)}<span>Heavy loads such as roof-top decks, spa pools, large water tanks or green roofs</span></li>
+      <li>${si('check', 2.2)}<span>Multi-unit, commercial and industrial buildings</span></li>
+    </ul>
+    <p>Your designer or council will usually flag these. If you are not sure, send us your plans and we will tell you straight whether specific engineering is needed, and what it covers.</p>
+    ${guideLink(base, 'guides/what-is-a-ps1.html', 'Guide: What is a PS1? Producer statements explained')}
+    <h2>What our structural design includes</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Foundation and footing design, sized for your ground and loads</span></li>
+      <li>${si('check', 2.2)}<span>Timber, steel and concrete framing members: beams, lintels and columns</span></li>
+      <li>${si('check', 2.2)}<span>Bracing design to resist wind and earthquake</span></li>
+      <li>${si('check', 2.2)}<span>Connection details your builder can follow on site</span></li>
+      <li>${si('check', 2.2)}<span>A full calculation set, with structural drawings that match it</span></li>
+      <li>${si('check', 2.2)}<span>A PS1 signed by a Chartered Professional Engineer, and responses to council requests for information</span></li>
+    </ul>
+    <h2>Removing a load-bearing wall</h2>
+    <p>Opening up a kitchen and living area is one of the most common jobs we do. Taking out a load-bearing wall needs a beam to carry what the wall held up, posts and footings to carry the beam, and often replacement bracing, because many internal walls also brace the house against wind and earthquake. Under the Building Act, work on an internal wall needs building consent when the wall is load-bearing or a bracing element. We design the beam and its supports, check the bracing, and provide the drawings and PS1 for consent.</p>
+    ${guideLink(base, 'guides/removing-load-bearing-wall-nz.html', 'Guide: Removing a load-bearing wall in NZ')}
+    <h2>Foundations and the ground</h2>
+    <p>Every load ends up in the ground, so foundations are designed for what is actually under your site. Much of Auckland is clay that swells when wet and shrinks when dry, and some sections sit on fill or slopes. Depending on the site we design timber piles, concrete pads and strip footings, slabs on grade, rib raft slabs or deeper piles. For most houses we can design from conservative published soil values. Where the ground is soft, filled, sloping or expansive, a geotechnical report sharpens the design, and we will tell you up front if one is genuinely needed.</p>
+    <h2>Bracing against wind and earthquake</h2>
+    <p>Gravity is only half the job. A building must also resist sideways loads from wind and earthquake, which in a timber house is done by bracing walls, and around large openings by steel or timber portal frames. Open-plan layouts, big glazed walls and garage doors all take bracing away, so we design where it goes back in. Loads come from the AS/NZS 1170 loading standards, with earthquake actions to NZS 1170.5, and each material is designed to its own standard: NZS 3603 for timber, NZS 3404 for steel and NZS 3101 for concrete.</p>
+    <h2>How long does structural design take?</h2>
+    <p>For straightforward residential elements, such as a beam, a deck or a wall removal, allow <b>one to two weeks</b> from receiving your plans to consent-ready drawings, calculations and PS1. Full packages for a new house typically take <b>three to six weeks</b>. Once lodged, council has 20 working days to decide on your consent, a clock that pauses whenever it asks for more information.</p>
+    ${guideLink(base, 'guides/building-consent-timeframes-auckland.html', 'Guide: How long does building consent take in Auckland?')}
+    <h2>What does structural design cost?</h2>
+    <p>The fee follows the scope: the number of engineered elements, the ground, how complete the architectural drawings are, and whether steel, concrete or geotechnical input is involved. We quote a <b>fixed fee in writing before we start</b>, usually within one business day of receiving your plans, so the number does not move mid-project.</p>
+    <h2>What we need to start</h2>
+    <p>Your architectural or draughting drawings (PDF or CAD), the site address, and any geotechnical report that already exists. If your designer is still drawing, bring us in now: designing the structure alongside the architecture costs less than fitting it in afterwards. Architects and builders can see <a href="${base}builders-architects.html">how we work with design teams</a>.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['My plans follow NZS 3604. Do I still need an engineer?', 'Possibly not for the whole house. NZS 3604 covers most standard timber framing, and only the parts outside it need specific engineering, such as a steel beam or a larger opening. We will tell you which parts need us before you pay for anything.'],
+      ['Can you work with my architect or draughtsperson?', 'Yes. Most of our structural design sits behind plans from architects, designers and draughtspeople. We coordinate directly with them so the drawings and calculations stay in step.'],
+      ['Do you design steel and concrete as well as timber?', 'Yes: timber, structural steel, light-gauge steel, reinforced concrete and masonry, for new buildings, alterations and strengthening work.'],
+      ['Who answers council’s questions about the structure?', 'We do. If council issues a request for information about the engineering, we respond directly so your consent keeps moving.'],
+    ])}
+    <h2>Designed to be built</h2>
+    <p>${CLOSES['structural-design']}</p>`,
+
+  /* ---- Civil Design (expanded Nov 2026) ---- */
+  'civil-design': (base) => `
+    <p style="font-size:17px">Civil design is the engineering of the ground around a building: how your site handles stormwater, drainage, earthworks, driveways and access. We design civil works for houses, subdivisions and commercial sites from our base in Botany, Auckland, and prepare the drawings and calculations council needs for building and resource consent.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <h2>What civil design covers</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span><b>Stormwater.</b> Collecting roof and paving runoff and getting it safely to soakage, a tank or the public network</span></li>
+      <li>${si('check', 2.2)}<span><b>Drainage.</b> Subsoil and surface drainage that keeps water away from foundations and retaining walls</span></li>
+      <li>${si('check', 2.2)}<span><b>Earthworks.</b> Cut, fill and site levels, coordinated with the foundations and retaining</span></li>
+      <li>${si('check', 2.2)}<span><b>Erosion and sediment control.</b> Keeping soil on site while it is being built</span></li>
+      <li>${si('check', 2.2)}<span><b>Driveways and access.</b> Gradients, edges, crossings and vehicle loads</span></li>
+      <li>${si('check', 2.2)}<span><b>Land development.</b> Civil engineering input for subdivisions and multi-unit sites</span></li>
+    </ul>
+    <h2>Stormwater on Auckland sites</h2>
+    <p>New roofs and paving send more water off a site, and faster, and Auckland Council expects that water to be managed. Depending on where the site is and what lies downstream, that can mean connecting to the public stormwater network, soakage into the ground, or tanks that hold water back and release it slowly. The Auckland Unitary Plan sets on-site stormwater management requirements in some areas, so the answer is site-specific. We work out what applies to your property and size the system to suit.</p>
+    <h2>Earthworks and sediment control</h2>
+    <p>Moving soil changes how a site drains and how stable it is. We design cut and fill levels that work with the building and its retaining walls, and erosion and sediment controls that keep soil out of neighbours’ properties and stormwater drains during construction. Larger earthworks can also trigger Auckland Unitary Plan rules that need resource consent, so we flag that early rather than at lodgement.</p>
+    <h2>Driveways and vehicle access</h2>
+    <p>Steep driveways, crossings and turning areas need to work for real cars and delivery trucks. We design gradients and edges, any retaining that holds a driveway up, and the drainage that keeps water off it. A new or altered vehicle crossing onto a public road in Auckland also needs approval from Auckland Transport, which your civil drawings support.</p>
+    <h2>Sloping and difficult sites</h2>
+    <p>Slopes, overland flow paths and flood-prone land are where civil and structural design meet. We look at where water goes in a heavy storm as well as day to day, coordinate with geotechnical engineers on slope stability, and design retaining, drainage and foundations together so each supports the others.</p>
+    ${guideLink(base, 'services/retaining-walls.html', 'Engineered retaining walls in Auckland')}
+    <h2>How civil design fits your consent</h2>
+    <p>Civil drawings and calculations are lodged with your building consent, and with a resource consent where one is needed. Because we also do the structural engineering, the civil and structural packages are drawn together and agree with each other, which avoids a common cause of council requests for information. See our <a href="building-consent-documentation.html">building consent documentation service</a> for the rest of the package.</p>
+    <h2>Timing and cost</h2>
+    <p>For a single house, civil design usually runs alongside the structural design. Subdivisions and larger sites take longer and depend on council and utility requirements. Either way, we quote a <b>fixed fee in writing before we start</b>, usually within one business day of receiving your plans.</p>
+    <h2>What we need to start</h2>
+    <p>The site address, your architectural or site plans, a survey with levels if you have one, and any geotechnical report. For stormwater, it helps to know where the property drains today and whether there is a public stormwater connection nearby. From that we confirm the scope and quote a fixed fee, usually within one business day.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Do I need a civil engineer for a new house?', 'Often, for stormwater, drainage and driveway design, particularly on sloping sites or where the house adds a lot of roof and paving. On a simple flat site your designer and drainlayer may cover it. We can tell you which applies.'],
+      ['Can you design stormwater tanks and soakage?', 'Yes. We size detention and retention tanks and soakage systems to suit the site and the council’s requirements.'],
+      ['Do you work on subdivisions?', 'Yes. We provide civil and structural engineering input for subdivisions and multi-unit developments, working alongside your surveyor and planner.'],
+    ])}
+    <h2>Getting the ground right</h2>
+    <p>${CLOSES['civil-design']}</p>`,
+
+  /* ---- Swimming Pools (expanded Nov 2026). Barrier rules checked against
+     Building Act s162C/s162D and Building Code F9 on legislation.govt.nz. ---- */
+  'swimming-pools': (base) => `
+    <p style="font-size:17px">A swimming pool is a structure that holds water pressure from the inside and soil pressure from the outside, and on a sloping Auckland section it often comes with retaining walls and a deck. We provide structural design for in-ground pools, pool surrounds and the retaining and barriers around them, with the drawings, calculations and PS1 council needs.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <h2>Does a pool need consent and a barrier?</h2>
+    <p>Most new in-ground pools need a building consent. Every residential pool that holds water must also have physical barriers that restrict access by unsupervised children under 5 years of age, under <a href="https://www.legislation.govt.nz/act/public/2004/72/en/latest/" target="_blank" rel="noopener">section 162C of the Building Act</a> and clause F9 of the Building Code, and councils must inspect residential pool barriers at least once every three years. Small heated pools, such as spa pools, can meet the rules with a compliant safety cover instead of a fence.</p>
+    <h2>What the engineer designs</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>The pool shell: reinforced concrete or concrete block walls and floor</span></li>
+      <li>${si('check', 2.2)}<span>Pools on slopes, beside the house or near a boundary, where the pool loads the ground next to it</span></li>
+      <li>${si('check', 2.2)}<span>Groundwater and uplift: an empty pool in wet ground can float, so the design resists it</span></li>
+      <li>${si('check', 2.2)}<span>Retaining walls around the pool and on the downhill side</span></li>
+      <li>${si('check', 2.2)}<span>Pool surrounds, decks and the structure under paving</span></li>
+      <li>${si('check', 2.2)}<span>Barrier and balustrade structure, including glass fence posts and fixings</span></li>
+    </ul>
+    <h2>Pools on sloping sites</h2>
+    <p>On a slope, part of the pool is usually below ground and part is held up by retaining or a suspended structure. That changes the loads on every wall: the high side carries soil pressure when the pool is empty, the low side carries water pressure when it is full, and both must keep working for decades. We design the pool and its retaining together so they share loads properly instead of fighting each other.</p>
+    ${guideLink(base, 'guides/retaining-wall-consent-nz.html', 'Guide: When does a retaining wall need consent in NZ?')}
+    <h2>Pools near houses and boundaries</h2>
+    <p>A pool dug next to existing foundations can undermine them, and a pool near a boundary affects the neighbour’s ground. We check the zone of influence around the excavation, design temporary support where it is needed, and make sure the pool does not load your house, or the one next door, in ways it was never designed for.</p>
+    <h2>How the process runs</h2>
+    <p>We review your pool layout and site, design the shell, retaining and surrounds, and issue drawings, calculations and a PS1 for consent. During construction we inspect the reinforcing steel before concrete is poured, and any other stages your consent names, then issue the PS4 council needs before code compliance. Design for a residential pool usually takes one to two weeks once we have the layout, longer where it comes with significant retaining.</p>
+    <h2>What affects the cost</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span><b>Size and depth</b> of the pool</span></li>
+      <li>${si('check', 2.2)}<span><b>Slope</b>, and how much retaining the site needs</span></li>
+      <li>${si('check', 2.2)}<span><b>Ground and groundwater</b> conditions</span></li>
+      <li>${si('check', 2.2)}<span><b>How close</b> the pool sits to buildings and boundaries</span></li>
+      <li>${si('check', 2.2)}<span><b>Surrounds and barriers</b>: decks, paving and glass fencing</span></li>
+    </ul>
+    <p>We quote a <b>fixed engineering fee in writing before we start</b>, usually within one business day.</p>
+    <h2>What we need to start</h2>
+    <p>Your pool layout or the pool builder’s drawings, the site address, photos of the area and the levels if you have them, and any geotechnical report. Tell us what sits near the pool: the house, a boundary, a driveway or a slope. If the pool is still an idea, we can advise on where it can go and what that means for the structure before you commit.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Does a fibreglass pool need an engineer?', 'The shell is designed by its manufacturer, but on a slope, near a building or with retaining, the excavation, retaining and surrounds still need engineering. We design those parts.'],
+      ['Do you design the pool fence?', 'We design the structure of barriers and balustrades, such as posts, fixings and glass support, and check the layout against clause F9. The pool builder or fencing supplier usually supplies the barrier itself.'],
+      ['Can a pool sit above a retaining wall?', 'Yes, with engineering. A pool above a wall is a heavy surcharge, so the wall is designed for it from the start.'],
+    ])}
+    <h2>Built to hold</h2>
+    <p>${CLOSES['swimming-pools']}</p>`,
+
+  /* ---- Decks (expanded Nov 2026). The 1.5 m exemption (Building Act Schedule 1
+     clause 24) and the 1 m barrier rule (Building Code F4.3.1) checked on
+     legislation.govt.nz. ---- */
+  'decks-outdoor-living': (base) => `
+    <p style="font-size:17px">Decks look simple, but a raised or cantilevered deck carries people, furniture, spa pools and wind, and an under-designed one can fail without warning. We engineer deck subframes, posts, footings, cantilevers and barriers across Auckland, and provide the drawings, calculations and PS1 for consent.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <h2>Does a deck need consent?</h2>
+    <p>Under Schedule 1 of the Building Act, a deck is exempt from building consent when it is not possible to fall more than 1.5 metres from it, <b>even if it collapses</b>. Above that it needs consent, and high, cantilevered or heavily loaded decks need specific engineering. Separately, the Building Code requires a barrier wherever people could fall 1 metre or more, so many exempt decks still need a compliant balustrade. Exempt work must still comply with the Building Code.</p>
+    ${guideLink(base, 'guides/deck-consent-nz.html', 'Guide: Does my deck need consent or an engineer?')}
+    <h2>When a deck needs real engineering</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Decks more than 1.5 metres above the ground beneath them</span></li>
+      <li>${si('check', 2.2)}<span>Cantilevered decks with no posts at the outer edge</span></li>
+      <li>${si('check', 2.2)}<span>Decks fixed to the house, where the connection carries load and must stay weathertight</span></li>
+      <li>${si('check', 2.2)}<span>Heavy loads: spa pools, large planters, outdoor kitchens or big gatherings</span></li>
+      <li>${si('check', 2.2)}<span>Decks on slopes, over retaining walls or near boundaries</span></li>
+      <li>${si('check', 2.2)}<span>Roof-top decks over living spaces</span></li>
+    </ul>
+    <h2>What we design</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Bearers, joists and the subframe layout</span></li>
+      <li>${si('check', 2.2)}<span>Posts, piles and footings sized for your ground</span></li>
+      <li>${si('check', 2.2)}<span>Cantilevers and their back-span into the house or frame</span></li>
+      <li>${si('check', 2.2)}<span>The connection to the house, including the weathertightness detail</span></li>
+      <li>${si('check', 2.2)}<span>Balustrade and barrier posts, glass support and fixings</span></li>
+      <li>${si('check', 2.2)}<span>Drawings, calculations and a PS1 for consent</span></li>
+    </ul>
+    <h2>Built for New Zealand weather</h2>
+    <p>Outdoor timber is specified by hazard class under NZS 3602, typically H3.2 for joists and bearers above ground and H4 or H5 for posts and piles in the ground, depending on what they hold up. Fixings matter as much as the timber, especially near the coast, where stainless steel may be needed. We specify both so the deck lasts as long as the house.</p>
+    <h2>Barriers and balustrades</h2>
+    <p>A barrier has to resist people leaning and falling against it, so its posts and fixings are part of the structure, not decoration. We design balustrade posts, glass support and their connection into the deck framing, which is where most barrier problems start.</p>
+    <h2>Pergolas and outdoor structures</h2>
+    <p>Pergolas are exempt from building consent, but louvre roofs, canopies and shade structures catch the wind and lift. We design posts, beams and footings to hold them down in your site’s wind conditions, and connections that do not damage the house they attach to.</p>
+    <h2>Timing and cost</h2>
+    <p>A typical engineered deck takes one to two weeks from receiving your plans or sketch to consent-ready documentation. The fee depends on height, size, cantilevers, loads and ground, and we quote it as a <b>fixed fee in writing before we start</b>.</p>
+    <h2>What we need to start</h2>
+    <p>A plan or sketch with the deck’s size and height above the ground, photos of where it will go, and whether it will carry anything heavy, such as a spa pool or large planters. If it attaches to the house, a photo of that wall and its cladding helps. From that we confirm whether it needs consent or engineering and quote a fixed fee.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Can I build a deck under 1.5 m without consent?', 'Usually, if no one could fall more than 1.5 metres even if the deck collapsed. It must still comply with the Building Code, including a barrier if the fall is 1 metre or more.'],
+      ['Do you inspect decks during construction?', 'Yes. We inspect footings and framing at the stages your consent names, and issue a PS4 at the end.'],
+      ['Can you assess an existing deck?', 'Yes. We assess sagging, bouncy or ageing decks and balustrades, and report on what needs repair or replacement.'],
+      ['Can you design a deck from a sketch?', 'Yes. A sketch with dimensions and heights, plus photos of the site, is often enough to design a straightforward deck.'],
+    ])}
+    <h2>Engineered once, enjoyed for decades</h2>
+    <p>${CLOSES['decks-outdoor-living']}</p>`,
+
+  /* ---- Carports, Sheds & Portals (expanded Nov 2026). Exemption limits from
+     Building Act Schedule 1 clauses 3, 4, 6 and 18-18A on legislation.govt.nz. ---- */
+  'carports-sheds-portals': (base) => `
+    <p style="font-size:17px">A portal frame is a rigid frame of columns and rafters that gives a building a clear span with no internal posts, which is why carports, garages, workshops, farm sheds and warehouses use them. We design steel and timber portal frames and light structures across Auckland and New Zealand, with the drawings, calculations and PS1 council needs.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <h2>Do carports and sheds need consent?</h2>
+    <p>Schedule 1 of the Building Act exempts some small structures from building consent:</p>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span><b>Carports</b> at ground level up to 20 m², or up to 40 m² where a licensed building practitioner designs or builds it</span></li>
+      <li>${si('check', 2.2)}<span><b>Single-storey detached buildings</b>, such as sheds, up to 10 m², with no sanitary facilities or potable water storage</span></li>
+      <li>${si('check', 2.2)}<span><b>Detached buildings from 10 to 30 m²</b>, when built from lightweight materials to Acceptable Solution B1/AS1 or designed or built by a licensed building practitioner, with conditions on distance from boundaries and other buildings</span></li>
+      <li>${si('check', 2.2)}<span><b>Pergolas</b>, of any size</span></li>
+    </ul>
+    <p>Exempt structures must still meet the Building Code, and planning rules may still apply. Anything bigger, closer to a boundary, or with long spans, steel portals or heavy use needs consent and specific engineering. The <a href="https://www.legislation.govt.nz/act/public/2004/72/en/latest/" target="_blank" rel="noopener">Building Act on legislation.govt.nz</a> sets out every condition.</p>
+    <h2>How a portal frame works</h2>
+    <p>Instead of relying on internal walls, a portal frame resists wind and earthquake through stiff connections at the knees and ridge, and through its base connections into the foundations. That makes the connections and footings the critical parts of the design. We design the frame members, haunches, base plates, purlins and girts, the bracing in the roof and walls, and footings that resist uplift and overturning, with loads to AS/NZS 1170, steel to NZS 3404 and timber to NZS 3603.</p>
+    <h2>Wind is usually the governing load</h2>
+    <p>Light buildings are more likely to be lifted or pushed over by wind than damaged by an earthquake. Large roller doors matter too: an open door lets wind pressurise the inside of the building, which adds to the uplift on the roof. We design for the doors you will actually have, and for the wind exposure of your site.</p>
+    <h2>Carports attached to a house</h2>
+    <p>An attached carport loads the house it is fixed to, and the connection has to carry uplift as well as weight without causing leaks. We check the existing structure, design the fixing, and keep the roof and gutter details weathertight.</p>
+    <h2>Rural and large sheds</h2>
+    <p>Farm sheds, implement sheds and workshops often need wide clear spans, mezzanines or large doors. We design efficient frames that use standard steel sections where possible, so your fabricator can price and build them without surprises.</p>
+    <h2>Timing and cost</h2>
+    <p>A carport or standard shed design typically takes one to two weeks from receiving your layout. Larger industrial buildings take longer and are scheduled with your builder or fabricator. We quote a <b>fixed fee in writing before we start</b>.</p>
+    <h2>What we need to start</h2>
+    <p>The building’s size and layout, door sizes and positions, the site address, and how the building will be used: a carport, storage, a workshop or rural use. If you have a kitset supplier or fabricator lined up, send their drawings too. From that we confirm whether consent is needed and quote a fixed fee, usually within one business day.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Can I use a kitset shed?', 'Many kitset sheds come with engineering for set wind conditions. If your site is more exposed, the shed is altered, or council asks for site-specific design, we can review or redesign the frame and footings.'],
+      ['Steel or timber portals?', 'Steel gives longer spans in slimmer members; timber suits smaller spans and a warmer look. We design both and recommend what suits your span and budget.'],
+      ['Do you design the foundations too?', 'Yes. Portal footings carry uplift and overturning as well as weight, so we design them with the frame.'],
+    ])}
+    <h2>Clear spans that stay standing</h2>
+    <p>${CLOSES['carports-sheds-portals']}</p>`,
 };
 
 /* ---------- Guides (Phase 3) ---------- */
 const GUIDES = [
   {
-    slug: 'what-is-a-ps1', title: 'What is a PS1? Producer Statements Explained', metaTitle: 'What is a PS1? Explained | Stable Structure',
+    slug: 'what-is-a-ps1', title: 'What is a PS1? Producer Statements Explained', metaTitle: 'What is a PS1? Producer Statements Explained (NZ)',
+    published: '2026-08-13', modified: CONTENT_DATE,
     label: 'What is a PS1?',
-    desc: 'A plain-English guide to New Zealand producer statements: what a PS1 covers, how it differs from a PS4, who can issue them, what they cost and when your building consent needs one.',
+    desc: 'What a PS1 producer statement covers, how it differs from a PS4, who can issue one and when your NZ building consent needs it. By a chartered engineer.',
     eyebrow: 'Guide', h1: 'What is a PS1? Producer statements, <span class="hl">explained simply</span>',
     sub: 'What a PS1 actually covers, how it differs from a PS4, who can issue one, and what it should cost. Written by a chartered structural engineer.',
     body: (base) => `
     <p style="font-size:17px">A PS1 (Producer Statement, Design) is a formal statement signed by a qualified engineer confirming that a design complies with the New Zealand Building Code. Councils rely on producer statements instead of re-checking specialist engineering themselves, which makes the PS1 one of the most important documents in your building consent application.</p>
-    ${byline(base)}
+    ${byline(base, CONTENT_DISPLAY)}
     <h2>The four producer statements, in one minute</h2>
     <ul class="ticks">
       <li>${si('check', 2.2)}<span><b>PS1, Design:</b> the designer's statement that the design complies with the Building Code. Lodged with your consent application.</span></li>
@@ -1334,18 +1630,22 @@ const GUIDES = [
       ['Does a PS1 expire?', 'The statement itself does not carry an expiry, but if the design changes after issue, it must be re-confirmed or re-issued to match what is actually built.'],
       ['What does council do with the PS1?', 'It forms part of your consent documentation: council relies on it to grant consent for the engineered elements without independently re-checking the calculations.'],
     ])}
+    <p>Once your documentation is lodged, our guide to <a href="${base}guides/building-consent-timeframes-auckland.html">building consent timeframes and RFIs</a> explains what happens next.</p>
+    <h2>Sources</h2>
+    <p class="sources">Check any CPEng engineer on <a href="${CPENG_REGISTER_URL}" target="_blank" rel="noopener">Engineering New Zealand’s CPEng register</a>. Building consent and code compliance are governed by the <a href="https://www.legislation.govt.nz/act/public/2004/72/en/latest/" target="_blank" rel="noopener">Building Act 2004</a>, and structural design must meet clause B1 of the <a href="https://www.legislation.govt.nz/secondary-legislation/pco-drafted/1992/150/en/latest/" target="_blank" rel="noopener">Building Code</a> (Schedule 1 of the Building Regulations 1992). This guide is general information, not advice for a specific site.</p>
     <h2>Need a PS1 for your project?</h2>
     <p>Send us your plans and we will confirm the scope, quote a fixed fee, and deliver consent-ready documentation with the PS1 signed by a chartered engineer. See our <a href="${base}services/building-consent-documentation.html">building consent documentation service</a> for what is included.</p>`,
   },
   {
     slug: 'retaining-wall-consent-nz', title: 'When Does a Retaining Wall Need Consent in NZ?', metaTitle: 'Retaining Wall Consent Rules NZ | Stable Structure',
+    published: '2026-08-13', modified: CONTENT_DATE,
     label: 'Retaining wall consent rules',
-    desc: 'The New Zealand retaining wall consent rules in plain English: the 1.5 metre threshold, what counts as a surcharge, when you need an engineer, and how the design process works.',
+    desc: 'NZ retaining wall consent rules in plain English: the 1.5 metre threshold, what counts as a surcharge, when you need an engineer and how the process works.',
     eyebrow: 'Guide', h1: 'When does a retaining wall need <span class="hl">consent in NZ?</span>',
     sub: 'The 1.5 metre rule, what surcharge actually means, and when a wall needs engineering. The plain-English version of the rules.',
     body: (base) => `
     <p style="font-size:17px">In New Zealand, a retaining wall needs building consent when it retains more than 1.5 metres of ground, or when it retains any height with a surcharge: extra load above the wall such as a driveway, building or sloping ground. That is the short answer. The details, and the traps, are below.</p>
-    ${byline(base)}
+    ${byline(base, CONTENT_DISPLAY)}
     <h2>The 1.5 metre rule, precisely</h2>
     <p>The Building Act's Schedule 1 exempts a retaining wall from consent when it retains <b>no more than 1.5 metres depth of ground</b> and does not support any surcharge or load additional to the ground itself. Both conditions must hold. A 1.2 metre wall under a flat lawn is typically exempt; the same wall holding up the edge of a driveway is not, because vehicles are a surcharge.</p>
     <h2>What counts as a surcharge?</h2>
@@ -1371,8 +1671,155 @@ const GUIDES = [
       ['Do timber walls need engineering too?', 'Yes, when over 1.5m or surcharged. Timber pole walls are engineered structures: pole embedment, spacing and drainage all come from calculation, not habit.'],
       ['How tall can a retaining wall go?', 'With proper engineering, effectively as tall as your project needs: taller walls simply move into reinforced concrete, tiebacks or terraced designs with geotech input.'],
     ])}
+    <h2>Sources</h2>
+    <p class="sources">The exemption is clause 20 of Schedule 1 to the <a href="https://www.legislation.govt.nz/act/public/2004/72/en/latest/" target="_blank" rel="noopener">Building Act 2004</a>: a retaining wall that retains not more than 1.5 metres depth of ground and does not support any surcharge. Where people could fall 1 metre or more, clause F4 of the <a href="https://www.legislation.govt.nz/secondary-legislation/pco-drafted/1992/150/en/latest/" target="_blank" rel="noopener">Building Code</a> requires a barrier. This guide is general information, not advice for a specific site.</p>
+
     <h2>Get a straight answer on your wall</h2>
     <p>Send us a photo, a rough height and what sits above the wall, and we will tell you whether it needs consent, what design makes sense, and a fixed price for the engineering. Details on our <a href="${base}services/retaining-walls.html">engineered retaining wall design in Auckland</a>.</p>`,
+  },
+  {
+    slug: 'deck-consent-nz', title: 'Does My Deck Need Consent or an Engineer in NZ?', metaTitle: 'Deck Consent Rules NZ: When You Need an Engineer',
+    published: CONTENT_DATE, modified: CONTENT_DATE,
+    label: 'Deck consent rules',
+    desc: 'When an NZ deck needs building consent or an engineer: the 1.5 metre fall rule, when a barrier is required, cantilevers, spa pools and the process.',
+    eyebrow: 'Guide', h1: 'Does my deck need <span class="hl">consent or an engineer?</span>',
+    sub: 'The 1.5 metre rule, the 1 metre barrier rule, and the decks that need engineering whatever their height. Written by a chartered structural engineer.',
+    body: (base) => `
+    <p style="font-size:17px">In New Zealand, a deck needs building consent when it is possible to fall more than 1.5 metres from it, even if the deck collapses. Below that it is usually exempt, but it must still meet the Building Code, including a barrier wherever people could fall 1 metre or more. High, cantilevered and heavily loaded decks need specific engineering design.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <figure class="cm-holds" aria-labelledby="deck-steps-cap">
+      <figcaption id="deck-steps-cap">Three questions for any deck</figcaption>
+      <ol>
+        <li><b>Could someone fall more than 1.5 m?</b><span>Even if the deck collapsed? If yes, it needs building consent</span></li>
+        <li><b>Could someone fall 1 m or more?</b><span>If yes, the Building Code requires a barrier, consent or not</span></li>
+        <li><b>Is it cantilevered, heavily loaded or on a slope?</b><span>If yes, it needs specific engineering design</span></li>
+      </ol>
+    </figure>
+    <h2>The 1.5 metre rule, precisely</h2>
+    <p>Schedule 1 of the Building Act exempts from consent building work on “a deck, platform, bridge, boardwalk, or the like from which it is not possible to fall more than 1.5 metres even if it collapses”. Two details catch people out. The fall is measured to the ground below the deck, not to the lawn by the house, so a deck on a falling slope can be under 1.5 metres at one end and well over it at the other. And “even if it collapses” means the test is about the height of the fall, not how strong the deck is.</p>
+    <h2>The 1 metre barrier rule</h2>
+    <p>Clause F4 of the Building Code requires a barrier where people could fall 1 metre or more. So a deck 1.2 metres off the ground can be exempt from consent and still need a compliant balustrade. Exempt is not the same as unregulated: exempt work must still comply with the Building Code.</p>
+    <h2>Decks that need engineering</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Decks with a possible fall of more than 1.5 metres</span></li>
+      <li>${si('check', 2.2)}<span>Cantilevered decks with no posts at the outer edge</span></li>
+      <li>${si('check', 2.2)}<span>Spa pools, heavy planters, outdoor kitchens or other heavy loads</span></li>
+      <li>${si('check', 2.2)}<span>Decks on slopes or above retaining walls</span></li>
+      <li>${si('check', 2.2)}<span>Decks fixed to the house where the connection carries load</span></li>
+      <li>${si('check', 2.2)}<span>Roof-top decks over living spaces</span></li>
+    </ul>
+    <h2>Decks attached to the house</h2>
+    <p>A deck fixed to the house relies on that connection to carry part of its load, and the fixing passes through the cladding, so it affects weathertightness as well as strength. Many deck failures start at the connection. Whether or not your deck needs consent, the connection deserves proper detailing.</p>
+    <h2>The process for a consented deck</h2>
+    <p>We design the subframe, posts, footings, barrier and connections, and issue drawings, calculations and a PS1. Your consent is lodged, and council has 20 working days to decide, paused by any request for information. During construction, footings and framing are typically inspected, and the engineer’s PS4 supports your code compliance certificate. Design for a straightforward deck usually takes one to two weeks.</p>
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Do I need consent to replace an old deck?', 'The new deck is assessed on its own merits: if a fall of more than 1.5 metres is possible, it needs consent, whatever the old deck had.'],
+      ['Does a deck under 1 metre need a balustrade?', 'The Building Code requires a barrier where people could fall 1 metre or more, so a lower deck usually does not need one, though you can still choose to add one.'],
+      ['Do I need an engineer for a low deck?', 'Usually not, if it follows NZS 3604. A spa pool, heavy planters or a cantilever change that, so tell your builder about any heavy loads before it is designed.'],
+      ['Who builds a consented deck?', 'Your builder, working from the consented drawings. We inspect at the stages your consent names and issue the PS4.'],
+    ])}
+    <h2>Sources</h2>
+    <p class="sources">The exemption is clause 24 of Schedule 1 to the <a href="https://www.legislation.govt.nz/act/public/2004/72/en/latest/" target="_blank" rel="noopener">Building Act 2004</a>. The barrier rule is clause F4.3.1 of the <a href="https://www.legislation.govt.nz/secondary-legislation/pco-drafted/1992/150/en/latest/" target="_blank" rel="noopener">Building Code</a>, Schedule 1 of the Building Regulations 1992. This guide is general information, not advice for a specific site.</p>
+    <h2>Get a straight answer on your deck</h2>
+    <p>Send a sketch with heights and a photo of the site, and we will tell you whether it needs consent or engineering and quote a fixed fee. See our <a href="${base}services/decks-outdoor-living.html">deck engineering service</a>.</p>`,
+  },
+  {
+    slug: 'removing-load-bearing-wall-nz', title: 'Removing a Load-Bearing Wall in NZ: Engineer, Beam and Consent', metaTitle: 'Removing a Load-Bearing Wall in NZ | Stable Structure',
+    published: CONTENT_DATE, modified: CONTENT_DATE,
+    label: 'Removing a load-bearing wall',
+    desc: 'How to tell if a wall is load-bearing, why bracing matters, what the engineer designs and when removing an internal wall needs building consent in NZ.',
+    eyebrow: 'Guide', h1: 'Removing a <span class="hl">load-bearing wall</span> in NZ',
+    sub: 'How to tell if a wall is load-bearing, why bracing matters, what the engineer designs, and when you need consent.',
+    body: (base) => `
+    <p style="font-size:17px">Removing or altering an internal wall in New Zealand needs building consent if the wall is load-bearing or a bracing element, and that work needs an engineer to design the beam, posts and footings that take its place. Most non-load-bearing internal walls can be altered without consent. The hard part is knowing which is which.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <h2>What the law says</h2>
+    <p>Schedule 1 of the Building Act exempts building work on an internal wall in an existing building unless the wall is load-bearing, a bracing element, a fire separation wall, part of a specified system, or built of masonry units laid in mortar, such as brick or concrete block. If any of those apply, the work needs building consent.</p>
+    <h2>How to tell if a wall is load-bearing</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>It runs at right angles to the floor or ceiling joists above it</span></li>
+      <li>${si('check', 2.2)}<span>It sits near the middle of the house, under the ridge or a change in the roof line</span></li>
+      <li>${si('check', 2.2)}<span>There is a wall, beam or post directly above it, or a foundation or concrete nib below it</span></li>
+      <li>${si('check', 2.2)}<span>It is thicker than the other internal walls</span></li>
+    </ul>
+    <p>None of these is proof on its own. Roof trusses, for example, may span the whole house so that a central wall carries nothing, while an older house with a rafter roof may depend on it. An engineer confirms it from the drawings, a look in the ceiling space and under the floor, or both.</p>
+    <h2>The wall you cannot see: bracing</h2>
+    <p>Many internal walls brace the house against wind and earthquake even when they carry no weight. Lined walls with specific fixings count as bracing elements in the house’s bracing design, and removing one can leave the house short. The answer is to add bracing elsewhere or design a portal frame, which is part of what the engineer works out.</p>
+    <h2>What the engineer designs</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>A beam sized for the loads above, in timber, LVL or steel</span></li>
+      <li>${si('check', 2.2)}<span>Posts or columns at each end, and their connection to the beam</span></li>
+      <li>${si('check', 2.2)}<span>Footings under the posts, so the load reaches the ground</span></li>
+      <li>${si('check', 2.2)}<span>Replacement bracing if the wall was a bracing element</span></li>
+      <li>${si('check', 2.2)}<span>Temporary propping while the wall comes out</span></li>
+      <li>${si('check', 2.2)}<span>Drawings, calculations and a PS1 for consent</span></li>
+    </ul>
+    <h2>Can the beam be hidden in the ceiling?</h2>
+    <p>Often, yes. A flush beam within the ceiling depth gives a clean opening, but it has to fit among the ceiling joists and may need steel to stay shallow. A dropped beam below the ceiling is usually simpler and cheaper. Where your house allows, we will show you both options.</p>
+    <h2>How long it takes</h2>
+    <p>Engineering for a wall removal typically takes one to two weeks from receiving plans and photos. Council then has 20 working days to decide on the consent, paused by any request for information. During construction, the beam, posts and footings are inspected at the stages your consent names.</p>
+    ${guideLink(base, 'guides/building-consent-timeframes-auckland.html', 'Guide: How long does building consent take in Auckland?')}
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Can I remove the wall without consent if I am careful?', 'Not if it is load-bearing or a bracing element: that work needs consent. Unconsented structural work can cause problems when you sell or insure the house, and the structural risk is real.'],
+      ['Is LVL or steel better for the beam?', 'LVL suits many residential spans and is easy for builders to work with. Steel carries more load in less depth, so it is the pick for long spans or flush beams. We size both and recommend one.'],
+      ['What do you need from me?', 'Floor plans if you have them, photos of the wall and the ceiling space above it, and the address. From that we can usually confirm the scope and give a fixed quote.'],
+    ])}
+    <h2>Sources</h2>
+    <p class="sources">The internal wall exemption is clause 11 of Schedule 1 to the <a href="https://www.legislation.govt.nz/act/public/2004/72/en/latest/" target="_blank" rel="noopener">Building Act 2004</a>. Structural work must meet clause B1 of the <a href="https://www.legislation.govt.nz/secondary-legislation/pco-drafted/1992/150/en/latest/" target="_blank" rel="noopener">Building Code</a>. This guide is general information, not advice for a specific site.</p>
+    <h2>Planning to open up your house?</h2>
+    <p>Send us plans or photos and we will confirm whether the wall is load-bearing, what it takes to remove it, and a fixed fee. See our <a href="${base}services/structural-design.html">structural design service</a>.</p>`,
+  },
+  {
+    slug: 'building-consent-timeframes-auckland', title: 'How Long Does Building Consent Take in Auckland?', metaTitle: 'Building Consent Timeframes Auckland: 20 Days & RFIs',
+    published: CONTENT_DATE, modified: CONTENT_DATE,
+    label: 'Consent timeframes and RFIs',
+    desc: 'Council has 20 working days to decide a building consent, and RFIs pause the clock. What slows Auckland consents, the 12-month lapse rule and code compliance.',
+    eyebrow: 'Guide', h1: 'How long does <span class="hl">building consent</span> take in Auckland?',
+    sub: 'The 20 working day clock, what pauses it, the 12-month lapse rule and code compliance, explained by a chartered engineer.',
+    body: (base) => `
+    <p style="font-size:17px">Under the Building Act, council has 20 working days to grant or refuse a building consent once it receives the application. That clock pauses whenever council asks for more information, so the real time from lodgement to consent depends mostly on how complete and consistent your documentation is.</p>
+    ${byline(base, CONTENT_DISPLAY)}
+    <figure class="cm-holds" aria-labelledby="bc-steps-cap">
+      <figcaption id="bc-steps-cap">From design to code compliance</figcaption>
+      <ol>
+        <li><b>Design and PS1</b><span>One to two weeks for straightforward elements, three to six for a new house</span></li>
+        <li><b>Lodge the consent</b><span>Council’s 20 working days start</span></li>
+        <li><b>Requests for information</b><span>Each one pauses the clock until it is answered</span></li>
+        <li><b>Build and inspections</b><span>Work must start within 12 months of the consent being issued</span></li>
+        <li><b>Code compliance certificate</b><span>Council decides within 20 working days of your application</span></li>
+      </ol>
+    </figure>
+    <h2>The 20 working day clock</h2>
+    <p>Section 48 of the Building Act gives a building consent authority 20 working days after receiving an application to grant or refuse it. Working days exclude weekends and public holidays, and the Act also excludes every day from 20 December to 10 January, so an application lodged in early December takes longer than the calendar suggests.</p>
+    <h2>What pauses it: requests for information</h2>
+    <p>If council needs more information, it can ask within those 20 days, and the clock is suspended until it receives the answer. Every request for information (RFI) adds the time it takes to respond plus the time council takes to review the response, so a single RFI can add weeks.</p>
+    <h2>Common reasons for engineering RFIs</h2>
+    <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Drawings and calculations that disagree, such as a beam on the plan that never appears in the calculations</span></li>
+      <li>${si('check', 2.2)}<span>A bracing design that does not match the floor plan</span></li>
+      <li>${si('check', 2.2)}<span>Missing geotechnical information for foundations or retaining walls</span></li>
+      <li>${si('check', 2.2)}<span>Details copied from another job that do not fit this one</span></li>
+      <li>${si('check', 2.2)}<span>A producer statement that is missing or does not cover all the engineered work</span></li>
+    </ul>
+    <h2>How to keep the clock moving</h2>
+    <p>Bring the engineer in while the drawings are being finished, not after. Have the drawings and calculations produced together so they agree. Include the geotechnical report if there is one, and make sure the PS1 covers everything that was specifically engineered. Our <a href="${base}services/building-consent-documentation.html">building consent documentation service</a> is built around exactly that, and we answer council’s engineering questions directly.</p>
+    <h2>After consent: the 12-month rule</h2>
+    <p>A building consent lapses if the work has not started within 12 months of the consent being issued, unless council allows a longer period. If your build might be delayed, talk to council before the year is up.</p>
+    <h2>Inspections and code compliance</h2>
+    <p>During construction, council inspects at the stages listed in your consent, and engineers carry out any construction monitoring it requires. When the work is finished you apply for a code compliance certificate, and council has 20 working days to decide whether to issue it, again paused by any request for information. If no one applies within two years of the consent being granted, council must make that decision anyway, so it pays to apply on time with your PS4 and other documents ready.</p>
+    ${guideLink(base, 'services/construction-supervision.html', 'Construction monitoring and the PS4')}
+    <h2>Common questions</h2>
+    ${miniFaq([
+      ['Can I start work while my consent is being processed?', 'No. Building work that needs a consent cannot start until the consent has been issued.'],
+      ['Does a PIM speed up my consent?', 'A project information memorandum tells you about the site and other requirements before you design, which can prevent surprises, but it does not shorten council’s 20 working days.'],
+      ['What if council asks about the engineering?', 'We respond directly to council on structural and civil questions, whether or not we produced the original design.'],
+    ])}
+    <h2>Sources</h2>
+    <p class="sources">Processing times are in sections 48 (building consent) and 93 (code compliance certificate) of the <a href="https://www.legislation.govt.nz/act/public/2004/72/en/latest/" target="_blank" rel="noopener">Building Act 2004</a>, consent lapsing is section 52, and working days are defined in section 7. This guide is general information, not advice for a specific site.</p>
+    <h2>Want your consent to go through first time?</h2>
+    <p>Send us your plans and we will prepare engineering documentation that matches them, with a fixed fee quoted up front. See our <a href="${base}services/building-consent-documentation.html">PS1 and building consent documentation</a>.</p>`,
   },
 ];
 
@@ -1381,8 +1828,8 @@ const pages = [];
 
 /* HOME */
 pages.push({
-  file: 'index.html', base: '', active: 'home',
-  headO: { title: 'Structural Engineer Auckland | Stable Structure Limited', desc: 'Chartered structural and civil engineers in Botany, Auckland. Structural design, PS1 consent documentation, site inspections and construction supervision — across Auckland and all of New Zealand.' },
+  file: 'index.html', base: '', active: 'home', lastmod: CONTENT_DATE,
+  headO: { title: 'Structural Engineer Auckland | Stable Structure Limited', desc: 'Chartered structural and civil engineers in Botany, Auckland: structural design, PS1 consent documents, inspections and PS4. Fixed-fee quotes in one day.' },
   body: [
     homeHero(''),
     trustbar(),
@@ -1410,7 +1857,7 @@ pages.push({
 /* SERVICES overview */
 pages.push({
   file: 'services.html', base: '', active: 'services', lastmod: '2026-09-24',
-  headO: { title: 'Structural &amp; Civil Engineering Services | Stable Structure', desc: 'Explore Stable Structure’s engineering services: structural design, civil design, building consent documentation, site inspections, construction supervision, retaining walls, pools, decks and more.' },
+  headO: { title: 'Structural &amp; Civil Engineering Services, Auckland', desc: 'Structural design, PS1 consent documents, inspections, construction monitoring, retaining walls, pools, decks and portal frames, by CPEng engineers in Auckland.' },
   body: [
     pageHero('', { eyebrow: 'Our services', title: 'Structural &amp; civil engineering, end to end', sub: 'From foundations to final sign-off, we cover every stage of your project. Choose a service to see how we can help.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Services' }] }),
     `<section class="pad"><div class="container">${servicesGrid('')}
@@ -1424,6 +1871,10 @@ pages.push({
       <div class="guide-links reveal" style="max-width:640px;margin-inline:auto">
         ${GUIDES.map(g => `<a href="guides/${g.slug}.html">${si('consent', 2)} ${g.title}</a>`).join('\n        ')}
       </div>
+      <div class="callout reveal" style="max-width:820px;margin:32px auto 0">
+        <div><b>Architect, designer or builder?</b><p>Send us your plans for a fixed quote within one business day, then drawings, calculations and a PS1 that match your set.</p></div>
+        <a class="btn btn-primary" href="builders-architects.html">How we work with design teams ${si('arrow', 2.2)}</a>
+      </div>
     </div></section>`,
     `<section class="pad-sm process"><div class="container"><div class="section-head reveal"><span class="eyebrow">How it works</span><h2 class="section-title">A clear path from concept to completion</h2><p class="lead">A straightforward, transparent process that keeps you informed at every step.</p></div>${processSteps()}</div></section>`,
     ctaBand(''),
@@ -1433,7 +1884,7 @@ pages.push({
 /* SECTORS */
 pages.push({
   file: 'sectors.html', base: '', active: 'sectors',
-  headO: { title: 'Sectors We Engineer | Stable Structure, Auckland', desc: 'Structural and civil engineering for residential, commercial and industrial projects across New Zealand.' },
+  headO: { title: 'Residential, Commercial &amp; Industrial Engineering NZ', desc: 'Structural and civil engineering for homes and renovations, commercial and retail buildings, and industrial sheds and warehouses, across Auckland and NZ.' },
   body: [
     pageHero('', { eyebrow: 'Who we work with', title: 'Engineering across <span class="hl">every sector</span>', sub: 'The same rigour, clarity and compliance — whether it is a backyard deck or a commercial development.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Sectors' }] }),
     `<section class="pad"><div class="container">${sectorsBlock('')}</div></section>`,
@@ -1444,8 +1895,8 @@ pages.push({
 
 /* OUR PROJECTS — gallery of manual entries + hashtagged Facebook posts */
 pages.push({
-  file: 'projects.html', base: '', active: 'projects',
-  headO: { title: 'Recent Engineering Projects | Stable Structure', desc: 'Recent structural and civil engineering projects by Stable Structure Limited — new builds, decks, retaining walls, carports and commercial work across Auckland and New Zealand.' },
+  file: 'projects.html', base: '', active: 'projects', lastmod: CONTENT_DATE,
+  headO: { title: 'Recent Engineering Projects | Stable Structure', desc: 'Recent structural engineering projects by Stable Structure: new housing, commercial buildings, a helicopter hangar and more, across Auckland and New Zealand.' },
   body: [
     pageHero('', { eyebrow: 'Our projects', title: 'Recent work, <span class="hl">straight from site</span>', sub: 'A look at what we have been building — new builds, decks, retaining walls, carports and commercial projects from across New Zealand.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Our Projects' }] }),
     projectsSection(''),
@@ -1456,8 +1907,8 @@ pages.push({
 
 /* ABOUT / WHY US */
 pages.push({
-  file: 'about.html', base: '', active: 'about', lastmod: '2026-09-24',
-  headO: { title: 'About Our Engineers | Stable Structure, Auckland', desc: 'Stable Structure Limited is a Kiwi-owned structural and civil engineering consultancy in Botany, Auckland, simplifying complex engineering with practical, compliant solutions.' },
+  file: 'about.html', base: '', active: 'about', lastmod: CONTENT_DATE,
+  headO: { title: 'About Our Engineers | Stable Structure, Auckland', desc: 'Meet the engineers at Stable Structure, a Kiwi-owned consultancy in Botany, Auckland, led by a Chartered Professional Engineer with 20+ years of experience.' },
   body: [
     pageHero('', { eyebrow: 'About us', title: 'Engineering you can <span class="hl">build on</span>', sub: 'A Kiwi-owned structural and civil engineering consultancy built on technical expertise, practical solutions and exceptional client service.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'About' }] }),
     teamSection(''),
@@ -1471,7 +1922,7 @@ pages.push({
 /* PROCESS */
 pages.push({
   file: 'process.html', base: '', active: 'process',
-  headO: { title: 'Our Process | Stable Structure Limited', desc: 'A clear, transparent engineering process from concept to completion — consult, design, consent and supervise.' },
+  headO: { title: 'Our Engineering Process: Quote to PS4 | Stable Structure', desc: 'How we work: a fixed quote from your plans, design and PS1, support through building consent, then site inspections and the PS4 for code compliance.' },
   body: [
     pageHero('', { eyebrow: 'How it works', title: 'A clear path from <span class="hl">concept to completion</span>', sub: 'A straightforward, transparent process that keeps you informed and your project on track at every step.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Process' }] }),
     `<section class="pad process"><div class="container">${processSteps()}</div></section>`,
@@ -1489,8 +1940,8 @@ pages.push({
 
 /* TESTIMONIALS */
 pages.push({
-  file: 'testimonials.html', base: '', active: 'reviews',
-  headO: { title: 'Reviews | Stable Structure Limited', desc: 'Read what clients say about Stable Structure Limited — 5-star structural and civil engineering across New Zealand.' },
+  file: 'testimonials.html', base: '', active: 'reviews', lastmod: CONTENT_DATE,
+  headO: { title: 'Client Reviews: 5.0 on Google | Stable Structure Engineers', desc: 'What builders, designers and homeowners say about working with Stable Structure: every one of our Google reviews is five stars. Read them here.' },
   body: [
     pageHero('', { eyebrow: 'Client reviews', title: 'Rated <span class="hl">5.0 on Google</span>', sub: 'Every one of our Google reviews is a 5-star rating. Here is what clients say about working with Stable Structure.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Reviews' }] }),
     `<section class="pad"><div class="container">
@@ -1507,8 +1958,8 @@ pages.push({
 
 /* FAQ */
 pages.push({
-  file: 'faq.html', base: '', active: 'faq',
-  headO: { title: 'FAQ | Stable Structure Limited', desc: 'Frequently asked questions about structural and civil engineering, building consent, PS1/PS4, retaining walls, decks and more.' },
+  file: 'faq.html', base: '', active: 'faq', lastmod: CONTENT_DATE,
+  headO: { title: 'Engineering FAQ: PS1, Consent &amp; Cost | Stable Structure', desc: 'Answers on PS1s, building consent, engineering costs and turnaround, decks, retaining walls and removing walls, from chartered engineers in Auckland.' },
   body: [
     pageHero('', { eyebrow: 'Good to know', title: 'Frequently asked <span class="hl">questions</span>', sub: 'Answers to the questions we hear most. Still unsure? Call or WhatsApp us and we will help.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'FAQ' }] }),
     `<section class="pad"><div class="container">${faqBlock(FAQS)}</div></section>`,
@@ -1518,8 +1969,8 @@ pages.push({
 
 /* CONTACT */
 pages.push({
-  file: 'contact.html', base: '', active: 'contact',
-  headO: { title: 'Contact | Stable Structure Limited — Get a Free Quote', desc: 'Contact Stable Structure Limited for structural and civil engineering in Auckland and across New Zealand. Call or WhatsApp 021 148 8984, or send an enquiry.' },
+  file: 'contact.html', base: '', active: 'contact', lastmod: CONTENT_DATE,
+  headO: { title: 'Contact | Stable Structure Limited — Get a Free Quote', desc: 'Get a free, fixed-fee engineering quote. Call or WhatsApp 021 148 8984, email us your plans, or send an enquiry. Botany, Auckland, serving all of NZ.' },
   body: [
     pageHero('', { eyebrow: 'Contact', title: 'Let\'s talk about <span class="hl">your project</span>', sub: 'Free, no-obligation quotes. Call, WhatsApp or send an enquiry and we will reply within one business day.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Contact' }], cta: false }),
     `<section class="pad">${contactBlock('')}</section>`,
@@ -1531,30 +1982,44 @@ pages.push({
    brand-first — "structural engineer auckland" sat at position 14 in GSC with a
    33% CTR the one time it reached page 1. */
 const SERVICE_TITLES = {
-  'structural-design': 'Structural Design Engineer Auckland | Stable Structure',
-  'civil-design': 'Civil Engineering Design, Auckland | Stable Structure',
-  'building-consent-documentation': 'PS1 &amp; Building Consent Docs, Auckland | Stable Structure',
+  'structural-design': 'Structural Design &amp; PS1 Engineer Auckland | Stable Structure',
+  'civil-design': 'Civil Engineering: Stormwater &amp; Earthworks, Auckland',
+  'building-consent-documentation': 'PS1 &amp; Building Consent Documents Auckland | Fixed Fee',
   'site-inspections': 'Site Inspections &amp; PS4 Construction Review, Auckland',
-  'construction-supervision': 'Construction Monitoring &amp; Supervision Auckland | CM1–CM5, PS4',
+  'construction-supervision': 'Construction Monitoring &amp; PS4, Auckland | CM1–CM5',
   'retaining-walls': 'Engineered Retaining Wall Design Auckland | Stable Structure',
-  'swimming-pools': 'Swimming Pool Structural Design, Auckland | Stable Structure',
-  'decks-outdoor-living': 'Deck Engineering, Auckland | Stable Structure',
-  'carports-sheds-portals': 'Portal Frame &amp; Shed Design NZ | Stable Structure',
+  'swimming-pools': 'Swimming Pool Engineer Auckland: Design &amp; PS1',
+  'decks-outdoor-living': 'Deck Engineer Auckland: High &amp; Cantilevered Decks',
+  'carports-sheds-portals': 'Portal Frame, Carport &amp; Shed Engineering NZ',
 };
 
 /* Per-service overrides where search data showed the generic title/description
    weren't matching what people search for. */
 const SERVICE_H1 = {
+  'structural-design': 'Structural <span class="hl">design</span>, Auckland',
+  'decks-outdoor-living': 'Deck <span class="hl">engineering</span>, Auckland',
   'site-inspections': 'Site inspections &amp; <span class="hl">PS4</span> construction review',
   'construction-supervision': 'Construction <span class="hl">monitoring</span> &amp; supervision, Auckland',
   'retaining-walls': 'Engineered <span class="hl">retaining walls</span>, Auckland',
 };
 const SERVICE_DESCS = {
+  'structural-design': 'Structural design by chartered engineers in Auckland: beams, foundations, bracing and wall removals, with drawings, calcs and PS1. Fixed-fee quotes.',
+  'civil-design': 'Civil engineering in Auckland: stormwater, soakage and tanks, drainage, earthworks, driveways and sediment control, with drawings for consent.',
+  'building-consent-documentation': 'Consent-ready drawings, calculations and a PS1 signed by a CPEng engineer, with council RFIs answered for you. Fixed fee, quoted within one business day.',
+  'swimming-pools': 'Structural design for in-ground pools in Auckland: pool shells, slopes, retaining, surrounds and barriers, with drawings, calculations and PS1 for consent.',
+  'decks-outdoor-living': 'Deck engineering in Auckland: decks over 1.5 m, cantilevers, spa pool loads and balustrades, with drawings, calculations and PS1. Fixed-fee quotes.',
+  'carports-sheds-portals': 'Steel and timber portal frames, carports, sheds and rural buildings, designed for NZ wind and earthquake loads, with drawings and PS1 for consent.',
   'site-inspections': 'Structural site inspections and PS4 construction review across Auckland: pre-pour and framing inspections, written site records, and the PS4 council needs.',
-  'construction-supervision': 'Construction monitoring (CM1 to CM5) and site supervision in South and East Auckland: stage inspections, written site reports and the PS4 council needs.',
+  'construction-supervision': 'Construction monitoring (CM1 to CM5) in South and East Auckland: stage inspections, written site reports and the PS4 council needs. Fixed-fee quotes.',
   'retaining-walls': 'Retaining wall engineers in Botany, East Auckland. Engineered timber, block and concrete walls, driveway walls, drainage, PS1 and consent. Fixed quotes.',
 };
 const SERVICE_LASTMOD = {
+  'structural-design': CONTENT_DATE,
+  'civil-design': CONTENT_DATE,
+  'building-consent-documentation': CONTENT_DATE,
+  'swimming-pools': CONTENT_DATE,
+  'decks-outdoor-living': CONTENT_DATE,
+  'carports-sheds-portals': CONTENT_DATE,
   'site-inspections': '2026-09-30',
   'construction-supervision': '2026-09-30',
   'retaining-walls': '2026-09-30',
@@ -1582,7 +2047,7 @@ SERVICES.forEach((s) => {
       waMsg: `Hi Stable Structure, I'd like to enquire about ${s.title}.`,
     }),
     `<section class="pad"><div class="container"><div class="svc-layout">
-      <div class="prose reveal">
+      <div class="prose">
         ${prose}
         ${s.slug === 'carports-sheds-portals' ? `<div class="callout">
           <div><b>Thinking bigger than a shed?</b><p>The same light timber and steel framing is what we use for <a href="${base}granny-flats.html">70m² granny flat designs that need no building consent</a>. Seven concepts, with interactive 3D structural models.</p></div>
@@ -1625,11 +2090,11 @@ GUIDES.forEach((g) => {
   const body = [
     pageHero(base, {
       eyebrow: g.eyebrow, title: g.h1, sub: g.sub,
-      crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Guides', href: 'services.html' }, { label: g.label }],
+      crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Guides', href: 'guides.html' }, { label: g.label }],
       waMsg: `Hi Stable Structure, I read your guide "${g.title}" and have a question.`,
     }),
     `<section class="pad"><div class="container"><div class="svc-layout">
-      <div class="prose reveal">
+      <div class="prose">
         <span class="eyebrow">${g.eyebrow}</span>
         ${g.body(base)}
       </div>
@@ -1652,8 +2117,8 @@ GUIDES.forEach((g) => {
     ctaBand(base),
   ].join('\n');
   pages.push({
-    file: `guides/${g.slug}.html`, base, active: '', lastmod: SPRINT_DATE,
-    headO: { title: g.metaTitle || `${g.title} | Stable Structure`, desc: g.desc, pageLabel: g.label },
+    file: `guides/${g.slug}.html`, base, active: 'guides', lastmod: g.modified || SPRINT_DATE,
+    headO: { title: g.metaTitle || `${g.title} | Stable Structure`, desc: g.desc, pageLabel: g.label, article: { headline: g.title, published: g.published || SPRINT_DATE, modified: g.modified || SPRINT_DATE } },
     body,
   });
 });
@@ -1662,8 +2127,8 @@ GUIDES.forEach((g) => {
    guides a topical cluster point instead of leaving them as orphans hanging off
    the services page. */
 pages.push({
-  file: 'guides.html', base: '', active: '', lastmod: SPRINT_DATE,
-  headO: { title: 'Engineering Guides | Stable Structure', desc: 'Plain-English guides to New Zealand structural engineering: what a PS1 producer statement is, and when a retaining wall needs building consent.', pageLabel: 'Guides' },
+  file: 'guides.html', base: '', active: 'guides', lastmod: CONTENT_DATE,
+  headO: { title: 'Structural Engineering Guides NZ | Stable Structure', desc: 'Plain-English NZ engineering guides: PS1 producer statements, deck and retaining wall consent, removing a load-bearing wall and consent timeframes.', pageLabel: 'Guides' },
   body: [
     pageHero('', { eyebrow: 'Guides', title: 'Straight answers from <span class="hl">our engineers</span>', sub: 'The questions we are asked most, answered properly. Written and reviewed by a Chartered Professional Engineer.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'Guides' }] }),
     `<section class="pad"><div class="container">
@@ -1678,6 +2143,48 @@ pages.push({
       </div>
     </div></section>`,
     ctaBand(''),
+  ].join('\n'),
+});
+
+/* BUILDERS & ARCHITECTS — the journey for design teams and trades, who send
+   most of the work but had no page of their own. */
+pages.push({
+  file: 'builders-architects.html', base: '', active: '', lastmod: CONTENT_DATE,
+  headO: { title: 'Structural Engineering for Builders &amp; Architects, Auckland', desc: 'Engineering behind your plans: fixed quotes in one business day, drawings, calcs and a CPEng-signed PS1 that match your set, then inspections and PS4.', pageLabel: 'For Builders & Architects' },
+  body: [
+    pageHero('', { eyebrow: 'For builders &amp; architects', title: 'Engineering behind <span class="hl">your plans</span>', sub: 'Send us your drawings, get a fixed quote within one business day, and get back drawings, calculations and a PS1 that match your set. Then inspections and the PS4 when it is built.', crumbs: [{ label: 'Home', href: 'index.html' }, { label: 'For Builders &amp; Architects' }], waMsg: "Hi Stable Structure, I'm a builder/designer and I'd like a quote on some plans." }),
+    `<section class="pad"><div class="container"><div class="prose" style="max-width:760px;margin-inline:auto">
+      <h2>How we fit into your team</h2>
+      <p>Most of our work arrives from architects, designers, draughtspeople and builders who need the engineering behind their plans. We work from your drawings, coordinate directly with you as the design develops, and answer council’s structural questions so the consent keeps moving. You keep the client relationship; we make the structure work.</p>
+      <h2>What you send us</h2>
+      <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Your current drawing set, as PDF or DWG</span></li>
+      <li>${si('check', 2.2)}<span>The site address</span></li>
+      <li>${si('check', 2.2)}<span>Any geotechnical report that already exists</span></li>
+      <li>${si('check', 2.2)}<span>Anything we should know: member sizes to match, budget limits or a lodgement date</span></li>
+    </ul>
+      <h2>What you get back</h2>
+      <ul class="ticks">
+      <li>${si('check', 2.2)}<span>Structural drawings and details that match your set</span></li>
+      <li>${si('check', 2.2)}<span>A calculation set that agrees with the drawings</span></li>
+      <li>${si('check', 2.2)}<span>A PS1 signed by a Chartered Professional Engineer (CPEng #1030007)</span></li>
+      <li>${si('check', 2.2)}<span>Member sizes and specifications your builder can price from</span></li>
+      <li>${si('check', 2.2)}<span>Responses to council requests for information</span></li>
+      <li>${si('check', 2.2)}<span>Construction monitoring, written site records and the PS4 once it is built</span></li>
+    </ul>
+      <h2>Turnaround</h2>
+      <p>A fixed quote usually within one business day of receiving plans. Straightforward residential elements typically take one to two weeks to consent-ready documentation, and full new-build packages three to six weeks. Bringing us in while the drawings are still being finished keeps engineering off your critical path. Our guide to <a href="guides/building-consent-timeframes-auckland.html">consent timeframes and RFIs</a> covers what happens after lodgement.</p>
+      <h2>Drawings that sit with yours</h2>
+      <p>Our team drafts in AutoCAD and Revit, so our structural drawings sit cleanly alongside your architectural set, and the calculations are produced with the drawings so the two always agree.</p>
+      <h2>For builders: on site</h2>
+      <p>When questions come up on site, you get an engineer who answers them. We inspect at the hold points your consent names, such as footings, reinforcing and framing, leave a written site record for the council inspector, and issue the PS4 at the end. For Auckland sites, a day or two’s notice is usually enough. See <a href="services/construction-supervision.html">construction monitoring</a> for how it runs.</p>
+      <h2>Developers and repeat work</h2>
+      <p>We work with builders and developers across repeat residential projects, from single homes to multi-unit developments of up to three storeys.</p>
+      <blockquote>“As the engineering partner for A-Frame Builders, Gajanthan has consistently delivered high-quality work, met tight deadlines, and gone above and beyond to support our projects.”<br /><small>Haran / Kash, A-Frame Builders Ltd, Google review</small></blockquote>
+      <h2>Send us a set of plans</h2>
+      <p>Email your drawings to <a href="mailto:${EMAIL}">${EMAIL}</a>, send them on <a href="${waHref("Hi Stable Structure, I'd like a quote on some plans.")}" target="_blank" rel="noopener">WhatsApp</a>, or call ${PHONE_DISPLAY}. We will confirm the scope and a fixed fee, usually within one business day.</p>
+    </div></div></section>`,
+    ctaBand('', { title: 'Have a set of plans that needs engineering?', text: 'Send them through and we will come back with the scope and a fixed fee, usually within one business day.', waMsg: "Hi Stable Structure, I'd like a quote on some plans." }),
   ].join('\n'),
 });
 
@@ -1798,14 +2305,14 @@ function gfLd() {
     { '@type': 'WebSite', '@id': `${SITE_URL}#website`, url: SITE_URL, name: 'Stable Structure Limited', publisher: { '@id': ORG_ID } },
     {
       '@type': 'WebPage', '@id': `${url}#webpage`, url,
-      name: '70m² Granny Flat Designs Auckland | No Consent Needed',
+      name: '70m² Consent-Exempt Granny Flat Designs, Auckland',
       description: 'Seven engineer-designed 70m² granny flat concepts for Auckland under the 2026 consent exemption, with interactive 3D structural models.',
       inLanguage: 'en-NZ', datePublished: '2026-09-24', dateModified: GF_LASTMOD,
       isPartOf: { '@id': `${SITE_URL}#website` }, publisher: { '@id': ORG_ID },
       about: { '@id': `${url}#service` },
       primaryImageOfPage: { '@id': img(GF_DESIGNS[3]) },
       hasPart: { '@id': `${url}#designs` },
-      reviewedBy: { '@type': 'Person', name: 'Gajanthan Vethanathan', jobTitle: 'Director, Chartered Professional Engineer (CPEng)' },
+      reviewedBy: { '@id': PERSON_ID },
     },
     {
       '@type': 'Service', '@id': `${url}#service`,
@@ -1815,7 +2322,7 @@ function gfLd() {
       provider: { '@id': ORG_ID }, areaServed: { '@type': 'City', name: 'Auckland' }, url,
       hasOfferCatalog: {
         '@type': 'OfferCatalog', name: 'Granny flat design collection',
-        itemListElement: GF_DESIGNS.map(d => ({ '@type': 'Offer', itemOffered: { '@type': 'Product', name: d.title, description: `${d.specs.join(', ')}${d.size ? `, ${d.size}` : ''}`, image: img(d) } })),
+        itemListElement: GF_DESIGNS.map(d => ({ '@type': 'Offer', itemOffered: { '@type': 'Service', name: `${d.title} granny flat design`, description: `${d.specs.join(', ')}${d.size ? `, ${d.size}` : ''}`, image: img(d), provider: { '@id': ORG_ID } } })),
       },
     },
     {
@@ -1870,7 +2377,7 @@ function grannyFlatsPage() {
 
   return {
     file: 'granny-flats.html', base, active: 'granny', lastmod: GF_LASTMOD,
-    headO: { title: '70m² Granny Flat Designs Auckland | No Consent Needed', desc: 'Seven engineer-designed 70m² granny flat concepts for Auckland under the 2026 consent exemption. Explore 3D structural models and get a free quote.', pageLabel: 'Granny Flats', ogImage: 'assets/granny-flats/og-granny-flats.jpg', extraLd: gfLd() },
+    headO: { title: '70m² Consent-Exempt Granny Flat Designs, Auckland', desc: 'Seven engineer-designed 70m² granny flat concepts for Auckland under the 2026 building consent exemption. Explore the 3D structural models and get a free quote.', pageLabel: 'Granny Flats', ogImage: 'assets/granny-flats/og-granny-flats.jpg', extraLd: gfLd() },
     extraScripts: `<script>
 (function(){var els=document.querySelectorAll('.mv[data-model]');if(!els.length)return;var done=false;
 function load(){if(done)return;done=true;var s=document.createElement('script');s.type='module';s.src='${base}assets/vendor/model-viewer.js?v=${ASSET_VERSION}';document.body.appendChild(s);}
@@ -2020,7 +2527,7 @@ const notFoundPage = {
       <h1>Page not found</h1>
       <p class="sub">Sorry, the page you were looking for does not exist or may have moved. Let's get you back on track.</p>
       <div class="ph-cta">
-        <a class="btn btn-primary btn-lg" href="${NOTFOUND_BASE}index.html">Back to home ${si('arrow', 2.2)}</a>
+        <a class="btn btn-primary btn-lg" href="${NOTFOUND_BASE}">Back to home ${si('arrow', 2.2)}</a>
         <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}contact.html">Contact us</a>
       </div>
     </div>
@@ -2028,7 +2535,7 @@ const notFoundPage = {
     `<section class="pad"><div class="container">
       <div class="section-head center reveal"><span class="eyebrow">Popular pages</span><h2 class="section-title">Where would you like to go?</h2></div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:8px" class="reveal">
-        <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}index.html">Home</a>
+        <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}">Home</a>
         <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}services.html">Services</a>
         <a class="btn btn-ghost btn-lg" href="${NOTFOUND_BASE}contact.html">Contact</a>
       </div>
@@ -2087,4 +2594,24 @@ Sitemap: ${SITE_URL}sitemap.xml\n`;
 fs.writeFileSync(path.join(ROOT, 'robots.txt'), robots, 'utf8');
 console.log('  ✓', 'robots.txt');
 
-console.log(`\nGenerated ${count} pages + sitemap.xml + robots.txt.`);
+/* ---------- llms.txt (optional; a plain list of the main pages for AI tools) ---------- */
+const llmsLine = (p) => `- [${(p.headO.pageLabel || p.headO.serviceName || p.headO.title).replace(/&amp;/g, '&').replace(/ \| .*$/, '')}](${SITE_URL}${p.file === 'index.html' ? '' : p.file}): ${p.headO.desc.replace(/&amp;/g, '&')}`;
+const llms = `# ${LEGAL_NAME}
+
+> Structural and civil engineering consultancy in Botany, Auckland, New Zealand, led by a Chartered Professional Engineer (CPEng #${CPENG_NUMBER}). Structural design, PS1 building consent documentation, site inspections, construction monitoring and PS4, retaining walls, pools, decks and portal frames, across Auckland and New Zealand.
+
+Contact: ${PHONE_DISPLAY} · ${EMAIL} · Mon–Fri 8:30am–5pm
+
+## Services
+${pages.filter((p) => p.file.startsWith('services/')).map(llmsLine).join('\n')}
+
+## Guides
+${pages.filter((p) => p.file.startsWith('guides/')).map(llmsLine).join('\n')}
+
+## Company
+${pages.filter((p) => ['about.html', 'builders-architects.html', 'projects.html', 'testimonials.html', 'faq.html', 'contact.html', 'granny-flats.html'].includes(p.file)).map(llmsLine).join('\n')}
+`;
+fs.writeFileSync(path.join(ROOT, 'llms.txt'), llms, 'utf8');
+console.log('  ✓', 'llms.txt');
+
+console.log(`\nGenerated ${count} pages + sitemap.xml + robots.txt + llms.txt.`);
